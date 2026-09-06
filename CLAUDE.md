@@ -79,6 +79,12 @@ tests/              不需要產生世界就能跑的測試
 ./.venv/bin/python tools/slice_world.py 忠孝復興          # ASCII 剖面
 ```
 
+## 授權
+
+程式碼 GPL-3.0（`LICENSE`），`data/` 是 ODbL 1.0（`LICENSE-DATA`，繼承自
+OpenStreetMap）。兩者都是 copyleft。新增資料檔到 `data/` 時要確認來源條款，
+並更新 `LICENSE-DATA` 的檔案清單 —— 那份清單目前逐檔列出，不是萬用比對。
+
 ## 驗證的態度
 
 **不相信生成器的自述，一律從磁碟獨立讀回來比對。** `tools/` 底下每一支都是

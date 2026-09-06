@@ -317,3 +317,36 @@ BL/G/O/R 四條線在市中心兩兩都會交會（K4 完全圖），每線一�
 - 陽明山等超過 180 m 的山區做了 2:1 垂直壓縮，否則會撞到 y=319 上限
 - 台北車站外牆的官方色號與材質查不到，外牆用米色（`smooth_sandstone`）是推估的；
   屋頂的紅磚色陶瓦＋白邊則有來源
+
+## 授權
+
+程式碼與資料分開授權，因為資料的授權是從 OpenStreetMap 繼承來的，不是自己挑的。
+
+| 範圍 | 授權 | 檔案 |
+|---|---|---|
+| 程式碼（`mrt/`, `cli/`, `tools/`, `tests/`） | GPL-3.0 | `LICENSE` |
+| 資料（`data/`） | ODbL 1.0 | `LICENSE-DATA` |
+
+```
+Copyright (C) 2026 rareone0602
+
+本程式為自由軟體：你可以依照自由軟體基金會發布的 GNU 通用公共授權條款
+第三版（或你選擇的任意後續版本）重新散布與修改本程式。
+
+本程式係基於使用目的而散布，然而不負任何擔保責任；亦無對適售性或
+特定目的適用性所為的默示性擔保。詳情請參照 GNU 通用公共授權。
+
+你應該已經收到一份 GNU 通用公共授權的副本；如果沒有，請參照
+<https://www.gnu.org/licenses/>。
+```
+
+兩者都是 copyleft：散布修改過的版本時，程式碼要以 GPL-3.0 開源，
+資料要以 ODbL 提供。
+
+`data/` 下所有檔案都衍生自 OpenStreetMap，**使用時必須標示**：
+
+    © OpenStreetMap contributors — https://www.openstreetmap.org/copyright
+
+地形原始資料（國土測繪中心 DTM、Copernicus GLO-30）**沒有隨附在這個 repo 裡**，
+各自的條款見上面「資料來源」一節。`data/heightmap.json` 只有網格中繼資料
+（原點、間距、範圍），不含任何高程值。
