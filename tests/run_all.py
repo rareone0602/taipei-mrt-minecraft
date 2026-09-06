@@ -11,7 +11,8 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TESTS = ["test_architecture.py", "test_geometry.py", "test_alignment.py",
-         "test_rails.py", "test_landmarks.py"]
+         "test_rails.py", "test_landmarks.py", "test_walk.py",
+         "test_concourse.py"]
 
 
 def main():

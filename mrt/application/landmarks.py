@@ -10,12 +10,18 @@ BlockSink 的實作（infrastructure 的 World）會自動丟掉不屬於目前 
 
 自我測試: ./.venv/bin/python -m tests.test_landmarks
 """
-import os, re, math, json
+import os, math, json
 
 from mrt import config
+from mrt.application import build_concourse as BCC
+from mrt.application.build_concourse import ShaftStair
 from mrt.domain import geometry as shapes
 
 AIR = "minecraft:air"
+
+# 台北車站複合體：地下街同時服務台北車站與北門（台北地下街西端在北門站）
+COMPLEX = ("台北車站", "北門")
+INDOOR_R = 1500        # 收多遠以內的通道；中山地下街一路通到雙連
 
 
 class Building:
@@ -217,121 +223,6 @@ class Slab:
             # 頂板
             for x, z in cells:
                 w.set(x, self.y + self.clear + 1, z, self.mat)
-
-
-class ShaftStair:
-    """折返式樓梯井：從地面下到任意深度的穿堂層。
-
-    沿線的出入口長梯要 2 m 水平換 1 m 垂直，深 39 m 的站就得拉 78 m 直線 ——
-    真實出入口離站體往往不到 40 m，硬拉會穿到別人家。折返梯把行程摺進一個
-    固定大小的井裡，深度多少都塞得下，也比較接近真實深站的做法。
-
-    座標系：(x0, z0) 是井的中心，u = (ux, uz) 是梯段延伸方向（單位向量，
-    只支援四個正交方向），v 是其法向。
-    """
-
-    FLIGHT = 14          # 單一梯段的水平長度（公尺）-> 一段降 7 m
-    HALF_W = 4           # 井的半寬（法向）
-
-    def __init__(self, x0, z0, ux, uz, g0, y_to,
-                 wall="minecraft:gray_concrete",
-                 step="minecraft:smooth_stone",
-                 slab="minecraft:smooth_stone_slab",
-                 rail="minecraft:iron_bars",
-                 lamp="minecraft:sea_lantern"):
-        self.x0, self.z0 = int(x0), int(z0)
-        self.ux, self.uz = int(round(ux)), int(round(uz))
-        self.g0, self.y_to = int(g0), int(y_to)
-        self.wall, self.step, self.slab = wall, step, slab
-        self.rail, self.lamp = rail, lamp
-
-    # 井內座標 (a 沿 u, b 沿 v) -> 世界座標
-    def _w(self, a, b):
-        vx, vz = -self.uz, self.ux
-        return self.x0 + self.ux * a + vx * b, self.z0 + self.uz * a + vz * b
-
-    def bbox(self):
-        pts = [self._w(a, b) for a in (0, self.FLIGHT + 2)
-               for b in (-self.HALF_W - 1, self.HALF_W + 1)]
-        xs = [p[0] for p in pts]; zs = [p[1] for p in pts]
-        return min(xs) - 2, min(zs) - 2, max(xs) + 2, max(zs) + 2
-
-    def flights(self):
-        """回傳 [(方向, y_起, y_終)]，方向 +1 沿 u、-1 逆 u。"""
-        drop = self.g0 - self.y_to
-        if drop <= 0:
-            return []
-        per = self.FLIGHT / 2.0                  # 一段降幾公尺
-        out = []
-        y = float(self.g0)
-        d = 1
-        while y - self.y_to > 1e-6:
-            dy = min(per, y - self.y_to)
-            out.append((d, y, y - dy))
-            y -= dy
-            d = -d
-        return out
-
-    def build(self, w):
-        fl = self.flights()
-        if not fl:
-            return
-        H = self.HALF_W
-        lo = min(self.y_to - 1, self.g0)
-        # 井壁 + 掏空
-        for a in range(-1, self.FLIGHT + 3):
-            for b in range(-H - 1, H + 2):
-                x, z = self._w(a, b)
-                edge = (a in (-1, self.FLIGHT + 2) or abs(b) == H + 1)
-                for y in range(lo, self.g0 + 5):
-                    w.set(x, y, z, self.wall if edge else AIR)
-        # 梯段：+1 走 a 增加，-1 走 a 減少；兩段分別佔法向的兩半
-        for k, (d, ya, yb) in enumerate(fl):
-            b0, b1 = (1, H) if d > 0 else (-H, -1)
-            n = int(round((ya - yb) * 2))
-            for t in range(n + 1):
-                a = (1 + t) if d > 0 else (self.FLIGHT + 1 - t)
-                surf = ya - 0.5 * t
-                half = abs(surf - math.floor(surf)) > 0.25
-                yb_ = int(math.floor(surf)) if half else int(round(surf)) - 1
-                blk = self.slab if half else self.step
-                for b in range(b0, b1 + 1):
-                    x, z = self._w(a, b)
-                    w.set(x, yb_, z, blk)
-                    for y in range(yb_ + 1, yb_ + 4):
-                        w.set(x, y, z, AIR)
-                # 中央扶手，免得從上面直接摔下去
-                bm = 0
-                x, z = self._w(a, bm)
-                w.set(x, yb_, z, self.step)
-                w.set(x, yb_ + 1, z, self.rail)
-            # 平台
-            xa, za = self._w(self.FLIGHT + 1 if d > 0 else 1, 0)
-            for b in range(-H, H + 1):
-                a = self.FLIGHT + 1 if d > 0 else 1
-                x, z = self._w(a, b)
-                w.set(x, int(round(yb)) - 1, z, self.step)
-                for y in range(int(round(yb)), int(round(yb)) + 4):
-                    w.set(x, y, z, AIR)
-            if k % 2 == 0:
-                x, z = self._w(self.FLIGHT // 2, 0)
-                w.set(x, int(round(ya)) + 3, z, self.lamp)
-        # 底部樓板
-        for a in range(0, self.FLIGHT + 2):
-            for b in range(-H, H + 1):
-                x, z = self._w(a, b)
-                w.set(x, self.y_to - 1, z, self.step)
-        # 地面出入口亭：加頂蓋，並在近端牆上開門，否則是個沒有蓋子的陷阱
-        for a in range(-1, self.FLIGHT + 3):
-            for b in range(-H - 1, H + 2):
-                x, z = self._w(a, b)
-                w.set(x, self.g0 + 5, z, self.wall)
-        for b in range(-1, 2):
-            x, z = self._w(-1, b)
-            for y in range(self.g0 + 1, self.g0 + 4):
-                w.set(x, y, z, AIR)
-        x, z = self._w(1, 0)
-        w.set(x, self.g0 + 4, z, self.lamp)
 
 
 class Passage:
@@ -551,6 +442,7 @@ def taipei_main(segs, stations, terr):
                     wall="minecraft:deepslate_bricks"))
 
     # ---- 3. 臺鐵／高鐵月台層 ----
+    rail_hall_y = None
     plats = [p["geometry"] for p in _load("platform_levels.json")
              if p.get("station") == "台北車站" and str(p.get("level")) == "-2"
              and p.get("ref") in ("1", "2", "3", "4")]
@@ -559,38 +451,57 @@ def taipei_main(segs, stations, terr):
         hall = [(min(xs) - 10, min(zs) - 12), (max(xs) + 10, min(zs) - 12),
                 (max(xs) + 10, max(zs) + 12), (min(xs) - 10, max(zs) + 12)]
         out.append(RailHall(plats, g0 - 17, hall, half_w=4, clear=7))
+        rail_hall_y = g0 - 16          # 台鐵／高鐵大廳的可站立面
 
-    # ---- 4. 出入口：真實座標的樓梯井 + 通道 ----
+    # ---- 4. 地下街：照 OSM 的地下通道中心線蓋，把所有出入口接起來 ----
+    # 原本這裡是「每個出入口各拉一座樓梯井到最近的目標」，目標彼此不相通，
+    # 蓋出來是十四座各自獨立的洞。改成照 OSM 實際測繪的地下街網路蓋：
+    # 台北車站一帶有 7.7 km 的通道中心線（台北地下街、站前地下街、中山地下街、
+    # 凱薩美食街、M/K 區穿堂），照著蓋出來本來就是連通的。
     onl = _station_on_lines(segs, "台北車站")
-    targets = []
-    for ref, (sx, sz, ux, uz, ty) in onl.items():
-        targets.append((sx, sz, ty + 7, ref))      # 穿堂層可站立高度
-    targets.append((cx, cz, b1 + 1, "B1"))
+    ways = [w for w in _load("indoor.json")
+            if math.hypot(w["mc_x"] - cx, w["mc_z"] - cz) <= INDOOR_R]
+    picked = [(str(e.get("ref") or ""), e["mc_x"], e["mc_z"]) for e in ents
+              if e.get("station") in COMPLEX and str(e.get("ref") or "")
+              and math.hypot(e["mc_x"] - cx, e["mc_z"] - cz) <= INDOOR_R]
+    links = [(sx, sz, ty + 7, ref, ux, uz)
+             for ref, (sx, sz, ux, uz, ty) in onl.items()]
+    if rail_hall_y is not None:
+        # 台鐵／高鐵大廳也要接上 —— 現實中台北車站的地下街本來就是先通到
+        # 台鐵 B1 大廳，再往下到月台。
+        links.append((cx, cz, rail_hall_y, "台鐵", 1.0, 0.0))
 
-    picked = []
-    for e in ents:
-        r = str(e.get("ref") or "")
-        if not re.match(r"^[MKZ]\d+$", r):
+    hall_cells = shapes.poly_cells(shapes.rect(cx, cz, 150, 120))
+    objs, rep = BCC.plan(ways, picked, lambda x, z: int(terr.y_at(x, z)),
+                         b1 + 1, links=links, near=(cx, cz),
+                         no_wall=hall_cells)
+    for o in objs:
+        o.underground = True        # 地下街不必觸發地形生成，見 cli/build_world
+    out += objs
+    print(f"  台北車站地下街：通道 {rep['length']:,} m、"
+          f"地板 {rep['cells']:,} 格、出入口 {len(rep['exits'])} 座樓梯"
+          + (f"、接不上的 {len(rep['orphan'])} 個" if rep["orphan"] else ""))
+    for nm, sx0, sz0, yto, yg0 in rep["links"]:
+        print(f"    連絡梯樓梯井 {nm:<4} ({sx0},{sz0})  "
+              f"地下街 y{yg0 + 1} -> 穿堂 y{yto}")
+
+    # 接不上地下街的出入口（OSM 沒畫那一帶的通道）退回舊做法：
+    # 一座樓梯井下到 B1 大廳。大廳本身有被地下街接到，所以還是連通的。
+    # 限 260 m 內：更遠的（北門西側那幾個）OSM 那一帶根本沒有通道，
+    # 硬拉一條六百公尺的通道過去只會把沿路的東西全鑿穿。
+    for r, ex, ez in [t for t in rep["orphan"]
+                      if math.hypot(t[1] - cx, t[2] - cz) <= 260][:8]:
+        eg = int(terr.y_at(ex, ez))
+        d = math.hypot(cx - ex, cz - ez)
+        if d < 12 or b1 + 1 >= eg - 4:
             continue
-        ex, ez = e["mc_x"], e["mc_z"]
-        if math.hypot(ex, ez) > 260:
-            continue
-        picked.append((r, ex, ez))
-    picked.sort()
-    for r, ex, ez in picked[:14]:
-        tx, tz, ty, ref = min(targets, key=lambda t: math.hypot(t[0]-ex, t[1]-ez))
-        d = math.hypot(tx - ex, tz - ez)
-        eg = int(terr.y_at(ex, ez))          # 出入口當地的地面，不是大樓的
-        if d < 12 or ty >= eg - 4:
-            continue
-        ux, uz = (tx - ex) / d, (tz - ez) / d
-        # 樓梯井朝著目標，四個正交方向取最接近的
+        ux, uz = (cx - ex) / d, (cz - ez) / d
         if abs(ux) >= abs(uz):
             dx, dz = (1 if ux > 0 else -1), 0
         else:
             dx, dz = 0, (1 if uz > 0 else -1)
-        out.append(ShaftStair(ex, ez, dx, dz, eg, ty))
+        out.append(ShaftStair(ex, ez, dx, dz, eg, b1 + 1))
         bx = ex + dx * (ShaftStair.FLIGHT + 2)
         bz = ez + dz * (ShaftStair.FLIGHT + 2)
-        out.append(Passage(bx, bz, tx, tz, ty))
+        out.append(Passage(bx, bz, cx, cz, b1 + 1))
     return out

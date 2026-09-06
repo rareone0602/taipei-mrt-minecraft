@@ -52,6 +52,9 @@ def main():
     ap.add_argument("--corridor", type=int, default=96, help="完整地形的半寬（公尺）")
     ap.add_argument("--fade", type=int, default=64, help="再往外漸變回平坦的寬度")
     ap.add_argument("--lines", nargs="*", default=None)
+    ap.add_argument("--bbox", nargs=4, type=int, metavar=("X0", "Z0", "X1", "Z1"),
+                    help="只產生落在這個範圍內的 region（測試單一站區用，"
+                         "省得為了看台北車站等三十分鐘）")
     ap.add_argument("--rails", action="store_true",
                     help="順便鋪鐵軌。預設不鋪 —— 走行面留白，方便用模組自己鋪")
     a = ap.parse_args()
@@ -214,6 +217,10 @@ def main():
         # 走廊外的地形是平的，房子會蹲在一塊高低不合的平台上。
         # 把地標的範圍也餵進距離場，讓那一帶生成真實地形。
         for m in marks:
+            # 地下街整片都在地表以下，不需要為它生成真實地形；而且它切成
+            # 上百塊，每塊都餵距離場的話點數會多一個數量級，地形反而變慢。
+            if getattr(m, "underground", False):
+                continue
             mx0, mz0, mx1, mz1 = m.bbox()
             for x in range(mx0, mx1 + 1, 8):
                 for z in range(mz0, mz1 + 1, 8):
@@ -223,6 +230,13 @@ def main():
         print(f"地標 {len(marks)} 座，涵蓋 {len(mark_b)} 個 region")
 
     regions = sorted(set(struct_b) | set(terr_pts) | set(mark_b))
+    if a.bbox:
+        x0, z0, x1, z1 = a.bbox
+        keep = [(rx, rz) for rx, rz in regions
+                if rx * 512 <= x1 and (rx + 1) * 512 > x0
+                and rz * 512 <= z1 and (rz + 1) * 512 > z0]
+        print(f"--bbox {x0},{z0}..{x1},{z1}：{len(regions)} 個 region 只留 {len(keep)} 個")
+        regions = keep
     print(f"要產生 {len(regions)} 個 region（{len(terr_pts)} 個含地形）")
 
     shutil.rmtree(a.out, ignore_errors=True)

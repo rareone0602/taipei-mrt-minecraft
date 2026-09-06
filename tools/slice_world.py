@@ -189,7 +189,9 @@ def main():
             grid[(off, y)] = glyph(rd.block(bx, y, bz))
 
     # 自動裁切：只留有非 stone/dirt/air 結構的 y 帶 ± 6
-    interesting = [y for (off, y), g in grid.items() if g in set("*|#=DPYCW_SAr!")]
+    # w（白混凝土）與 B（磨砂石）是地下街的地坪與店面隔牆 —— 不列進來的話
+    # 自動裁切會把整層地下街切掉，要看它就得每次手動給 --ylo/--yhi。
+    interesting = [y for (off, y), g in grid.items() if g in set("*|#=DPYCW_SAr!wB")]
     if interesting and a.ylo is None:
         ylo = max(-64, min(interesting) - 4)
         yhi = min(320, max(interesting) + 6)

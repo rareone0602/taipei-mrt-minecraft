@@ -20,11 +20,13 @@ Clean Architecture。**相依方向一律由外往內，內層不得引用外層
 ```
 mrt/
   config.py         專案路徑與世界垂直範圍。所有層都可以引用
-  domain/           純規則，零 I/O：線形、鐵軌形狀、建築幾何、隧道分層、高程取樣
+  domain/           純規則，零 I/O：線形、鐵軌形狀、建築幾何、隧道分層、高程取樣、
+                    地下街動線 (concourse)、行走可達性 (walk)
   ports/            內層對外層開的介面：BlockSink（逐格）、ChunkSink（整段批次）
   application/      用例：把 domain 算出來的東西寫進 BlockSink
   adapters/         外部資料進來：OSM (osm/)、DEM (dem/)、投影 (projection.py)
-  infrastructure/   外部技術細節：Anvil 存檔寫入 (mcworld)、Overpass HTTP (overpass)
+  infrastructure/   外部技術細節：Anvil 存檔寫入 (mcworld)、讀回 (savereader)、
+                    Overpass HTTP (overpass)
 
 cli/                組合根。唯一看得到全部實作的地方，決定要把方塊寫進哪個 World
 tools/              驗證與檢視：獨立讀回存檔，不信生成器的自述
@@ -64,6 +66,7 @@ tests/              不需要產生世界就能跑的測試
 ./.venv/bin/python -m mrt.adapters.osm.fetch_way_tags     # way 標籤
 ./.venv/bin/python -m mrt.adapters.osm.fetch_branch       # 非標準代號的支線
 ./.venv/bin/python -m mrt.adapters.osm.fetch_details      # 出入口／站體／月台樓層
+./.venv/bin/python -m mrt.adapters.osm.fetch_indoor       # 地下人行動線（地下街）
 ./.venv/bin/python -m mrt.adapters.projection             # 投影到 MC 座標
 ./.venv/bin/python -m mrt.adapters.dem.make_heightmap     # DEM -> 高程網格
 
@@ -71,6 +74,8 @@ tests/              不需要產生世界就能跑的測試
 ./.venv/bin/python -m cli.build_world                     # 全網 + 地形
 ./.venv/bin/python -m cli.build_world --rails             # 順便鋪鐵軌
 ./.venv/bin/python -m cli.build_line --lines BR           # 只蓋幾條線（快，不含地形）
+./.venv/bin/python -m cli.build_world --out /tmp/w \
+    --bbox -900 -1400 400 250                             # 只產生台北車站一帶（十幾秒）
 
 # 測試與驗證
 ./.venv/bin/python tests/run_all.py                       # 全部單元測試
