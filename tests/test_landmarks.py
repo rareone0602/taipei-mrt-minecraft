@@ -8,7 +8,6 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from mrt.application import landmarks
 from mrt.application.landmarks import *  # noqa: F403
 from mrt.domain import geometry as shapes
 from mrt.ports.block_sink import DictSink

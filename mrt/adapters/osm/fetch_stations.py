@@ -19,7 +19,7 @@ def main():
     if d is None:
         print("失敗"); return
     os.makedirs(config.DATA, exist_ok=True)
-    json.dump(d, open(config.STATIONS_JSON, "w"), ensure_ascii=False)
+    json.dump(d, open(config.STATIONS_JSON, "w", encoding="utf-8"), ensure_ascii=False)
     print(f"車站節點: {len(d['elements'])}")
 
 

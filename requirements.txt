@@ -1,0 +1,29 @@
+# 台北捷運 Minecraft 1:1 重建 —— 直接相依套件
+#
+# 只列專案原始碼（mrt/、cli/、tools/、tests/）自己 import 的套件，
+# 版本鎖成目前開發環境實際跑得動的那一組。affine、certifi、click、
+# attrs 這些是 rasterio 底下帶進來的，不列在這裡，交給 pip 自己解。
+#
+# 建立環境（venv 是 Python 3.9，程式沒有用 3.10+ 的語法）：
+#
+#     python3 -m venv .venv
+#     ./.venv/bin/pip install -r requirements.txt
+#
+# 之後所有指令一律用 ./.venv/bin/python，別用系統 python。
+
+# --- 生成世界的核心 ---
+numpy==2.0.2          # 高程網格、方塊陣列、線形運算，幾乎每一層都在用
+nbtlib==2.0.4         # 讀寫 Anvil 存檔的 NBT（infrastructure/mcworld.py 與 tools/ 三支驗證工具）
+
+# --- 資料管線 ---
+pyproj==3.6.1         # WGS84 -> TWD97 投影，adapters/projection.py 與 fetch_details、make_heightmap 都要
+
+# --- 只有 DEM 階段要 ---
+# 從內政部 GeoTIFF 產生 data/heightmap.npy（mrt.adapters.dem.make_heightmap）。
+# 高程網格算過一次就存成 .npy，後面生成世界只用 numpy 讀回來，
+# 不重跑這一步的話可以不裝。
+rasterio==1.4.3
+
+# --- 只有驗證工具要 ---
+# tools/verify_render.py 把讀回來的存檔畫成俯視 PNG。生成本身用不到。
+pillow==11.3.0

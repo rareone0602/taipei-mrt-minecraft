@@ -8,7 +8,6 @@
     ./.venv/bin/python -m mrt.domain.rails
 """
 import math
-import sys
 
 RAIL    = "minecraft:rail"
 POWERED = "minecraft:powered_rail"

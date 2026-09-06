@@ -9,7 +9,7 @@ Java Edition 26.2 存檔中，含真實地形、隧道／高架／平面三種�
 ## 快速開始
 
 ```bash
-python3 -m venv .venv && ./.venv/bin/pip install pyproj nbtlib numpy pillow rasterio
+python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
 
 ./.venv/bin/python -m mrt.adapters.osm.fetch_network    # OSM 路線幾何
 ./.venv/bin/python -m mrt.adapters.osm.fetch_stations   # OSM 車站節點
@@ -22,6 +22,11 @@ python3 -m venv .venv && ./.venv/bin/pip install pyproj nbtlib numpy pillow rast
 
 cp -R "out/Taipei MRT" ~/Library/Application\ Support/minecraft/saves/
 ```
+
+相依套件與鎖定的版本在 `requirements.txt`，裡面註明了每個套件是哪個階段要用的。
+venv 是 Python 3.9，程式沒有用 3.10+ 的語法。其中 `rasterio` 只有重跑 DEM 階段
+才需要，`pillow` 只有 `tools/verify_render.py` 畫俯視圖時要 —— 兩個都可以不裝，
+其餘步驟照跑。裝好之後所有指令一律用 `./.venv/bin/python`。
 
 ## 程式結構
 

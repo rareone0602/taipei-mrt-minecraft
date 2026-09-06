@@ -35,7 +35,7 @@ def layer_of(rel):
 
 def imported_layers(path):
     """這個檔案 import 了哪幾層。"""
-    tree = ast.parse(open(path).read(), path)
+    tree = ast.parse(open(path, encoding="utf-8").read(), path)
     found = set()
     for node in ast.walk(tree):
         names = []

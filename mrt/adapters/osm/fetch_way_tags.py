@@ -29,7 +29,7 @@ def fetch(ref):
 def main():
     tags = {}
     if os.path.exists(OUT):
-        tags = json.load(open(OUT))
+        tags = json.load(open(OUT, encoding="utf-8"))
         print(f"已有 {len(tags)} 筆，繼續補齊")
     for ref in REFS:
         d = fetch(ref)
@@ -43,7 +43,7 @@ def main():
             t = {k: v for k, v in (e.get("tags") or {}).items() if k in KEEP}
             tags[str(e["id"])] = t
             n += 1
-        json.dump(tags, open(OUT, "w"), ensure_ascii=False)
+        json.dump(tags, open(OUT, "w", encoding="utf-8"), ensure_ascii=False)
         print(f"{ref:<3} OK  way={n:<5} 累計 {len(tags)}")
         time.sleep(2)
 

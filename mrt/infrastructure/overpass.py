@@ -67,7 +67,7 @@ def query_cached(name, q, cache_dir=None, refresh=False, **kw):
     path = os.path.join(cache_dir, f"{name}.json")
     if os.path.exists(path) and not refresh:
         try:
-            d = json.load(open(path))
+            d = json.load(open(path, encoding="utf-8"))
         except json.JSONDecodeError:
             print(f"{name:<14} 快取毀損，重抓")
         else:
@@ -76,7 +76,7 @@ def query_cached(name, q, cache_dir=None, refresh=False, **kw):
 
     d = query(q, label=name, **kw)
     if d is not None:
-        json.dump(d, open(path, "w"), ensure_ascii=False)
+        json.dump(d, open(path, "w", encoding="utf-8"), ensure_ascii=False)
         print(f"{name:<14} 取得    {len(d['elements']):>6} 個元素")
     else:
         print(f"{name:<14} 失敗，這份資料會是空的")

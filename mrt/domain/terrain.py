@@ -15,7 +15,7 @@ class Terrain:
     def __init__(self, path=None):
         path = path or config.HEIGHTMAP_NPY
         self.hm = np.load(path)
-        m = json.load(open(os.path.splitext(path)[0] + ".json"))
+        m = json.load(open(os.path.splitext(path)[0] + ".json", encoding="utf-8"))
         self.x0, self.z0, self.step = m["x0"], m["z0"], m["step"]
         self.nz, self.nx = self.hm.shape
 

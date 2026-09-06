@@ -19,11 +19,11 @@
 
 用法（分析報告）: ./.venv/bin/python -m mrt.domain.tunnel_layers
 """
-import os, sys, json, math
+import os, json, math
 import numpy as np
 
 from mrt import config
-from mrt.domain import alignment as BL
+from mrt.domain import alignment as AL
 
 CELL_M   = 30      # 空間雜湊格邊長（公尺）；連同 8 個鄰格 = 至少 30 m 的水平淨距
 BAND0    = 15      # 第 0 帶的埋深（公尺）
@@ -38,7 +38,7 @@ def band_depth(band):
 
 
 def assign_bands(raw, cell=CELL_M, look_m=LOOK_M, pins=()):
-    """raw: [(ref, samples), ...]，samples 是 BL.resample 的輸出。
+    """raw: [(ref, samples), ...]，samples 是 AL.resample 的輸出。
 
     回傳與 raw 等長的 list，每個元素是該段的 per-sample 帶號 int 陣列
     （非地下段為 -1）。長的先指派，短的讓路。
@@ -48,7 +48,7 @@ def assign_bands(raw, cell=CELL_M, look_m=LOOK_M, pins=()):
     的板南線在 B3、淡水信義線在 B4，演算法卻可能給出相反的結果。
     釘樁會先把該範圍內的帶預留給指定路線，其他線只能繞開。
     """
-    look = int(look_m / BL.STEP)
+    look = int(look_m / AL.STEP)
     occ = {}                       # cell -> {band: ref}
 
     pin_by_ref = {}
@@ -182,14 +182,14 @@ def station_pins(min_margin=15.0, ratio=2.0, radius=120.0, verbose=False):
 
 
 def _plan_raw():
-    lines = json.load(open(config.MC_LINES_JSON))
+    lines = json.load(open(config.MC_LINES_JSON, encoding="utf-8"))
     raw = []
     for ref in sorted(lines):
-        for v in BL.select_variants(lines[ref]):
+        for v in AL.select_variants(lines[ref]):
             pts = [tuple(p) for p in v["points"]]
             kinds = v.get("kinds") or ["ground"] * len(pts)
-            pts, kinds = BL.drop_reversal(pts, kinds)
-            samples = BL.resample(pts, kinds, BL.STEP)
+            pts, kinds = AL.drop_reversal(pts, kinds)
+            samples = AL.resample(pts, kinds, AL.STEP)
             if len(samples) >= 10:
                 raw.append((ref, samples))
     return raw
@@ -198,7 +198,7 @@ def _plan_raw():
 def main():
     raw = _plan_raw()
     nu = sum(int((np.array([s[4] for s in sm]) == "tunnel").sum()) for _, sm in raw)
-    print(f"{len(raw)} 個路段，地下取樣點 {nu:,} 個（{nu*BL.STEP/1000:.1f} km）")
+    print(f"{len(raw)} 個路段，地下取樣點 {nu:,} 個（{nu*AL.STEP/1000:.1f} km）")
 
     pins = station_pins(verbose=True)
     print(f"釘樁 {len(pins)} 根")
@@ -218,11 +218,11 @@ def main():
         cnt = np.bincount(u, minlength=MAXBAND)
         tot += cnt
         share = " ".join(f"帶{k} {100*c/len(u):>4.0f}%" for k, c in enumerate(cnt) if c)
-        print(f"  {ref:<3} 地下 {len(u)*BL.STEP/1000:>5.1f} km   {share}")
+        print(f"  {ref:<3} 地下 {len(u)*AL.STEP/1000:>5.1f} km   {share}")
     print("\n全網:")
     for k, c in enumerate(tot):
         if c:
-            print(f"  帶{k}（地下 {BAND0+BAND_DY*k:>2} m）{c*BL.STEP/1000:>7.1f} km"
+            print(f"  帶{k}（地下 {BAND0+BAND_DY*k:>2} m）{c*AL.STEP/1000:>7.1f} km"
                   f"  {100*c/tot.sum():>5.1f}%")
     deepest = int(np.nonzero(tot)[0].max())
     print(f"最深 {BAND0+BAND_DY*deepest} m（北捷實際最深約 30 m）")

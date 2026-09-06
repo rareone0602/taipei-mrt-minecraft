@@ -8,7 +8,6 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from mrt.domain import rails
 from mrt.domain.rails import *  # noqa: F403
 
 # ---------- 自我測試 ----------

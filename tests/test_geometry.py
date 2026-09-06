@@ -8,7 +8,6 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from mrt.domain import geometry
 from mrt.domain.geometry import *  # noqa: F403  測試沿用原本的裸名呼叫
 
 def _test():

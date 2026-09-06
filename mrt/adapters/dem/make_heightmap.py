@@ -15,7 +15,7 @@
 
 用法: ./.venv/bin/python scripts/make_heightmap.py [--step 20]
 """
-import os, io, json, glob, zipfile, argparse
+import os, json, glob, zipfile, argparse
 os.environ.setdefault("PROJ_NETWORK", "OFF")
 import numpy as np, rasterio
 from rasterio.merge import merge
@@ -124,7 +124,7 @@ def main():
     a = ap.parse_args()
 
     # 涵蓋範圍取自實際路網
-    lines = json.load(open(config.MC_LINES_JSON))
+    lines = json.load(open(config.MC_LINES_JSON, encoding="utf-8"))
     xs, zs = [], []
     for vs in lines.values():
         for v in vs:
@@ -196,7 +196,7 @@ def main():
                 primary="NLSC 20m DTM (TWD97/TM2, TWVD2001)",
                 fallback=[os.path.basename(t) for t in tifs],
                 dsm_bias=round(bias, 3), dtm_coverage=round(float(good.mean()), 4))
-    json.dump(meta, open(config.HEIGHTMAP_JSON, "w"),
+    json.dump(meta, open(config.HEIGHTMAP_JSON, "w", encoding="utf-8"),
               indent=1, ensure_ascii=False)
 
     print(f"\n網格 {hm.shape}  高程 {hm.min()}~{hm.max()} m")

@@ -28,9 +28,10 @@ from mrt import config
 from mrt.application import build_line as BL
 from mrt.application import build_world as BW
 from mrt.application import landmarks as LM
+from mrt.domain import alignment as AL
 from mrt.domain import rails
 from mrt.domain import tunnel_layers as TL
-from mrt.domain.terrain import SEA_Y, Terrain
+from mrt.domain.terrain import Terrain
 from mrt.infrastructure.mcworld import Chunk, World
 
 # main() 沿用原本的模組層常數
@@ -41,6 +42,7 @@ OFFSET = BW.OFFSET
 blend_field = BW.blend_field
 moving_avg = BW.moving_avg
 profile = BW.profile
+runs = BW.runs
 terrain_chunk = BW.terrain_chunk
 
 
@@ -56,11 +58,11 @@ def main():
     outer = a.corridor + a.fade
 
     terr = Terrain()
-    lines = json.load(open(config.MC_LINES_JSON))
+    lines = json.load(open(config.MC_LINES_JSON, encoding="utf-8"))
     refs = a.lines or sorted(lines)
 
     stations = []
-    with open(config.MC_STATIONS_CSV) as f:
+    with open(config.MC_STATIONS_CSV, encoding="utf-8") as f:
         for r in csv.DictReader(f):
             stations.append((r["ref"].split(";"), r["name_zh"] or r["name_en"],
                              int(r["mc_x"]), int(r["mc_z"]), r["name_en"], r["ref"]))
@@ -72,11 +74,11 @@ def main():
     for ref in refs:
         if ref not in lines:
             continue
-        for v in BL.select_variants(lines[ref]):
+        for v in AL.select_variants(lines[ref]):
             pts = [tuple(p) for p in v["points"]]
             kinds = v.get("kinds") or ["ground"] * len(pts)
-            pts, kinds = BL.drop_reversal(pts, kinds)
-            samples = BL.resample(pts, kinds, STEP)
+            pts, kinds = AL.drop_reversal(pts, kinds)
+            samples = AL.resample(pts, kinds, STEP)
             if len(samples) >= 10:
                 raw.append((ref, samples))
 
@@ -92,18 +94,18 @@ def main():
 
     segs = []
     for (ref, samples), band in zip(raw, bands):
-            ys, ground = profile(samples, terr, ref, band)
-            stn = {}
-            for _, name, sx, sz, en, full in stations:
-                if not any(t.startswith(ref) and len(t) > len(ref) and t[len(ref)].isdigit()
-                           for t in _):
-                    continue
-                d = [(x - sx) ** 2 + (z - sz) ** 2 for x, z, _, _, _ in samples]
-                bi = int(np.argmin(d))
-                if math.sqrt(d[bi]) <= 200:
-                    stn[bi] = (full, name, en)
-            segs.append(dict(ref=ref, samples=samples, ys=ys, ground=ground,
-                             stn=stn, band=band))
+        ys, ground = profile(samples, terr, ref, band)
+        stn = {}
+        for _, name, sx, sz, en, full in stations:
+            if not any(t.startswith(ref) and len(t) > len(ref) and t[len(ref)].isdigit()
+                       for t in _):
+                continue
+            d = [(x - sx) ** 2 + (z - sz) ** 2 for x, z, _, _, _ in samples]
+            bi = int(np.argmin(d))
+            if math.sqrt(d[bi]) <= 200:
+                stn[bi] = (full, name, en)
+        segs.append(dict(ref=ref, samples=samples, ys=ys, ground=ground,
+                         stn=stn, band=band))
 
     # 同一座車站可能同時落在幹線與支線上（如北投、七張），中和新蘆線的共用
     # 幹線更是整段重複。兩處若差了十幾公尺，會疊出兩座歪掉的站體。
@@ -135,9 +137,9 @@ def main():
     seen = {}
     for sg in sorted(segs, key=lambda s: -len(s["samples"])):
         samples, ys = sg["samples"], sg["ys"]
-        toff = BL.track_offsets(samples, ys, sg["ground"], sorted(sg["stn"]))
+        toff = AL.track_offsets(samples, ys, sg["ground"], sorted(sg["stn"]))
         sg["toff"] = toff
-        sg["hw"] = [BL.half_width(t) for t in toff]
+        sg["hw"] = [AL.half_width(t) for t in toff]
         grid = seen.setdefault(sg["ref"], set())
         fresh = [(int(x) >> 3, int(z) >> 3) not in grid
                  for x, z, _, _, _ in samples]
@@ -145,7 +147,7 @@ def main():
             grid.add((int(x) >> 3, int(z) >> 3))
         if not a.rails:
             continue
-        for lo_i, hi_i in _runs(fresh, 400):
+        for lo_i, hi_i in runs(fresh, 400):
             for side in (1, -1):
                 pts = []
                 for i in range(lo_i, hi_i):
@@ -155,7 +157,7 @@ def main():
                 for e in rails.rail_path(pts):
                     rail_b.setdefault((e[0] >> 9, e[2] >> 9), []).append(e)
                     nrail += 1
-        nskip += 2 * (len(samples) - sum(h - l for l, h in _runs(fresh, 400)))
+        nskip += 2 * (len(samples) - sum(h - l for l, h in runs(fresh, 400)))
     if a.rails:
         print(f"鐵軌 {nrail:,} 段（雙線，含加速軌）"
               + (f"，與幹線重疊而未重鋪 {nskip:,} 段" if nskip else ""))
@@ -181,8 +183,8 @@ def main():
     for li, sg in enumerate(segs):
         for bi in sg["stn"]:
             y, g = int(sg["ys"][bi]), int(sg["ground"][bi])
-            if BL.structure_for_ground(y, g) == "tunnel":
-                reach[(li, bi)] = 45 + 2 * max(0, g - (y + BL.MEZZ_DY + 1)) + 25
+            if AL.structure_for_ground(y, g) == "tunnel":
+                reach[(li, bi)] = 45 + 2 * max(0, g - (y + AL.MEZZ_DY + 1)) + 25
             else:
                 reach[(li, bi)] = 45 + 2 * abs(y + 2 - g) + 15
 
@@ -254,14 +256,14 @@ def main():
                 nx, nz = -uz, ux
                 y, g = int(ys[i]), int(gnd[i])
                 hw, to = sg["hw"][i], sg["toff"][i]
-                st = BL.structure_for_ground(y, g)
+                st = AL.structure_for_ground(y, g)
                 if st == "tunnel":
                     BL.sec_tunnel(w, x, z, nx, nz, y, hw=hw)
                     if abs((i * STEP) % 8.0) < STEP / 2:
                         lights.append((x, z, nx, nz, y, to))
                 elif st == "viaduct":
                     BL.sec_bridge(w, x, z, nx, nz, y, g, hw=hw,
-                                  pier=(abs((i * STEP) % BL.PIER_EVERY) < STEP / 2))
+                                  pier=(abs((i * STEP) % AL.PIER_EVERY) < STEP / 2))
                 else:
                     BL.sec_ground(w, x, z, nx, nz, y, g, hw=hw)
             for x, z, nx, nz, y, to in lights:  # 挖完才裝燈，否則會被下一點挖掉
@@ -269,7 +271,7 @@ def main():
                     w.set(round(x + nx * off), y + 6, round(z + nz * off), BL.LAMP)
             for i in idxs:
                 if i in stn:
-                    under = BL.structure_for_ground(int(ys[i]), int(gnd[i])) == "tunnel"
+                    under = AL.structure_for_ground(int(ys[i]), int(gnd[i])) == "tunnel"
                     BL.build_station(w, samples, ys, i, under, label=stn[i], grounds=gnd)
 
         # 地標蓋在沿線結構之後：站體箱涵先挖好，大廳才好接進去

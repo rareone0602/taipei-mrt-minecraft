@@ -21,12 +21,12 @@ def main():
         path = f"{OUT}/{ref}.json"
         if os.path.exists(path):
             try:
-                json.load(open(path)); print(f"{ref:<3} 已存在，略過"); continue
+                json.load(open(path, encoding="utf-8")); print(f"{ref:<3} 已存在，略過"); continue
             except Exception: pass
         d = fetch(ref)
         if d is None:
             print(f"{ref:<3} 失敗"); continue
-        json.dump(d, open(path, "w"), ensure_ascii=False)
+        json.dump(d, open(path, "w", encoding="utf-8"), ensure_ascii=False)
         rels = d["elements"]
         pts = sum(len(w.get("geometry", [])) for r in rels for w in r.get("members", []))
         print(f"{ref:<3} OK  relations={len(rels):<3} points={pts:<6}")

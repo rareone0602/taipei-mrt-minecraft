@@ -12,13 +12,12 @@
 
 terrain_chunk 的第一個參數 ch 是 ports.block_sink.ChunkSink。
 """
-import math
 
 import numpy as np
 
 from mrt import config
-from mrt.application import build_line as BL
-from mrt.domain.alignment import STEP
+from mrt.domain import tunnel_layers as TL
+from mrt.domain.alignment import MAX_GRADE, STEP
 from mrt.domain.terrain import SEA_Y
 
 OFFSET   = {"bridge": 13, "ground": 1, "tunnel": -20}   # 走行面相對地面
@@ -75,7 +74,7 @@ def profile(samples, terr, ref=None, band=None):
                         TUNNEL_FALLBACK, base)
     tgt = g + base
     y = tgt.copy()
-    d = BL.MAX_GRADE * STEP
+    d = MAX_GRADE * STEP
     for i in range(1, len(y)):                       # 下包絡線，兩次線性掃描
         if y[i] > y[i - 1] + d: y[i] = y[i - 1] + d
     for i in range(len(y) - 2, -1, -1):
@@ -83,7 +82,7 @@ def profile(samples, terr, ref=None, band=None):
     return np.round(y).astype(int), ground
 
 
-def _runs(mask, min_len):
+def runs(mask, min_len):
     """把 True 的區段抓出來，太短的丟掉（前後的空隙一併吸收進來）。"""
     out, i, n = [], 0, len(mask)
     while i < n:

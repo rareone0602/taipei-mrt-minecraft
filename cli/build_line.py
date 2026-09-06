@@ -27,7 +27,7 @@ from mrt.infrastructure.mcworld import World
 
 def load_stations():
     rows = []
-    with open(config.MC_STATIONS_CSV) as f:
+    with open(config.MC_STATIONS_CSV, encoding="utf-8") as f:
         for r in csv.DictReader(f):
             rows.append((r["ref"].split(";"), r["name_zh"] or r["name_en"],
                          int(r["mc_x"]), int(r["mc_z"]), r["name_en"], r["ref"]))
@@ -41,7 +41,7 @@ def main():
     ap.add_argument("--out", default=config.DEFAULT_SAVE)
     a = ap.parse_args()
 
-    lines = json.load(open(config.MC_LINES_JSON))
+    lines = json.load(open(config.MC_LINES_JSON, encoding="utf-8"))
     refs = sorted(lines) if a.all else a.lines
     stations = load_stations()
 

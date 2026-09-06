@@ -10,11 +10,8 @@ ports.block_sink.BlockSink，不是特定的存檔實作，所以測試可以塞
 import math
 
 from mrt.domain.alignment import (
-    GROUND, STEP, MAX_GRADE, PIER_EVERY, PROFILE, PLATFORM_LEN,
-    BOX_HALF, PLAT_HALF, STN_TRACK_OFF, TUN_TRACK_OFF, MEZZ_DY, BOX_TOP_DY,
-    FLARE_M,
-    resample, drop_reversal, vertical_profile, track_offsets, half_width,
-    structure_for_ground, select_variants,
+    GROUND, STEP, PIER_EVERY, PLATFORM_LEN, BOX_HALF, PLAT_HALF,
+    TUN_TRACK_OFF, MEZZ_DY, BOX_TOP_DY, structure_for_ground,
 )
 
 # ---- 方塊配色 ----

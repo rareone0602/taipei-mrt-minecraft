@@ -5,7 +5,7 @@
   python tools/slice_world.py 台北車站 --long     # 縱剖面（沿路線）
   python tools/slice_world.py --xz 0 0 --dir 1 0
 """
-import io, os, re, sys, glob, json, csv, math, zlib, argparse
+import io, os, sys, json, csv, math, zlib, argparse
 import numpy as np, nbtlib
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -119,7 +119,7 @@ class Reader:
         return pal[idx[(y & 15) * 256 + (z & 15) * 16 + (x & 15)]]
 
 def load_station(name):
-    with open(config.MC_STATIONS_CSV) as f:
+    with open(config.MC_STATIONS_CSV, encoding="utf-8") as f:
         rows = [r for r in csv.DictReader(f)]
     hit = [r for r in rows if name in (r.get("name_zh") or r.get("name") or "")]
     if not hit:
@@ -130,7 +130,7 @@ def load_station(name):
 
 def line_dir(x, z):
     """從 mc_lines.json 找最近的線段方向"""
-    lines = json.load(open(config.MC_LINES_JSON))
+    lines = json.load(open(config.MC_LINES_JSON, encoding="utf-8"))
     best, bd = (1.0, 0.0), 1e18
     for ref, variants in lines.items():
         for v in variants:

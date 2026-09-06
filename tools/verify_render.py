@@ -6,7 +6,7 @@
 
 用法: ./.venv/bin/python tools/verify_render.py <save_dir> <out.png> [--scale M]
 """
-import sys, os, io, glob, zlib, argparse, re
+import os, io, glob, zlib, argparse, re
 import numpy as np, nbtlib
 from PIL import Image
 

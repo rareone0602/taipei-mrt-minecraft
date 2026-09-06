@@ -17,12 +17,14 @@ TESTS = ["test_architecture.py", "test_geometry.py", "test_alignment.py",
 def main():
     failed = []
     for t in TESTS:
-        print(f"\n{'=' * 60}\n{t}\n{'=' * 60}")
+        # flush 是必要的：接管道時父行程是 block buffered、子行程直接寫，
+        # 少了它 CI log 裡標題會跟該支測試的輸出對不起來。
+        print(f"\n{'=' * 60}\n{t}\n{'=' * 60}", flush=True)
         r = subprocess.run([sys.executable, os.path.join(HERE, t)])
         if r.returncode != 0:
             failed.append(t)
 
-    print(f"\n{'=' * 60}")
+    print(f"\n{'=' * 60}", flush=True)
     if failed:
         print(f"{len(failed)} 支失敗: {', '.join(failed)}")
         return 1

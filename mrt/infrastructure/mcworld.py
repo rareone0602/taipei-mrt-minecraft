@@ -12,11 +12,11 @@
     w.set(5, 71, 5, "minecraft:oak_fence[north=true]")
     w.save()
 """
-import os, io, re, zlib, math, struct, shutil, time
+import os, io, re, zlib, math, struct, time
 import numpy as np
 import nbtlib
 from nbtlib.tag import (Compound, List, String, Int, Byte, Long, LongArray,
-                        IntArray, Float, Double)
+                        IntArray, Float)
 
 from mrt.config import Y_MIN, Y_MAX, SEC_MIN, SEC_MAX, N_SEC
 

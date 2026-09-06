@@ -7,7 +7,7 @@
 座標: Blender X = 東, Y = 北, Z = 上。與 Minecraft 的 (x, z) 對應為 y = -z。
 單位 1 = 1 公尺 = 1 個 Minecraft 方塊。
 """
-import bpy, bmesh, json, csv, sys, os, math
+import bpy, bmesh, json, csv, sys, os
 
 # 這支跑在 Blender 內建的 Python 底下，看不到 .venv 也 import 不到 mrt 套件，
 # 所以路徑自己算，不用 mrt.config。
@@ -91,7 +91,7 @@ def main():
         raise SystemExit(f"找不到 {LINES}，請先跑 scripts/to_minecraft.py")
 
     clear_scene()
-    lines = json.load(open(LINES))
+    lines = json.load(open(LINES, encoding="utf-8"))
     all_pts = []
 
     picked = []
@@ -120,7 +120,7 @@ def main():
 
     stn_rows = []
     if os.path.exists(STNS):
-        with open(STNS) as f:
+        with open(STNS, encoding="utf-8") as f:
             for r in csv.DictReader(f):
                 stn_rows.append((int(r["mc_x"]), int(r["mc_z"])))
         add_stations(stn_rows, make_mat("mat_station", (0.9, 0.9, 0.9), emit=2.0), radius=stn_r)

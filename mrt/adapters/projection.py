@@ -16,16 +16,27 @@ from pyproj import Transformer
 from mrt import config
 
 TF = Transformer.from_crs("EPSG:4326", "EPSG:3826", always_xy=True)
-WAY_TAGS = (json.load(open(config.WAY_TAGS_JSON))
-            if os.path.exists(config.WAY_TAGS_JSON) else {})
 ORIGIN_REF = "R10"        # 台北車站 (OSM: ref="R10;BL12", name:en="Taipei main station")
+
+def load_way_tags():
+    """way 標籤（隧道／高架）。還沒跑過 fetch_way_tags 就回空的，全部當平面處理。
+
+    這份表以前是模組層級的常數，匯入 projection 就會讀檔 —— 只想用 proj()
+    換算一個座標的人也得付這個代價，而且檔案是什麼時候讀的取決於誰先 import。
+    """
+    if not os.path.exists(config.WAY_TAGS_JSON):
+        return {}
+    with open(config.WAY_TAGS_JSON, encoding="utf-8") as f:
+        return json.load(f)
+
 
 def proj(lon, lat):
     """回傳 TWD97 (E, N) 公尺"""
     return TF.transform(lon, lat)
 
 def load_stations():
-    d = json.load(open(config.STATIONS_JSON))
+    with open(config.STATIONS_JSON, encoding="utf-8") as f:
+        d = json.load(f)
     out = []
     for e in d["elements"]:
         t = e.get("tags", {})
@@ -76,18 +87,27 @@ def main():
     # Minecraft: X = 東, Z = 南 (北方為 -Z)
     to_mc = lambda E, N: (round(E - oE), round(-(N - oN)))
 
-    with open(config.MC_STATIONS_CSV, "w", newline="") as f:
+    with open(config.MC_STATIONS_CSV, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["ref","name_zh","name_en","mc_x","mc_z","layer","lat","lon"])
         for s in sorted(stns, key=lambda s: (s["ref"] or "zz")):
             x, z = to_mc(s["E"], s["N"])
             w.writerow([s["ref"], s["name_zh"], s["name_en"], x, z, s["layer"], s["lat"], s["lon"]])
 
+    way_tags = load_way_tags()
     lines = {}
+    empty = []
     for path in sorted(glob.glob(os.path.join(config.LINES_DIR, "*.json"))):
         ref = os.path.basename(path)[:-5]
-        try: d = json.load(open(path))
-        except Exception: continue
+        # 讀不到就直接停。原本這裡是 except: continue，一個截斷的 G.json
+        # 會讓整條松山新店線從世界裡消失，而輸出只是少一行、不會有人發現。
+        try:
+            with open(path, encoding="utf-8") as f:
+                d = json.load(f)
+        except (OSError, ValueError) as e:
+            raise SystemExit(f"路線檔讀取失敗 {path}: {e}\n"
+                             f"不可靜默跳過，否則 {ref} 線會整條從輸出中消失。"
+                             f"請重跑 fetch_network 取回這個檔案。")
         variants = []
         for rel in d["elements"]:
             t = rel.get("tags", {})
@@ -99,7 +119,7 @@ def main():
                 role = m.get("role", "")
                 if "platform" in role or "stop" in role:
                     continue
-                wt = WAY_TAGS.get(str(m.get("ref")), {})
+                wt = way_tags.get(str(m.get("ref")), {})
                 kind = ("tunnel" if wt.get("tunnel") else
                         "bridge" if wt.get("bridge") else "ground")
                 w = []
@@ -118,9 +138,20 @@ def main():
                     points=[[p[0], p[1]] for p in best],
                     kinds=[p[2] for p in best],           # 每點的地下/高架/平面分類
                     chains=[[[p[0], p[1]] for p in c] for c in chains]))
-        if variants: lines[ref] = variants
+        if variants:
+            lines[ref] = variants
+        else:
+            empty.append(ref)
 
-    json.dump(lines, open(config.MC_LINES_JSON, "w"), ensure_ascii=False)
+    with open(config.MC_LINES_JSON, "w", encoding="utf-8") as f:
+        json.dump(lines, f, ensure_ascii=False)
+
+    if empty:
+        # 檔案在但一條路線都拼不出來。目前已知的是三鶯線（LB）——
+        # 還在興建中，OSM 上沒有完整的 route relation，見 README「已知落差」。
+        # 印出來是為了讓「少了一條線」這件事出現在執行輸出裡，而不是只有 README 知道。
+        print(f"注意：{', '.join(empty)} 的路線檔沒有可用的 route relation，"
+              f"這幾條線不會出現在世界裡\n")
 
     print(f"車站 {len(stns)} 座 -> data/mc_stations.csv")
     print(f"原點: {org['name_zh']} ({org['ref']})  TWD97 E={oE:.1f} N={oN:.1f}  -> MC (0,0)\n")
@@ -129,7 +160,6 @@ def main():
         v = max(vs, key=lambda v: len(v["points"]))
         length = sum(math.dist(v["points"][i], v["points"][i+1]) for i in range(len(v["points"])-1))
         tot += length
-        xs=[p[0] for p in v["points"]]; zs=[p[1] for p in v["points"]]
         k = v.get("kinds", [])
         pct = lambda w: 100.0 * sum(1 for x in k if x == w) / max(1, len(k))
         print(f"{ref:<3} {v['colour']:<9} 主線 {len(v['points']):>5} 點  {length/1000:>6.1f} km  "

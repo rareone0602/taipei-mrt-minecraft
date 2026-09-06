@@ -99,7 +99,7 @@ def fetch(name, q):
 
 def origin():
     """與 to_minecraft.py 一致：ref=R10 的台北車站當 MC (0,0)。"""
-    d = json.load(open(config.STATIONS_JSON))
+    d = json.load(open(config.STATIONS_JSON, encoding="utf-8"))
     for e in d["elements"]:
         if ORIGIN_REF in (e.get("tags", {}).get("ref", "")).split(";"):
             return TF.transform(e["lon"], e["lat"])
@@ -328,7 +328,7 @@ def build_platforms(d, to_mc):
 
 def load_mc_stations():
     """讀既有的 data/mc_stations.csv，用來做「離哪一站最近」的歸屬判斷。"""
-    with open(config.MC_STATIONS_CSV) as f:
+    with open(config.MC_STATIONS_CSV, encoding="utf-8") as f:
         return [dict(ref=r["ref"], name=r["name_zh"],
                      x=int(r["mc_x"]), z=int(r["mc_z"]))
                 for r in csv.DictReader(f)]
@@ -357,7 +357,7 @@ def dump(path, kind, items, extra=None):
                count=len(items), items=items)
     if extra:
         doc.update(extra)
-    json.dump(doc, open(path, "w"), ensure_ascii=False, indent=1)
+    json.dump(doc, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print(f"  寫出 {path}  ({len(items)} 筆)")
 
 
@@ -401,7 +401,7 @@ def main():
         srcs[e["source"]] = srcs.get(e["source"], 0) + 1
     print(f"出入口       {len(ents):>5} 個   " +
           "  ".join(f"{k}={v}" for k, v in sorted(kinds.items())))
-    print(f"             來源: " + "  ".join(f"{k}={v}" for k, v in sorted(srcs.items()))
+    print("             來源: " + "  ".join(f"{k}={v}" for k, v in sorted(srcs.items()))
           + f"   (車站種子 {n_seed} 個，另有 {n_skip} 個一般大門離站太遠被剔除)")
     print(f"             有 ref: {sum(1 for e in ents if e['ref']):>3} 個 "
           f"(其中 {sum(1 for e in ents if e['ref_from_name'])} 個是從 name 推導)；"

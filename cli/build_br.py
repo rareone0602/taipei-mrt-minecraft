@@ -26,7 +26,7 @@ def main():
     ap.add_argument("--limit", type=int, default=0, help="只蓋前 N 公尺（測試用）")
     a = ap.parse_args()
 
-    lines = json.load(open(config.MC_LINES_JSON))
+    lines = json.load(open(config.MC_LINES_JSON, encoding="utf-8"))
     v = max(lines["BR"], key=lambda v: len(v["points"]))
     pts = [tuple(p) for p in v["points"]]
     samples = resample(pts, STEP)
@@ -37,7 +37,7 @@ def main():
 
     # 找出 BR 車站，對應到最近的取樣點
     stns = []
-    with open(config.MC_STATIONS_CSV) as f:
+    with open(config.MC_STATIONS_CSV, encoding="utf-8") as f:
         for r in csv.DictReader(f):
             if any(t.startswith("BR") for t in r["ref"].split(";")):
                 stns.append((r["name_zh"] or r["name_en"], int(r["mc_x"]), int(r["mc_z"])))

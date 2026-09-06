@@ -4,7 +4,7 @@
 例如新北投支線在 OSM 的 ref 是「捷運紅線 (新北投支線)」而非 "R"，
 用代號查會整條漏掉。
 """
-import json, os, sys
+import json, os
 
 from mrt import config
 from mrt.infrastructure.overpass import query
@@ -18,11 +18,11 @@ def run(q, label="branch"):
 
 
 def main():
-    tags = json.load(open(config.WAY_TAGS_JSON))
+    tags = json.load(open(config.WAY_TAGS_JSON, encoding="utf-8"))
     KEEP = ("tunnel", "bridge", "layer", "railway", "usage", "service", "name", "level")
     for ref, ids in BRANCHES.items():
         path = os.path.join(config.LINES_DIR, f"{ref}.json")
-        d = json.load(open(path))
+        d = json.load(open(path, encoding="utf-8"))
         have = {e["id"] for e in d["elements"]}
         ids_str = ",".join(str(i) for i in ids)
 
@@ -43,8 +43,8 @@ def main():
                     tags[str(e["id"])] = {k: v for k, v in (e.get("tags") or {}).items() if k in KEEP}
                     nw += 1
 
-        json.dump(d, open(path, "w"), ensure_ascii=False)
-        json.dump(tags, open(config.WAY_TAGS_JSON, "w"), ensure_ascii=False)
+        json.dump(d, open(path, "w", encoding="utf-8"), ensure_ascii=False)
+        json.dump(tags, open(config.WAY_TAGS_JSON, "w", encoding="utf-8"), ensure_ascii=False)
         print(f"{ref}: 併入 {added} 個關聯, {nw} 條 way 標籤 -> {path}")
 
 

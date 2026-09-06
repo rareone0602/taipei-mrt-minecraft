@@ -10,7 +10,7 @@ BlockSink 的實作（infrastructure 的 World）會自動丟掉不屬於目前 
 
 自我測試: ./.venv/bin/python -m tests.test_landmarks
 """
-import os, re, sys, math, json
+import os, re, math, json
 
 from mrt import config
 from mrt.domain import geometry as shapes
