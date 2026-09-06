@@ -1,0 +1,20 @@
+# 產物：世界存檔 (1 GB+)
+/out/
+
+# 虛擬環境
+/.venv/
+
+# DEM 原始資料 (83 MB，來源見 README「資料來源」)
+/data/dem/
+
+# 管線中間產物與圖片
+/data/*.npy
+/data/*.png
+/data/*.log
+/data/*.blend
+/data/*.blend1
+
+# macOS / Python
+.DS_Store
+__pycache__/
+*.pyc

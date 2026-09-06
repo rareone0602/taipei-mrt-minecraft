@@ -1,0 +1,8603 @@
+{
+ "kind": "platforms with level/layer",
+ "bbox": "24.85,121.15,25.32,121.75",
+ "origin": "台北車站 ref=R10 -> MC (0,0)",
+ "crs": "WGS84 -> EPSG:3826 (TWD97/TM2) -> MC，X=東 Z=南，1 方塊 = 1 公尺",
+ "count": 175,
+ "items": [
+  {
+   "id": 88191520,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "1",
+   "layer": "",
+   "lines": "",
+   "mc_x": 104,
+   "mc_z": -7044,
+   "geometry": [
+    [
+     139,
+     -6982
+    ],
+    [
+     62,
+     -7102
+    ],
+    [
+     69,
+     -7106
+    ],
+    [
+     146,
+     -6987
+    ],
+    [
+     139,
+     -6982
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "1"
+   },
+   "station": "明德",
+   "station_ref": "R18",
+   "station_dist": 3
+  },
+  {
+   "id": 88191521,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "2",
+   "layer": "1",
+   "lines": "",
+   "mc_x": 862,
+   "mc_z": -5236,
+   "geometry": [
+    [
+     889,
+     -5170
+    ],
+    [
+     877,
+     -5166
+    ],
+    [
+     835,
+     -5301
+    ],
+    [
+     847,
+     -5305
+    ],
+    [
+     889,
+     -5170
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2",
+    "layer": "1"
+   },
+   "station": "士林",
+   "station_ref": "R16",
+   "station_dist": 3
+  },
+  {
+   "id": 88191522,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "1",
+   "layer": "",
+   "lines": "",
+   "mc_x": -1166,
+   "mc_z": -8260,
+   "geometry": [
+    [
+     -1093,
+     -8251
+    ],
+    [
+     -1095,
+     -8239
+    ],
+    [
+     -1238,
+     -8268
+    ],
+    [
+     -1236,
+     -8280
+    ],
+    [
+     -1093,
+     -8251
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "1"
+   },
+   "station": "唭哩岸",
+   "station_ref": "R20",
+   "station_dist": 12
+  },
+  {
+   "id": 88191524,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "1",
+   "layer": "",
+   "lines": "",
+   "mc_x": -1684,
+   "mc_z": -8775,
+   "geometry": [
+    [
+     -1675,
+     -8704
+    ],
+    [
+     -1665,
+     -8705
+    ],
+    [
+     -1692,
+     -8847
+    ],
+    [
+     -1702,
+     -8845
+    ],
+    [
+     -1675,
+     -8704
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "1"
+   },
+   "station": "奇岩",
+   "station_ref": "R21",
+   "station_dist": 9
+  },
+  {
+   "id": 88191526,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "1",
+   "layer": "",
+   "lines": "",
+   "mc_x": 487,
+   "mc_z": -6277,
+   "geometry": [
+    [
+     505,
+     -6193
+    ],
+    [
+     495,
+     -6191
+    ],
+    [
+     468,
+     -6361
+    ],
+    [
+     478,
+     -6362
+    ],
+    [
+     505,
+     -6193
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "1"
+   },
+   "station": "芝山",
+   "station_ref": "R17",
+   "station_dist": 12
+  },
+  {
+   "id": 88191527,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "1",
+   "layer": "1",
+   "lines": "",
+   "mc_x": 258,
+   "mc_z": -2788,
+   "geometry": [
+    [
+     254,
+     -2718
+    ],
+    [
+     243,
+     -2720
+    ],
+    [
+     262,
+     -2857
+    ],
+    [
+     274,
+     -2855
+    ],
+    [
+     254,
+     -2718
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "1",
+    "layer": "1"
+   },
+   "station": "圓山",
+   "station_ref": "R14",
+   "station_dist": 1
+  },
+  {
+   "id": 88191528,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "1",
+   "layer": "1",
+   "lines": "",
+   "mc_x": -216,
+   "mc_z": -7552,
+   "geometry": [
+    [
+     -173,
+     -7496
+    ],
+    [
+     -183,
+     -7489
+    ],
+    [
+     -259,
+     -7610
+    ],
+    [
+     -249,
+     -7616
+    ],
+    [
+     -173,
+     -7496
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "1",
+    "layer": "1"
+   },
+   "station": "石牌",
+   "station_ref": "R19",
+   "station_dist": 22
+  },
+  {
+   "id": 88191532,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "1",
+   "layer": "1",
+   "lines": "",
+   "mc_x": 741,
+   "mc_z": -4212,
+   "geometry": [
+    [
+     751,
+     -4289
+    ],
+    [
+     764,
+     -4287
+    ],
+    [
+     732,
+     -4136
+    ],
+    [
+     718,
+     -4139
+    ],
+    [
+     751,
+     -4289
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "1",
+    "layer": "1"
+   },
+   "station": "劍潭",
+   "station_ref": "R15",
+   "station_dist": 5
+  },
+  {
+   "id": 194235723,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": 1689,
+   "mc_z": 3455,
+   "geometry": [
+    [
+     1735,
+     3508
+    ],
+    [
+     1741,
+     3503
+    ],
+    [
+     1641,
+     3400
+    ],
+    [
+     1636,
+     3405
+    ],
+    [
+     1735,
+     3508
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-2"
+   },
+   "station": "公館",
+   "station_ref": "G07",
+   "station_dist": 21
+  },
+  {
+   "id": 194237493,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "2",
+   "layer": "1",
+   "lines": "",
+   "mc_x": 3617,
+   "mc_z": 2472,
+   "geometry": [
+    [
+     3590,
+     2442
+    ],
+    [
+     3646,
+     2499
+    ],
+    [
+     3644,
+     2501
+    ],
+    [
+     3588,
+     2444
+    ],
+    [
+     3590,
+     2442
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2",
+    "layer": "1"
+   },
+   "station": "六張犁",
+   "station_ref": "BR07",
+   "station_dist": 10
+  },
+  {
+   "id": 194237498,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "2",
+   "layer": "1",
+   "lines": "",
+   "mc_x": 3608,
+   "mc_z": 2479,
+   "geometry": [
+    [
+     3637,
+     2507
+    ],
+    [
+     3636,
+     2509
+    ],
+    [
+     3579,
+     2451
+    ],
+    [
+     3581,
+     2450
+    ],
+    [
+     3637,
+     2507
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2",
+    "layer": "1"
+   },
+   "station": "六張犁",
+   "station_ref": "BR07",
+   "station_dist": 9
+  },
+  {
+   "id": 194585045,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "-3",
+   "layer": "-3",
+   "lines": "",
+   "mc_x": -739,
+   "mc_z": -335,
+   "geometry": [
+    [
+     -722,
+     -410
+    ],
+    [
+     -752,
+     -259
+    ],
+    [
+     -756,
+     -260
+    ],
+    [
+     -726,
+     -411
+    ],
+    [
+     -722,
+     -410
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-3",
+    "layer": "-3"
+   },
+   "station": "北門",
+   "station_ref": "G13",
+   "station_dist": 21
+  },
+  {
+   "id": 194585048,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": -906,
+   "mc_z": 447,
+   "geometry": [
+    [
+     -890,
+     381
+    ],
+    [
+     -923,
+     513
+    ]
+   ],
+   "closed": false,
+   "tags": {
+    "public_transport": "platform",
+    "layer": "-2"
+   },
+   "station": "西門",
+   "station_ref": "G12;BL11",
+   "station_dist": 55
+  },
+  {
+   "id": 194585051,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "",
+   "layer": "-3",
+   "lines": "",
+   "mc_x": -906,
+   "mc_z": 446,
+   "geometry": [
+    [
+     -890,
+     381
+    ],
+    [
+     -923,
+     512
+    ]
+   ],
+   "closed": false,
+   "tags": {
+    "public_transport": "platform",
+    "layer": "-3"
+   },
+   "station": "西門",
+   "station_ref": "G12;BL11",
+   "station_dist": 54
+  },
+  {
+   "id": 194585054,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": -648,
+   "mc_z": 1154,
+   "geometry": [
+    [
+     -740,
+     1126
+    ],
+    [
+     -668,
+     1150
+    ],
+    [
+     -620,
+     1163
+    ],
+    [
+     -564,
+     1178
+    ]
+   ],
+   "closed": false,
+   "tags": {
+    "public_transport": "platform",
+    "layer": "-2",
+    "covered": "yes"
+   },
+   "station": "小南門",
+   "station_ref": "G11",
+   "station_dist": 22
+  },
+  {
+   "id": 194585056,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "-3",
+   "layer": "-3",
+   "lines": "",
+   "mc_x": -720,
+   "mc_z": -330,
+   "geometry": [
+    [
+     -708,
+     -407
+    ],
+    [
+     -737,
+     -255
+    ],
+    [
+     -733,
+     -254
+    ],
+    [
+     -704,
+     -406
+    ],
+    [
+     -708,
+     -407
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-3",
+    "layer": "-3"
+   },
+   "station": "北門",
+   "station_ref": "G13",
+   "station_dist": 17
+  },
+  {
+   "id": 194611495,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "0",
+   "layer": "",
+   "lines": "",
+   "mc_x": -5876,
+   "mc_z": -10038,
+   "geometry": [
+    [
+     -5875,
+     -9967
+    ],
+    [
+     -5872,
+     -9967
+    ],
+    [
+     -5878,
+     -10108
+    ],
+    [
+     -5881,
+     -10108
+    ],
+    [
+     -5875,
+     -9967
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "0"
+   },
+   "station": "竹圍",
+   "station_ref": "R26",
+   "station_dist": 11
+  },
+  {
+   "id": 194611497,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "0",
+   "layer": "",
+   "lines": "",
+   "mc_x": -5890,
+   "mc_z": -10036,
+   "geometry": [
+    [
+     -5886,
+     -9966
+    ],
+    [
+     -5889,
+     -9966
+    ],
+    [
+     -5895,
+     -10107
+    ],
+    [
+     -5892,
+     -10107
+    ],
+    [
+     -5886,
+     -9966
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "0"
+   },
+   "station": "竹圍",
+   "station_ref": "R26",
+   "station_dist": 10
+  },
+  {
+   "id": 194618311,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": 6,
+   "mc_z": 1380,
+   "geometry": [
+    [
+     -38,
+     1323
+    ],
+    [
+     42,
+     1443
+    ],
+    [
+     50,
+     1438
+    ],
+    [
+     -30,
+     1318
+    ],
+    [
+     -38,
+     1323
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-2"
+   },
+   "station": "中正紀念堂",
+   "station_ref": "R08;G10",
+   "station_dist": 12
+  },
+  {
+   "id": 194618328,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": 316,
+   "mc_z": -1264,
+   "geometry": [
+    [
+     318,
+     -1191
+    ],
+    [
+     309,
+     -1191
+    ],
+    [
+     314,
+     -1337
+    ],
+    [
+     323,
+     -1337
+    ],
+    [
+     318,
+     -1191
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-2"
+   },
+   "station": "雙連",
+   "station_ref": "R12",
+   "station_dist": 4
+  },
+  {
+   "id": 194618330,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "3;4",
+   "level": "-3",
+   "layer": "-3",
+   "lines": "",
+   "mc_x": 6,
+   "mc_z": 1382,
+   "geometry": [
+    [
+     -31,
+     1319
+    ],
+    [
+     50,
+     1439
+    ],
+    [
+     43,
+     1444
+    ],
+    [
+     -38,
+     1323
+    ],
+    [
+     -31,
+     1319
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-3",
+    "layer": "-3"
+   },
+   "station": "中正紀念堂",
+   "station_ref": "R08;G10",
+   "station_dist": 10
+  },
+  {
+   "id": 194618331,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-1",
+   "layer": "-1",
+   "lines": "",
+   "mc_x": 207,
+   "mc_z": -1780,
+   "geometry": [
+    [
+     177,
+     -1844
+    ],
+    [
+     228,
+     -1710
+    ],
+    [
+     237,
+     -1714
+    ],
+    [
+     187,
+     -1848
+    ],
+    [
+     177,
+     -1844
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-1",
+    "layer": "-1"
+   },
+   "station": "民權西路",
+   "station_ref": "R13;O11",
+   "station_dist": 63
+  },
+  {
+   "id": 194633993,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "2",
+   "layer": "1",
+   "lines": "",
+   "mc_x": 5122,
+   "mc_z": 5262,
+   "geometry": [
+    [
+     5165,
+     5259
+    ],
+    [
+     5165,
+     5261
+    ],
+    [
+     5086,
+     5266
+    ],
+    [
+     5085,
+     5263
+    ],
+    [
+     5165,
+     5259
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2",
+    "layer": "1"
+   },
+   "station": "萬芳社區",
+   "station_ref": "BR03",
+   "station_dist": 13
+  },
+  {
+   "id": 194633996,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "2",
+   "layer": "1",
+   "lines": "",
+   "mc_x": 5125,
+   "mc_z": 5252,
+   "geometry": [
+    [
+     5085,
+     5255
+    ],
+    [
+     5165,
+     5252
+    ],
+    [
+     5165,
+     5249
+    ],
+    [
+     5085,
+     5252
+    ],
+    [
+     5085,
+     5255
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2",
+    "layer": "1"
+   },
+   "station": "萬芳社區",
+   "station_ref": "BR03",
+   "station_dist": 9
+  },
+  {
+   "id": 194633998,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 4131,
+   "mc_z": 5166,
+   "geometry": [
+    [
+     4159,
+     5187
+    ],
+    [
+     4161,
+     5185
+    ],
+    [
+     4103,
+     5144
+    ],
+    [
+     4101,
+     5146
+    ],
+    [
+     4159,
+     5187
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "萬芳醫院",
+   "station_ref": "BR04",
+   "station_dist": 7
+  },
+  {
+   "id": 194634001,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 4010,
+   "mc_z": 4496,
+   "geometry": [
+    [
+     4028,
+     4460
+    ],
+    [
+     3993,
+     4532
+    ],
+    [
+     3991,
+     4531
+    ],
+    [
+     4026,
+     4459
+    ],
+    [
+     4028,
+     4460
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "辛亥",
+   "station_ref": "BR05",
+   "station_dist": 4
+  },
+  {
+   "id": 194634010,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 4124,
+   "mc_z": 5175,
+   "geometry": [
+    [
+     4153,
+     5195
+    ],
+    [
+     4151,
+     5197
+    ],
+    [
+     4094,
+     5155
+    ],
+    [
+     4096,
+     5153
+    ],
+    [
+     4153,
+     5195
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "萬芳醫院",
+   "station_ref": "BR04",
+   "station_dist": 6
+  },
+  {
+   "id": 194634018,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 4020,
+   "mc_z": 4499,
+   "geometry": [
+    [
+     4001,
+     4536
+    ],
+    [
+     4003,
+     4536
+    ],
+    [
+     4038,
+     4465
+    ],
+    [
+     4036,
+     4464
+    ],
+    [
+     4001,
+     4536
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "辛亥",
+   "station_ref": "BR05",
+   "station_dist": 7
+  },
+  {
+   "id": 197826403,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 2435,
+   "mc_z": 8726,
+   "geometry": [
+    [
+     2416,
+     8794
+    ],
+    [
+     2412,
+     8793
+    ],
+    [
+     2454,
+     8658
+    ],
+    [
+     2458,
+     8659
+    ],
+    [
+     2416,
+     8794
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "新店區公所",
+   "station_ref": "G02",
+   "station_dist": 9
+  },
+  {
+   "id": 197826404,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 2450,
+   "mc_z": 8730,
+   "geometry": [
+    [
+     2428,
+     8797
+    ],
+    [
+     2431,
+     8798
+    ],
+    [
+     2472,
+     8663
+    ],
+    [
+     2469,
+     8662
+    ],
+    [
+     2428,
+     8797
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "新店區公所",
+   "station_ref": "G02",
+   "station_dist": 8
+  },
+  {
+   "id": 197826406,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 2608,
+   "mc_z": 7902,
+   "geometry": [
+    [
+     2605,
+     7830
+    ],
+    [
+     2605,
+     7973
+    ],
+    [
+     2611,
+     7973
+    ],
+    [
+     2611,
+     7830
+    ],
+    [
+     2605,
+     7830
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "七張",
+   "station_ref": "G03",
+   "station_dist": 25
+  },
+  {
+   "id": 197826407,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 2592,
+   "mc_z": 7902,
+   "geometry": [
+    [
+     2594,
+     7830
+    ],
+    [
+     2595,
+     7973
+    ],
+    [
+     2589,
+     7973
+    ],
+    [
+     2588,
+     7830
+    ],
+    [
+     2594,
+     7830
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "七張",
+   "station_ref": "G03",
+   "station_dist": 24
+  },
+  {
+   "id": 198159388,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-4",
+   "layer": "-3",
+   "lines": "",
+   "mc_x": 2497,
+   "mc_z": 7009,
+   "geometry": [
+    [
+     2449,
+     7007
+    ],
+    [
+     2548,
+     7005
+    ],
+    [
+     2548,
+     7011
+    ],
+    [
+     2450,
+     7014
+    ],
+    [
+     2449,
+     7007
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-4",
+    "layer": "-3"
+   },
+   "station": "大坪林",
+   "station_ref": "Y07",
+   "station_dist": 31
+  },
+  {
+   "id": 265143068,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "1",
+   "layer": "",
+   "lines": "",
+   "mc_x": -1949,
+   "mc_z": -9466,
+   "geometry": [
+    [
+     -1992,
+     -9521
+    ],
+    [
+     -1989,
+     -9524
+    ],
+    [
+     -1903,
+     -9407
+    ],
+    [
+     -1906,
+     -9405
+    ],
+    [
+     -1992,
+     -9521
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "1"
+   },
+   "station": "北投",
+   "station_ref": "R22",
+   "station_dist": 20
+  },
+  {
+   "id": 265143888,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2;3",
+   "level": "1",
+   "layer": "",
+   "lines": "",
+   "mc_x": -1936,
+   "mc_z": -9473,
+   "geometry": [
+    [
+     -1982,
+     -9529
+    ],
+    [
+     -1975,
+     -9534
+    ],
+    [
+     -1889,
+     -9417
+    ],
+    [
+     -1896,
+     -9412
+    ],
+    [
+     -1982,
+     -9529
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "1"
+   },
+   "station": "北投",
+   "station_ref": "R22",
+   "station_dist": 12
+  },
+  {
+   "id": 265145005,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "4",
+   "level": "1",
+   "layer": "",
+   "lines": "",
+   "mc_x": -1922,
+   "mc_z": -9480,
+   "geometry": [
+    [
+     -1968,
+     -9539
+    ],
+    [
+     -1965,
+     -9541
+    ],
+    [
+     -1879,
+     -9425
+    ],
+    [
+     -1882,
+     -9422
+    ],
+    [
+     -1968,
+     -9539
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "1"
+   },
+   "station": "北投",
+   "station_ref": "R22",
+   "station_dist": 18
+  },
+  {
+   "id": 265150041,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "2",
+   "layer": "2",
+   "lines": "",
+   "mc_x": -1576,
+   "mc_z": -10041,
+   "geometry": [
+    [
+     -1548,
+     -10047
+    ],
+    [
+     -1605,
+     -10045
+    ],
+    [
+     -1605,
+     -10035
+    ],
+    [
+     -1548,
+     -10036
+    ],
+    [
+     -1548,
+     -10047
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2",
+    "layer": "2"
+   },
+   "station": "新北投",
+   "station_ref": "R22A",
+   "station_dist": 95
+  },
+  {
+   "id": 265751838,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "0",
+   "layer": "",
+   "lines": "",
+   "mc_x": -3267,
+   "mc_z": -10089,
+   "geometry": [
+    [
+     -3330,
+     -10079
+    ],
+    [
+     -3329,
+     -10075
+    ],
+    [
+     -3204,
+     -10099
+    ],
+    [
+     -3205,
+     -10103
+    ],
+    [
+     -3330,
+     -10079
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "0"
+   },
+   "station": "復興崗",
+   "station_ref": "R23",
+   "station_dist": 7
+  },
+  {
+   "id": 265752173,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "0",
+   "layer": "",
+   "lines": "",
+   "mc_x": -3270,
+   "mc_z": -10102,
+   "geometry": [
+    [
+     -3332,
+     -10092
+    ],
+    [
+     -3331,
+     -10086
+    ],
+    [
+     -3207,
+     -10111
+    ],
+    [
+     -3208,
+     -10117
+    ],
+    [
+     -3332,
+     -10092
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "0"
+   },
+   "station": "復興崗",
+   "station_ref": "R23",
+   "station_dist": 10
+  },
+  {
+   "id": 265758565,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "0",
+   "layer": "",
+   "lines": "",
+   "mc_x": -4482,
+   "mc_z": -9360,
+   "geometry": [
+    [
+     -4538,
+     -9312
+    ],
+    [
+     -4537,
+     -9310
+    ],
+    [
+     -4430,
+     -9404
+    ],
+    [
+     -4432,
+     -9406
+    ],
+    [
+     -4538,
+     -9312
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "0"
+   },
+   "station": "忠義",
+   "station_ref": "R24",
+   "station_dist": 6
+  },
+  {
+   "id": 265758566,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "0",
+   "layer": "",
+   "lines": "",
+   "mc_x": -4490,
+   "mc_z": -9365,
+   "geometry": [
+    [
+     -4545,
+     -9319
+    ],
+    [
+     -4543,
+     -9317
+    ],
+    [
+     -4436,
+     -9411
+    ],
+    [
+     -4438,
+     -9413
+    ],
+    [
+     -4545,
+     -9319
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "0"
+   },
+   "station": "忠義",
+   "station_ref": "R24",
+   "station_dist": 7
+  },
+  {
+   "id": 438167562,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "-1",
+   "lines": "",
+   "mc_x": 7648,
+   "mc_z": -500,
+   "geometry": [
+    [
+     7581,
+     -479
+    ],
+    [
+     7720,
+     -515
+    ],
+    [
+     7718,
+     -522
+    ],
+    [
+     7579,
+     -487
+    ],
+    [
+     7581,
+     -479
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-1"
+   },
+   "station": "昆陽",
+   "station_ref": "BL21",
+   "station_dist": 4
+  },
+  {
+   "id": 525150498,
+   "type": "way",
+   "name": "第一月台",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "",
+   "layer": "1",
+   "lines": "",
+   "mc_x": 14493,
+   "mc_z": -2462,
+   "geometry": [
+    [
+     14575,
+     -2532
+    ],
+    [
+     14612,
+     -2572
+    ],
+    [
+     14609,
+     -2575
+    ],
+    [
+     14566,
+     -2531
+    ],
+    [
+     14406,
+     -2388
+    ],
+    [
+     14364,
+     -2352
+    ],
+    [
+     14366,
+     -2351
+    ],
+    [
+     14410,
+     -2383
+    ],
+    [
+     14551,
+     -2508
+    ],
+    [
+     14575,
+     -2532
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "layer": "1"
+   },
+   "station": "",
+   "station_ref": "",
+   "station_dist": 4589
+  },
+  {
+   "id": 525611013,
+   "type": "way",
+   "name": "第一月台",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 15141,
+   "mc_z": -3579,
+   "geometry": [
+    [
+     15056,
+     -3499
+    ],
+    [
+     15081,
+     -3526
+    ],
+    [
+     15150,
+     -3585
+    ],
+    [
+     15208,
+     -3627
+    ],
+    [
+     15245,
+     -3656
+    ],
+    [
+     15244,
+     -3658
+    ],
+    [
+     15142,
+     -3587
+    ],
+    [
+     15117,
+     -3567
+    ],
+    [
+     15096,
+     -3548
+    ],
+    [
+     15053,
+     -3502
+    ],
+    [
+     15056,
+     -3499
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "",
+   "station_ref": "",
+   "station_dist": 5594
+  },
+  {
+   "id": 525611015,
+   "type": "way",
+   "name": "第二月台",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 15134,
+   "mc_z": -3591,
+   "geometry": [
+    [
+     15197,
+     -3638
+    ],
+    [
+     15236,
+     -3666
+    ],
+    [
+     15234,
+     -3670
+    ],
+    [
+     15137,
+     -3601
+    ],
+    [
+     15098,
+     -3568
+    ],
+    [
+     15043,
+     -3513
+    ],
+    [
+     15045,
+     -3508
+    ],
+    [
+     15100,
+     -3562
+    ],
+    [
+     15144,
+     -3597
+    ],
+    [
+     15197,
+     -3638
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "",
+   "station_ref": "",
+   "station_dist": 5592
+  },
+  {
+   "id": 525611054,
+   "type": "way",
+   "name": "第二月台",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2A;2B",
+   "level": "-1",
+   "layer": "",
+   "lines": "",
+   "mc_x": 22303,
+   "mc_z": -9695,
+   "geometry": [
+    [
+     22242,
+     -9596
+    ],
+    [
+     22247,
+     -9593
+    ],
+    [
+     22364,
+     -9794
+    ],
+    [
+     22359,
+     -9797
+    ],
+    [
+     22242,
+     -9596
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-1"
+   },
+   "station": "",
+   "station_ref": "",
+   "station_dist": 14753
+  },
+  {
+   "id": 525611064,
+   "type": "way",
+   "name": "第一月台",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1A;1B",
+   "level": "-1",
+   "layer": "",
+   "lines": "",
+   "mc_x": 22314,
+   "mc_z": -9687,
+   "geometry": [
+    [
+     22258,
+     -9587
+    ],
+    [
+     22253,
+     -9590
+    ],
+    [
+     22371,
+     -9790
+    ],
+    [
+     22376,
+     -9788
+    ],
+    [
+     22258,
+     -9587
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-1"
+   },
+   "station": "",
+   "station_ref": "",
+   "station_dist": 14759
+  },
+  {
+   "id": 568347405,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "0",
+   "layer": "1",
+   "lines": "",
+   "mc_x": 68,
+   "mc_z": -144,
+   "geometry": [
+    [
+     51,
+     -116
+    ],
+    [
+     83,
+     -174
+    ],
+    [
+     84,
+     -173
+    ],
+    [
+     85,
+     -172
+    ],
+    [
+     54,
+     -115
+    ],
+    [
+     53,
+     -115
+    ],
+    [
+     51,
+     -116
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "public_transport": "platform",
+    "level": "0",
+    "layer": "1",
+    "surface": "paved"
+   },
+   "station": "台北車站",
+   "station_ref": "R10;BL12",
+   "station_dist": 159
+  },
+  {
+   "id": 574543351,
+   "type": "way",
+   "name": "2月台",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-2",
+   "layer": "-3",
+   "lines": "",
+   "mc_x": 6200,
+   "mc_z": -376,
+   "geometry": [
+    [
+     6038,
+     -379
+    ],
+    [
+     6037,
+     -373
+    ],
+    [
+     6255,
+     -372
+    ],
+    [
+     6366,
+     -372
+    ],
+    [
+     6366,
+     -379
+    ],
+    [
+     6257,
+     -380
+    ],
+    [
+     6148,
+     -381
+    ],
+    [
+     6129,
+     -381
+    ],
+    [
+     6073,
+     -381
+    ],
+    [
+     6038,
+     -379
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-3"
+   },
+   "station": "松山",
+   "station_ref": "G19",
+   "station_dist": 165
+  },
+  {
+   "id": 574543353,
+   "type": "way",
+   "name": "1月台",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-2",
+   "layer": "-3",
+   "lines": "",
+   "mc_x": 6198,
+   "mc_z": -360,
+   "geometry": [
+    [
+     6037,
+     -366
+    ],
+    [
+     6037,
+     -359
+    ],
+    [
+     6070,
+     -357
+    ],
+    [
+     6224,
+     -355
+    ],
+    [
+     6331,
+     -355
+    ],
+    [
+     6368,
+     -356
+    ],
+    [
+     6367,
+     -363
+    ],
+    [
+     6318,
+     -362
+    ],
+    [
+     6267,
+     -363
+    ],
+    [
+     6037,
+     -366
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-3"
+   },
+   "station": "松山",
+   "station_ref": "G19",
+   "station_dist": 170
+  },
+  {
+   "id": 584167409,
+   "type": "way",
+   "name": "1月台 (高鐵)",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "-2",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": -14,
+   "mc_z": -130,
+   "geometry": [
+    [
+     -166,
+     -158
+    ],
+    [
+     -180,
+     -163
+    ],
+    [
+     -182,
+     -164
+    ],
+    [
+     -180,
+     -168
+    ],
+    [
+     -173,
+     -165
+    ],
+    [
+     -151,
+     -159
+    ],
+    [
+     -132,
+     -155
+    ],
+    [
+     -101,
+     -149
+    ],
+    [
+     51,
+     -122
+    ],
+    [
+     82,
+     -117
+    ],
+    [
+     111,
+     -112
+    ],
+    [
+     145,
+     -108
+    ],
+    [
+     144,
+     -104
+    ],
+    [
+     123,
+     -105
+    ],
+    [
+     99,
+     -106
+    ],
+    [
+     81,
+     -108
+    ],
+    [
+     61,
+     -112
+    ],
+    [
+     39,
+     -115
+    ],
+    [
+     -35,
+     -129
+    ],
+    [
+     -89,
+     -139
+    ],
+    [
+     -108,
+     -143
+    ],
+    [
+     -134,
+     -149
+    ],
+    [
+     -150,
+     -153
+    ],
+    [
+     -166,
+     -158
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-2",
+    "operator": "台灣高鐵"
+   },
+   "station": "台北車站",
+   "station_ref": "R10;BL12",
+   "station_dist": 131
+  },
+  {
+   "id": 584167411,
+   "type": "way",
+   "name": "2月台 (高鐵)",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "-2",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": -20,
+   "mc_z": -149,
+   "geometry": [
+    [
+     146,
+     -116
+    ],
+    [
+     129,
+     -119
+    ],
+    [
+     108,
+     -121
+    ],
+    [
+     87,
+     -124
+    ],
+    [
+     58,
+     -130
+    ],
+    [
+     -27,
+     -145
+    ],
+    [
+     -64,
+     -152
+    ],
+    [
+     -120,
+     -162
+    ],
+    [
+     -142,
+     -166
+    ],
+    [
+     -158,
+     -170
+    ],
+    [
+     -179,
+     -175
+    ],
+    [
+     -178,
+     -182
+    ],
+    [
+     -57,
+     -160
+    ],
+    [
+     147,
+     -122
+    ],
+    [
+     146,
+     -116
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-2",
+    "operator": "台灣高鐵"
+   },
+   "station": "台北車站",
+   "station_ref": "R10;BL12",
+   "station_dist": 150
+  },
+  {
+   "id": 584167413,
+   "type": "way",
+   "name": "3月台 (臺鐵)",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "3",
+   "level": "-2",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": -10,
+   "mc_z": -169,
+   "geometry": [
+    [
+     -174,
+     -201
+    ],
+    [
+     -145,
+     -198
+    ],
+    [
+     -129,
+     -195
+    ],
+    [
+     -2,
+     -172
+    ],
+    [
+     13,
+     -169
+    ],
+    [
+     17,
+     -168
+    ],
+    [
+     122,
+     -149
+    ],
+    [
+     132,
+     -146
+    ],
+    [
+     151,
+     -142
+    ],
+    [
+     150,
+     -135
+    ],
+    [
+     92,
+     -146
+    ],
+    [
+     63,
+     -151
+    ],
+    [
+     7,
+     -161
+    ],
+    [
+     -161,
+     -193
+    ],
+    [
+     -175,
+     -195
+    ],
+    [
+     -174,
+     -201
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-2",
+    "operator": "臺灣鐵路管理局"
+   },
+   "station": "台北車站",
+   "station_ref": "R10;BL12",
+   "station_dist": 169
+  },
+  {
+   "id": 584167415,
+   "type": "way",
+   "name": "4月台 (臺鐵)",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "4",
+   "level": "-2",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": -9,
+   "mc_z": -186,
+   "geometry": [
+    [
+     133,
+     -155
+    ],
+    [
+     118,
+     -158
+    ],
+    [
+     81,
+     -165
+    ],
+    [
+     49,
+     -171
+    ],
+    [
+     -18,
+     -183
+    ],
+    [
+     -103,
+     -199
+    ],
+    [
+     -130,
+     -204
+    ],
+    [
+     -156,
+     -208
+    ],
+    [
+     -173,
+     -210
+    ],
+    [
+     -171,
+     -216
+    ],
+    [
+     -168,
+     -215
+    ],
+    [
+     -157,
+     -215
+    ],
+    [
+     -143,
+     -213
+    ],
+    [
+     -128,
+     -212
+    ],
+    [
+     -101,
+     -208
+    ],
+    [
+     -39,
+     -196
+    ],
+    [
+     52,
+     -179
+    ],
+    [
+     82,
+     -174
+    ],
+    [
+     108,
+     -168
+    ],
+    [
+     135,
+     -162
+    ],
+    [
+     154,
+     -156
+    ],
+    [
+     153,
+     -150
+    ],
+    [
+     133,
+     -155
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-2",
+    "operator": "臺灣鐵路管理局"
+   },
+   "station": "台北車站",
+   "station_ref": "R10;BL12",
+   "station_dist": 186
+  },
+  {
+   "id": 591532541,
+   "type": "way",
+   "name": "南下月台",
+   "name_zh": "南下月台",
+   "name_en": "Platform 1 Southbound",
+   "ref": "",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": -30523,
+   "mc_z": 3765,
+   "geometry": [
+    [
+     -30485,
+     3720
+    ],
+    [
+     -30482,
+     3723
+    ],
+    [
+     -30523,
+     3767
+    ],
+    [
+     -30524,
+     3766
+    ],
+    [
+     -30525,
+     3767
+    ],
+    [
+     -30524,
+     3768
+    ],
+    [
+     -30527,
+     3772
+    ],
+    [
+     -30528,
+     3770
+    ],
+    [
+     -30530,
+     3772
+    ],
+    [
+     -30528,
+     3773
+    ],
+    [
+     -30563,
+     3811
+    ],
+    [
+     -30566,
+     3809
+    ],
+    [
+     -30485,
+     3720
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "高鐵桃園站",
+   "station_ref": "A18",
+   "station_dist": 112
+  },
+  {
+   "id": 591532542,
+   "type": "way",
+   "name": "北上月台",
+   "name_zh": "北上月台",
+   "name_en": "Platform 2 Northbound",
+   "ref": "",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": -30537,
+   "mc_z": 3758,
+   "geometry": [
+    [
+     -30577,
+     3799
+    ],
+    [
+     -30542,
+     3760
+    ],
+    [
+     -30541,
+     3762
+    ],
+    [
+     -30539,
+     3760
+    ],
+    [
+     -30541,
+     3759
+    ],
+    [
+     -30538,
+     3756
+    ],
+    [
+     -30537,
+     3757
+    ],
+    [
+     -30536,
+     3756
+    ],
+    [
+     -30537,
+     3755
+    ],
+    [
+     -30496,
+     3710
+    ],
+    [
+     -30494,
+     3712
+    ],
+    [
+     -30574,
+     3801
+    ],
+    [
+     -30577,
+     3799
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "高鐵桃園站",
+   "station_ref": "A18",
+   "station_dist": 98
+  },
+  {
+   "id": 591532543,
+   "type": "way",
+   "name": "南下月台",
+   "name_zh": "南下月台",
+   "name_en": "Track",
+   "ref": "",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": -30521,
+   "mc_z": 3774,
+   "geometry": [
+    [
+     -30480,
+     3730
+    ],
+    [
+     -30521,
+     3775
+    ],
+    [
+     -30561,
+     3819
+    ],
+    [
+     -30562,
+     3817
+    ],
+    [
+     -30482,
+     3729
+    ],
+    [
+     -30480,
+     3730
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "operator": "THSR"
+   },
+   "station": "高鐵桃園站",
+   "station_ref": "A18",
+   "station_dist": 120
+  },
+  {
+   "id": 591532544,
+   "type": "way",
+   "name": "北上月台",
+   "name_zh": "北上月台",
+   "name_en": "Track",
+   "ref": "",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": -30545,
+   "mc_z": 3753,
+   "geometry": [
+    [
+     -30584,
+     3794
+    ],
+    [
+     -30503,
+     3705
+    ],
+    [
+     -30502,
+     3707
+    ],
+    [
+     -30582,
+     3796
+    ],
+    [
+     -30584,
+     3794
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "operator": "THSR"
+   },
+   "station": "高鐵桃園站",
+   "station_ref": "A18",
+   "station_dist": 89
+  },
+  {
+   "id": 655301801,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": -5950,
+   "mc_z": -12074,
+   "geometry": [
+    [
+     -5952,
+     -12048
+    ],
+    [
+     -5945,
+     -12048
+    ],
+    [
+     -5948,
+     -12101
+    ],
+    [
+     -5949,
+     -12101
+    ],
+    [
+     -5953,
+     -12101
+    ],
+    [
+     -5954,
+     -12101
+    ],
+    [
+     -5955,
+     -12101
+    ],
+    [
+     -5952,
+     -12048
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "紅樹林",
+   "station_ref": "V01",
+   "station_dist": 0
+  },
+  {
+   "id": 656513535,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "0",
+   "layer": "",
+   "lines": "",
+   "mc_x": -5963,
+   "mc_z": -11948,
+   "geometry": [
+    [
+     -5969,
+     -12019
+    ],
+    [
+     -5968,
+     -11999
+    ],
+    [
+     -5967,
+     -11996
+    ],
+    [
+     -5967,
+     -11994
+    ],
+    [
+     -5967,
+     -11989
+    ],
+    [
+     -5967,
+     -11987
+    ],
+    [
+     -5965,
+     -11961
+    ],
+    [
+     -5964,
+     -11944
+    ],
+    [
+     -5960,
+     -11877
+    ],
+    [
+     -5957,
+     -11877
+    ],
+    [
+     -5966,
+     -12019
+    ],
+    [
+     -5969,
+     -12019
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "0"
+   },
+   "station": "紅樹林",
+   "station_ref": "R27",
+   "station_dist": 13
+  },
+  {
+   "id": 656513539,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "0",
+   "layer": "",
+   "lines": "",
+   "mc_x": -5952,
+   "mc_z": -11951,
+   "geometry": [
+    [
+     -5958,
+     -12020
+    ],
+    [
+     -5949,
+     -11877
+    ],
+    [
+     -5946,
+     -11877
+    ],
+    [
+     -5951,
+     -11953
+    ],
+    [
+     -5952,
+     -11978
+    ],
+    [
+     -5953,
+     -11988
+    ],
+    [
+     -5953,
+     -11990
+    ],
+    [
+     -5953,
+     -11995
+    ],
+    [
+     -5953,
+     -11997
+    ],
+    [
+     -5953,
+     -12000
+    ],
+    [
+     -5955,
+     -12020
+    ],
+    [
+     -5958,
+     -12020
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "0"
+   },
+   "station": "紅樹林",
+   "station_ref": "R27",
+   "station_dist": 11
+  },
+  {
+   "id": 706686408,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-3",
+   "layer": "-3",
+   "lines": "",
+   "mc_x": -5347,
+   "mc_z": 3622,
+   "geometry": [
+    [
+     -5488,
+     3759
+    ],
+    [
+     -5483,
+     3764
+    ],
+    [
+     -5372,
+     3642
+    ],
+    [
+     -5334,
+     3608
+    ],
+    [
+     -5206,
+     3509
+    ],
+    [
+     -5212,
+     3502
+    ],
+    [
+     -5338,
+     3599
+    ],
+    [
+     -5379,
+     3636
+    ],
+    [
+     -5488,
+     3759
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-3",
+    "layer": "-3"
+   },
+   "station": "板橋",
+   "station_ref": "BL07",
+   "station_dist": 163
+  },
+  {
+   "id": 706686409,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-2",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": -5346,
+   "mc_z": 3619,
+   "geometry": [
+    [
+     -5488,
+     3758
+    ],
+    [
+     -5483,
+     3762
+    ],
+    [
+     -5373,
+     3640
+    ],
+    [
+     -5335,
+     3607
+    ],
+    [
+     -5207,
+     3508
+    ],
+    [
+     -5212,
+     3501
+    ],
+    [
+     -5338,
+     3597
+    ],
+    [
+     -5380,
+     3635
+    ],
+    [
+     -5488,
+     3758
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-2"
+   },
+   "station": "板橋",
+   "station_ref": "Y16",
+   "station_dist": 162
+  },
+  {
+   "id": 706686410,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-1",
+   "layer": "",
+   "lines": "",
+   "mc_x": 8936,
+   "mc_z": -776,
+   "geometry": [
+    [
+     9114,
+     -810
+    ],
+    [
+     9115,
+     -803
+    ],
+    [
+     8759,
+     -742
+    ],
+    [
+     8758,
+     -749
+    ],
+    [
+     9114,
+     -810
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-1",
+    "operator": "台灣高速鐵路股份有限公司"
+   },
+   "station": "南港",
+   "station_ref": "BL22",
+   "station_dist": 146
+  },
+  {
+   "id": 706686411,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-1",
+   "layer": "",
+   "lines": "",
+   "mc_x": 8940,
+   "mc_z": -756,
+   "geometry": [
+    [
+     8763,
+     -731
+    ],
+    [
+     8765,
+     -722
+    ],
+    [
+     9116,
+     -782
+    ],
+    [
+     9114,
+     -791
+    ],
+    [
+     8763,
+     -731
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-1",
+    "operator": "台灣高速鐵路股份有限公司"
+   },
+   "station": "南港",
+   "station_ref": "BL22",
+   "station_dist": 131
+  },
+  {
+   "id": 710690883,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-1",
+   "layer": "",
+   "lines": "",
+   "mc_x": 8939,
+   "mc_z": -795,
+   "geometry": [
+    [
+     9110,
+     -827
+    ],
+    [
+     9111,
+     -820
+    ],
+    [
+     8760,
+     -762
+    ],
+    [
+     8759,
+     -768
+    ],
+    [
+     9110,
+     -827
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-1",
+    "operator": "台灣高速鐵路股份有限公司"
+   },
+   "station": "南港",
+   "station_ref": "BL22",
+   "station_dist": 156
+  },
+  {
+   "id": 710692150,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-3",
+   "layer": "",
+   "lines": "",
+   "mc_x": 8959,
+   "mc_z": -758,
+   "geometry": [
+    [
+     9155,
+     -797
+    ],
+    [
+     9156,
+     -787
+    ],
+    [
+     8764,
+     -720
+    ],
+    [
+     8762,
+     -730
+    ],
+    [
+     9155,
+     -797
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-3",
+    "operator": "臺灣鐵路管理局"
+   },
+   "station": "南港",
+   "station_ref": "BL22",
+   "station_dist": 117
+  },
+  {
+   "id": 710692151,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-3",
+   "layer": "",
+   "lines": "",
+   "mc_x": 8966,
+   "mc_z": -781,
+   "geometry": [
+    [
+     8778,
+     -753
+    ],
+    [
+     8780,
+     -745
+    ],
+    [
+     9153,
+     -809
+    ],
+    [
+     9151,
+     -817
+    ],
+    [
+     8778,
+     -753
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "level": "-3",
+    "operator": "臺灣鐵路管理局"
+   },
+   "station": "南港",
+   "station_ref": "BL22",
+   "station_dist": 128
+  },
+  {
+   "id": 741259904,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "3;4",
+   "level": "-3",
+   "layer": "-3",
+   "lines": "",
+   "mc_x": -57,
+   "mc_z": -10,
+   "geometry": [
+    [
+     43,
+     11
+    ],
+    [
+     40,
+     22
+    ],
+    [
+     -157,
+     -31
+    ],
+    [
+     -154,
+     -42
+    ],
+    [
+     43,
+     11
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-3",
+    "layer": "-3"
+   },
+   "station": "台北車站",
+   "station_ref": "R10;BL12",
+   "station_dist": 58
+  },
+  {
+   "id": 741259905,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-4",
+   "layer": "",
+   "lines": "",
+   "mc_x": 70,
+   "mc_z": -123,
+   "geometry": [
+    [
+     110,
+     -217
+    ],
+    [
+     125,
+     -209
+    ],
+    [
+     29,
+     -29
+    ],
+    [
+     14,
+     -37
+    ],
+    [
+     110,
+     -217
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-4"
+   },
+   "station": "台北車站",
+   "station_ref": "R10;BL12",
+   "station_dist": 142
+  },
+  {
+   "id": 770797771,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 10135,
+   "mc_z": -1047,
+   "geometry": [
+    [
+     10086,
+     -1058
+    ],
+    [
+     10178,
+     -1045
+    ],
+    [
+     10179,
+     -1043
+    ],
+    [
+     10186,
+     -1042
+    ],
+    [
+     10185,
+     -1036
+    ],
+    [
+     10179,
+     -1037
+    ],
+    [
+     10177,
+     -1036
+    ],
+    [
+     10085,
+     -1050
+    ],
+    [
+     10086,
+     -1058
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "南港展覽館",
+   "station_ref": "BR24",
+   "station_dist": 7
+  },
+  {
+   "id": 770797773,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-3",
+   "layer": "",
+   "lines": "",
+   "mc_x": 10096,
+   "mc_z": -967,
+   "geometry": [
+    [
+     10012,
+     -959
+    ],
+    [
+     10012,
+     -967
+    ],
+    [
+     10180,
+     -975
+    ],
+    [
+     10180,
+     -967
+    ],
+    [
+     10012,
+     -959
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-3"
+   },
+   "station": "南港展覽館",
+   "station_ref": "BL23",
+   "station_dist": 35
+  },
+  {
+   "id": 772602545,
+   "type": "way",
+   "name": "中和新蘆線月台",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-3",
+   "layer": "-3",
+   "lines": "",
+   "mc_x": 1553,
+   "mc_z": 516,
+   "geometry": [
+    [
+     1542,
+     448
+    ],
+    [
+     1566,
+     448
+    ],
+    [
+     1558,
+     598
+    ],
+    [
+     1545,
+     598
+    ],
+    [
+     1542,
+     448
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-3",
+    "layer": "-3"
+   },
+   "station": "忠孝新生",
+   "station_ref": "BL14;O07",
+   "station_dist": 84
+  },
+  {
+   "id": 772602546,
+   "type": "way",
+   "name": "板南線月台",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 1555,
+   "mc_z": 422,
+   "geometry": [
+    [
+     1488,
+     401
+    ],
+    [
+     1626,
+     434
+    ],
+    [
+     1624,
+     444
+    ],
+    [
+     1485,
+     411
+    ],
+    [
+     1488,
+     401
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "忠孝新生",
+   "station_ref": "BL14;O07",
+   "station_dist": 10
+  },
+  {
+   "id": 790260395,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 2626,
+   "mc_z": 2215,
+   "geometry": [
+    [
+     2628,
+     2175
+    ],
+    [
+     2627,
+     2255
+    ],
+    [
+     2624,
+     2255
+    ],
+    [
+     2625,
+     2175
+    ],
+    [
+     2628,
+     2175
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "科技大樓",
+   "station_ref": "BR08",
+   "station_dist": 8
+  },
+  {
+   "id": 790260396,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 2638,
+   "mc_z": 2212,
+   "geometry": [
+    [
+     2636,
+     2255
+    ],
+    [
+     2637,
+     2175
+    ],
+    [
+     2640,
+     2175
+    ],
+    [
+     2638,
+     2255
+    ],
+    [
+     2636,
+     2255
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "科技大樓",
+   "station_ref": "BR08",
+   "station_dist": 11
+  },
+  {
+   "id": 790260407,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 5632,
+   "mc_z": 5285,
+   "geometry": [
+    [
+     5595,
+     5278
+    ],
+    [
+     5596,
+     5275
+    ],
+    [
+     5674,
+     5293
+    ],
+    [
+     5673,
+     5295
+    ],
+    [
+     5595,
+     5278
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "木柵",
+   "station_ref": "BR02",
+   "station_dist": 15
+  },
+  {
+   "id": 790260408,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 5629,
+   "mc_z": 5296,
+   "geometry": [
+    [
+     5671,
+     5304
+    ],
+    [
+     5671,
+     5306
+    ],
+    [
+     5593,
+     5290
+    ],
+    [
+     5594,
+     5287
+    ],
+    [
+     5671,
+     5304
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "木柵",
+   "station_ref": "BR02",
+   "station_dist": 15
+  },
+  {
+   "id": 790260409,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "2",
+   "layer": "2",
+   "lines": "",
+   "mc_x": 6275,
+   "mc_z": 5280,
+   "geometry": [
+    [
+     6307,
+     5256
+    ],
+    [
+     6241,
+     5300
+    ],
+    [
+     6243,
+     5303
+    ],
+    [
+     6309,
+     5259
+    ],
+    [
+     6307,
+     5256
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2",
+    "layer": "2"
+   },
+   "station": "動物園",
+   "station_ref": "BR01",
+   "station_dist": 3
+  },
+  {
+   "id": 790260410,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "2",
+   "layer": "2",
+   "lines": "",
+   "mc_x": 6281,
+   "mc_z": 5288,
+   "geometry": [
+    [
+     6315,
+     5267
+    ],
+    [
+     6314,
+     5264
+    ],
+    [
+     6247,
+     5308
+    ],
+    [
+     6248,
+     5311
+    ],
+    [
+     6315,
+     5267
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2",
+    "layer": "2"
+   },
+   "station": "動物園",
+   "station_ref": "BR01",
+   "station_dist": 7
+  },
+  {
+   "id": 790262636,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 2685,
+   "mc_z": -1624,
+   "geometry": [
+    [
+     2687,
+     -1661
+    ],
+    [
+     2686,
+     -1581
+    ],
+    [
+     2684,
+     -1581
+    ],
+    [
+     2684,
+     -1661
+    ],
+    [
+     2687,
+     -1661
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "中山國中",
+   "station_ref": "BR12",
+   "station_dist": 15
+  },
+  {
+   "id": 790262637,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 2697,
+   "mc_z": -1619,
+   "geometry": [
+    [
+     2695,
+     -1582
+    ],
+    [
+     2697,
+     -1661
+    ],
+    [
+     2699,
+     -1661
+    ],
+    [
+     2698,
+     -1582
+    ],
+    [
+     2695,
+     -1582
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "中山國中",
+   "station_ref": "BR12",
+   "station_dist": 11
+  },
+  {
+   "id": 793277477,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "0",
+   "layer": "",
+   "lines": "",
+   "mc_x": -5112,
+   "mc_z": -8766,
+   "geometry": [
+    [
+     -5151,
+     -8708
+    ],
+    [
+     -5075,
+     -8827
+    ],
+    [
+     -5072,
+     -8825
+    ],
+    [
+     -5148,
+     -8706
+    ],
+    [
+     -5151,
+     -8708
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "0"
+   },
+   "station": "關渡",
+   "station_ref": "R25",
+   "station_dist": 17
+  },
+  {
+   "id": 793277478,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "0",
+   "layer": "",
+   "lines": "",
+   "mc_x": -5122,
+   "mc_z": -8773,
+   "geometry": [
+    [
+     -5083,
+     -8831
+    ],
+    [
+     -5159,
+     -8713
+    ],
+    [
+     -5162,
+     -8715
+    ],
+    [
+     -5086,
+     -8833
+    ],
+    [
+     -5083,
+     -8831
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "0"
+   },
+   "station": "關渡",
+   "station_ref": "R25",
+   "station_dist": 16
+  },
+  {
+   "id": 806156114,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "2",
+   "layer": "2",
+   "lines": "",
+   "mc_x": -1519,
+   "mc_z": -10042,
+   "geometry": [
+    [
+     -1548,
+     -10036
+    ],
+    [
+     -1491,
+     -10037
+    ],
+    [
+     -1492,
+     -10049
+    ],
+    [
+     -1548,
+     -10047
+    ],
+    [
+     -1548,
+     -10036
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2",
+    "layer": "2"
+   },
+   "station": "新北投",
+   "station_ref": "R22A",
+   "station_dist": 38
+  },
+  {
+   "id": 806177088,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-4",
+   "layer": "",
+   "lines": "",
+   "mc_x": 2668,
+   "mc_z": 500,
+   "geometry": [
+    [
+     2594,
+     494
+    ],
+    [
+     2743,
+     496
+    ],
+    [
+     2743,
+     507
+    ],
+    [
+     2594,
+     505
+    ],
+    [
+     2594,
+     494
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-4"
+   },
+   "station": "忠孝復興",
+   "station_ref": "BR10;BL15",
+   "station_dist": 16
+  },
+  {
+   "id": 810653337,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": 5298,
+   "mc_z": 1461,
+   "geometry": [
+    [
+     5222,
+     1457
+    ],
+    [
+     5222,
+     1465
+    ],
+    [
+     5290,
+     1465
+    ],
+    [
+     5307,
+     1465
+    ],
+    [
+     5334,
+     1465
+    ],
+    [
+     5351,
+     1465
+    ],
+    [
+     5374,
+     1465
+    ],
+    [
+     5374,
+     1457
+    ],
+    [
+     5351,
+     1457
+    ],
+    [
+     5334,
+     1457
+    ],
+    [
+     5320,
+     1457
+    ],
+    [
+     5307,
+     1457
+    ],
+    [
+     5290,
+     1457
+    ],
+    [
+     5222,
+     1457
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-2"
+   },
+   "station": "象山",
+   "station_ref": "R02",
+   "station_dist": 16
+  },
+  {
+   "id": 861206847,
+   "type": "way",
+   "name": "中和新蘆線月台",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-4",
+   "layer": "-4",
+   "lines": "",
+   "mc_x": 1566,
+   "mc_z": -648,
+   "geometry": [
+    [
+     1559,
+     -715
+    ],
+    [
+     1574,
+     -715
+    ],
+    [
+     1573,
+     -581
+    ],
+    [
+     1558,
+     -581
+    ],
+    [
+     1559,
+     -715
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-4",
+    "layer": "-4"
+   },
+   "station": "松江南京",
+   "station_ref": "O08;G15",
+   "station_dist": 4
+  },
+  {
+   "id": 861206848,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "2",
+   "layer": "2",
+   "lines": "",
+   "mc_x": 2685,
+   "mc_z": -692,
+   "geometry": [
+    [
+     2683,
+     -652
+    ],
+    [
+     2684,
+     -731
+    ],
+    [
+     2687,
+     -731
+    ],
+    [
+     2686,
+     -652
+    ],
+    [
+     2683,
+     -652
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2",
+    "layer": "2"
+   },
+   "station": "南京復興",
+   "station_ref": "BR11;G16",
+   "station_dist": 64
+  },
+  {
+   "id": 861206849,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "2",
+   "layer": "2",
+   "lines": "",
+   "mc_x": 2673,
+   "mc_z": -690,
+   "geometry": [
+    [
+     2670,
+     -652
+    ],
+    [
+     2672,
+     -731
+    ],
+    [
+     2675,
+     -731
+    ],
+    [
+     2674,
+     -652
+    ],
+    [
+     2670,
+     -652
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2",
+    "layer": "2"
+   },
+   "station": "南京復興",
+   "station_ref": "BR11;G16",
+   "station_dist": 60
+  },
+  {
+   "id": 861206850,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-2",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": 2543,
+   "mc_z": -637,
+   "geometry": [
+    [
+     2620,
+     -640
+    ],
+    [
+     2620,
+     -631
+    ],
+    [
+     2469,
+     -634
+    ],
+    [
+     2469,
+     -644
+    ],
+    [
+     2524,
+     -643
+    ],
+    [
+     2620,
+     -640
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-2"
+   },
+   "station": "南京復興",
+   "station_ref": "BR11;G16",
+   "station_dist": 128
+  },
+  {
+   "id": 861206851,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-2",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": 1567,
+   "mc_z": -639,
+   "geometry": [
+    [
+     1494,
+     -637
+    ],
+    [
+     1640,
+     -635
+    ],
+    [
+     1640,
+     -642
+    ],
+    [
+     1495,
+     -644
+    ],
+    [
+     1494,
+     -637
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-2"
+   },
+   "station": "松江南京",
+   "station_ref": "O08;G15",
+   "station_dist": 6
+  },
+  {
+   "id": 861206852,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-2",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": 1568,
+   "mc_z": -659,
+   "geometry": [
+    [
+     1495,
+     -657
+    ],
+    [
+     1641,
+     -655
+    ],
+    [
+     1641,
+     -661
+    ],
+    [
+     1495,
+     -663
+    ],
+    [
+     1495,
+     -657
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-2"
+   },
+   "station": "松江南京",
+   "station_ref": "O08;G15",
+   "station_dist": 14
+  },
+  {
+   "id": 877498853,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "",
+   "layer": "2",
+   "lines": "",
+   "mc_x": -79,
+   "mc_z": -36,
+   "geometry": [
+    [
+     -16,
+     -17
+    ],
+    [
+     -15,
+     -20
+    ],
+    [
+     -41,
+     -27
+    ],
+    [
+     -44,
+     -28
+    ],
+    [
+     -47,
+     -29
+    ],
+    [
+     -91,
+     -40
+    ],
+    [
+     -97,
+     -42
+    ],
+    [
+     -103,
+     -43
+    ],
+    [
+     -108,
+     -45
+    ],
+    [
+     -135,
+     -52
+    ],
+    [
+     -134,
+     -56
+    ],
+    [
+     -133,
+     -58
+    ],
+    [
+     -137,
+     -59
+    ],
+    [
+     -139,
+     -50
+    ],
+    [
+     -16,
+     -17
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "public_transport": "platform",
+    "layer": "2",
+    "bus": "yes"
+   },
+   "station": "台北車站",
+   "station_ref": "R10;BL12",
+   "station_dist": 87
+  },
+  {
+   "id": 877532216,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-3",
+   "layer": "",
+   "lines": "",
+   "mc_x": 5982,
+   "mc_z": -446,
+   "geometry": [
+    [
+     6057,
+     -444
+    ],
+    [
+     5911,
+     -439
+    ],
+    [
+     5910,
+     -448
+    ],
+    [
+     6057,
+     -452
+    ],
+    [
+     6057,
+     -444
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-3"
+   },
+   "station": "松山",
+   "station_ref": "G19",
+   "station_dist": 70
+  },
+  {
+   "id": 877532223,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "3;4",
+   "level": "-3",
+   "layer": "-3",
+   "lines": "",
+   "mc_x": 263,
+   "mc_z": -717,
+   "geometry": [
+    [
+     194,
+     -739
+    ],
+    [
+     337,
+     -702
+    ],
+    [
+     335,
+     -694
+    ],
+    [
+     192,
+     -730
+    ],
+    [
+     194,
+     -739
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-3",
+    "layer": "-3"
+   },
+   "station": "中山",
+   "station_ref": "R11;G14",
+   "station_dist": 30
+  },
+  {
+   "id": 877532225,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": -894,
+   "mc_z": 418,
+   "geometry": [
+    [
+     -917,
+     487
+    ],
+    [
+     -880,
+     346
+    ],
+    [
+     -870,
+     348
+    ],
+    [
+     -907,
+     489
+    ],
+    [
+     -917,
+     487
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "西門",
+   "station_ref": "G12;BL11",
+   "station_dist": 24
+  },
+  {
+   "id": 877532226,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 5886,
+   "mc_z": 573,
+   "geometry": [
+    [
+     5812,
+     567
+    ],
+    [
+     5959,
+     570
+    ],
+    [
+     5959,
+     579
+    ],
+    [
+     5812,
+     576
+    ],
+    [
+     5812,
+     567
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "永春",
+   "station_ref": "BL19",
+   "station_dist": 8
+  },
+  {
+   "id": 877532228,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 6517,
+   "mc_z": 180,
+   "geometry": [
+    [
+     6471,
+     243
+    ],
+    [
+     6556,
+     113
+    ],
+    [
+     6563,
+     117
+    ],
+    [
+     6478,
+     247
+    ],
+    [
+     6471,
+     243
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "後山埤",
+   "station_ref": "BL20",
+   "station_dist": 48
+  },
+  {
+   "id": 877532229,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 9060,
+   "mc_z": -694,
+   "geometry": [
+    [
+     8983,
+     -689
+    ],
+    [
+     9136,
+     -709
+    ],
+    [
+     9137,
+     -700
+    ],
+    [
+     8984,
+     -680
+    ],
+    [
+     8983,
+     -689
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "南港",
+   "station_ref": "BL22",
+   "station_dist": 13
+  },
+  {
+   "id": 877532236,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 656,
+   "mc_z": 172,
+   "geometry": [
+    [
+     588,
+     150
+    ],
+    [
+     726,
+     185
+    ],
+    [
+     723,
+     195
+    ],
+    [
+     585,
+     160
+    ],
+    [
+     588,
+     150
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "善導寺",
+   "station_ref": "BL13",
+   "station_dist": 56
+  },
+  {
+   "id": 877532237,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "國父紀念館",
+   "level": "-2",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": 4080,
+   "mc_z": 527,
+   "geometry": [
+    [
+     4157,
+     524
+    ],
+    [
+     4157,
+     533
+    ],
+    [
+     4004,
+     530
+    ],
+    [
+     4004,
+     521
+    ],
+    [
+     4157,
+     524
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-2",
+    "subway": "yes",
+    "network": "台北捷運藍線",
+    "operator": "台北捷運公司"
+   },
+   "station": "國父紀念館",
+   "station_ref": "BL17",
+   "station_dist": 50
+  },
+  {
+   "id": 877532238,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": 4861,
+   "mc_z": 546,
+   "geometry": [
+    [
+     4783,
+     549
+    ],
+    [
+     4784,
+     538
+    ],
+    [
+     4939,
+     542
+    ],
+    [
+     4939,
+     553
+    ],
+    [
+     4783,
+     549
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-2"
+   },
+   "station": "市政府",
+   "station_ref": "BL18",
+   "station_dist": 48
+  },
+  {
+   "id": 877544937,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 4191,
+   "mc_z": 3055,
+   "geometry": [
+    [
+     4160,
+     3028
+    ],
+    [
+     4162,
+     3026
+    ],
+    [
+     4220,
+     3080
+    ],
+    [
+     4218,
+     3083
+    ],
+    [
+     4160,
+     3028
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "麟光",
+   "station_ref": "BR06",
+   "station_dist": 8
+  },
+  {
+   "id": 877544938,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 4182,
+   "mc_z": 3061,
+   "geometry": [
+    [
+     4152,
+     3036
+    ],
+    [
+     4155,
+     3033
+    ],
+    [
+     4213,
+     3088
+    ],
+    [
+     4211,
+     3091
+    ],
+    [
+     4152,
+     3036
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "麟光",
+   "station_ref": "BR06",
+   "station_dist": 11
+  },
+  {
+   "id": 877544943,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 2647,
+   "mc_z": 1474,
+   "geometry": [
+    [
+     2646,
+     1437
+    ],
+    [
+     2649,
+     1437
+    ],
+    [
+     2648,
+     1511
+    ],
+    [
+     2645,
+     1511
+    ],
+    [
+     2646,
+     1437
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "大安",
+   "station_ref": "BR09;R05",
+   "station_dist": 55
+  },
+  {
+   "id": 877544944,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 2636,
+   "mc_z": 1473,
+   "geometry": [
+    [
+     2635,
+     1436
+    ],
+    [
+     2639,
+     1436
+    ],
+    [
+     2638,
+     1510
+    ],
+    [
+     2634,
+     1510
+    ],
+    [
+     2635,
+     1436
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "大安",
+   "station_ref": "BR09;R05",
+   "station_dist": 53
+  },
+  {
+   "id": 877544945,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "2",
+   "layer": "3",
+   "lines": "",
+   "mc_x": 2661,
+   "mc_z": 577,
+   "geometry": [
+    [
+     2660,
+     538
+    ],
+    [
+     2663,
+     538
+    ],
+    [
+     2662,
+     616
+    ],
+    [
+     2659,
+     616
+    ],
+    [
+     2660,
+     538
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2",
+    "layer": "3"
+   },
+   "station": "忠孝復興",
+   "station_ref": "BR10;BL15",
+   "station_dist": 67
+  },
+  {
+   "id": 877544946,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "2",
+   "layer": "3",
+   "lines": "",
+   "mc_x": 2651,
+   "mc_z": 579,
+   "geometry": [
+    [
+     2650,
+     538
+    ],
+    [
+     2653,
+     538
+    ],
+    [
+     2652,
+     617
+    ],
+    [
+     2648,
+     617
+    ],
+    [
+     2650,
+     538
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2",
+    "layer": "3"
+   },
+   "station": "忠孝復興",
+   "station_ref": "BR10;BL15",
+   "station_dist": 69
+  },
+  {
+   "id": 877544949,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 4998,
+   "mc_z": -3999,
+   "geometry": [
+    [
+     4960,
+     -3996
+    ],
+    [
+     4960,
+     -4004
+    ],
+    [
+     5035,
+     -4002
+    ],
+    [
+     5035,
+     -3994
+    ],
+    [
+     4960,
+     -3996
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "西湖",
+   "station_ref": "BR16",
+   "station_dist": 15
+  },
+  {
+   "id": 877544950,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 7717,
+   "mc_z": -4163,
+   "geometry": [
+    [
+     7688,
+     -4136
+    ],
+    [
+     7685,
+     -4140
+    ],
+    [
+     7743,
+     -4188
+    ],
+    [
+     7747,
+     -4183
+    ],
+    [
+     7688,
+     -4136
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "內湖",
+   "station_ref": "BR19",
+   "station_dist": 8
+  },
+  {
+   "id": 877544951,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 7724,
+   "mc_z": -4150,
+   "geometry": [
+    [
+     7752,
+     -4176
+    ],
+    [
+     7755,
+     -4172
+    ],
+    [
+     7697,
+     -4125
+    ],
+    [
+     7694,
+     -4129
+    ],
+    [
+     7752,
+     -4176
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "內湖",
+   "station_ref": "BR19",
+   "station_dist": 8
+  },
+  {
+   "id": 877544952,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 8529,
+   "mc_z": -4192,
+   "geometry": [
+    [
+     8564,
+     -4171
+    ],
+    [
+     8562,
+     -4167
+    ],
+    [
+     8494,
+     -4214
+    ],
+    [
+     8496,
+     -4218
+    ],
+    [
+     8564,
+     -4171
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "大湖公園",
+   "station_ref": "BR20",
+   "station_dist": 16
+  },
+  {
+   "id": 877544953,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 8536,
+   "mc_z": -4204,
+   "geometry": [
+    [
+     8500,
+     -4225
+    ],
+    [
+     8502,
+     -4228
+    ],
+    [
+     8573,
+     -4182
+    ],
+    [
+     8571,
+     -4179
+    ],
+    [
+     8500,
+     -4225
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "大湖公園",
+   "station_ref": "BR20",
+   "station_dist": 16
+  },
+  {
+   "id": 877544954,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 9028,
+   "mc_z": -2968,
+   "geometry": [
+    [
+     9070,
+     -2950
+    ],
+    [
+     9068,
+     -2947
+    ],
+    [
+     8988,
+     -2985
+    ],
+    [
+     8990,
+     -2989
+    ],
+    [
+     9070,
+     -2950
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "葫洲",
+   "station_ref": "BR21",
+   "station_dist": 30
+  },
+  {
+   "id": 877544955,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 9034,
+   "mc_z": -2979,
+   "geometry": [
+    [
+     8993,
+     -2997
+    ],
+    [
+     8995,
+     -3000
+    ],
+    [
+     9075,
+     -2961
+    ],
+    [
+     9073,
+     -2958
+    ],
+    [
+     8993,
+     -2997
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "葫洲",
+   "station_ref": "BR21",
+   "station_dist": 29
+  },
+  {
+   "id": 877544956,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 9481,
+   "mc_z": -2391,
+   "geometry": [
+    [
+     9463,
+     -2354
+    ],
+    [
+     9459,
+     -2356
+    ],
+    [
+     9502,
+     -2430
+    ],
+    [
+     9505,
+     -2428
+    ],
+    [
+     9463,
+     -2354
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "東湖",
+   "station_ref": "BR22",
+   "station_dist": 9
+  },
+  {
+   "id": 877544957,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 9496,
+   "mc_z": -2384,
+   "geometry": [
+    [
+     9514,
+     -2423
+    ],
+    [
+     9518,
+     -2421
+    ],
+    [
+     9477,
+     -2346
+    ],
+    [
+     9473,
+     -2348
+    ],
+    [
+     9514,
+     -2423
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "東湖",
+   "station_ref": "BR22",
+   "station_dist": 8
+  },
+  {
+   "id": 877544958,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 9924,
+   "mc_z": -1550,
+   "geometry": [
+    [
+     9957,
+     -1534
+    ],
+    [
+     9954,
+     -1529
+    ],
+    [
+     9890,
+     -1567
+    ],
+    [
+     9893,
+     -1572
+    ],
+    [
+     9957,
+     -1534
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "南港軟體園區",
+   "station_ref": "BR23",
+   "station_dist": 9
+  },
+  {
+   "id": 877544959,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 9932,
+   "mc_z": -1564,
+   "geometry": [
+    [
+     9898,
+     -1581
+    ],
+    [
+     9901,
+     -1586
+    ],
+    [
+     9965,
+     -1548
+    ],
+    [
+     9962,
+     -1543
+    ],
+    [
+     9898,
+     -1581
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "南港軟體園區",
+   "station_ref": "BR23",
+   "station_dist": 9
+  },
+  {
+   "id": 1038743831,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": 1160,
+   "mc_z": 1366,
+   "geometry": [
+    [
+     1236,
+     1369
+    ],
+    [
+     1234,
+     1383
+    ],
+    [
+     1085,
+     1362
+    ],
+    [
+     1087,
+     1348
+    ],
+    [
+     1236,
+     1369
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-2"
+   },
+   "station": "東門",
+   "station_ref": "O06;R07",
+   "station_dist": 34
+  },
+  {
+   "id": 1054526756,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-2",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": 2589,
+   "mc_z": 1415,
+   "geometry": [
+    [
+     2669,
+     1409
+    ],
+    [
+     2669,
+     1424
+    ],
+    [
+     2509,
+     1421
+    ],
+    [
+     2510,
+     1406
+    ],
+    [
+     2669,
+     1409
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-2"
+   },
+   "station": "大安",
+   "station_ref": "BR09;R05",
+   "station_dist": 48
+  },
+  {
+   "id": 1054526759,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-3",
+   "layer": "-3",
+   "lines": "",
+   "mc_x": 184,
+   "mc_z": -1846,
+   "geometry": [
+    [
+     262,
+     -1848
+    ],
+    [
+     262,
+     -1839
+    ],
+    [
+     109,
+     -1843
+    ],
+    [
+     110,
+     -1853
+    ],
+    [
+     262,
+     -1848
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-3",
+    "layer": "-3"
+   },
+   "station": "民權西路",
+   "station_ref": "R13;O11",
+   "station_dist": 7
+  },
+  {
+   "id": 1054526760,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": 288,
+   "mc_z": -683,
+   "geometry": [
+    [
+     286,
+     -759
+    ],
+    [
+     297,
+     -758
+    ],
+    [
+     290,
+     -608
+    ],
+    [
+     279,
+     -608
+    ],
+    [
+     286,
+     -759
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-2"
+   },
+   "station": "中山",
+   "station_ref": "R11;G14",
+   "station_dist": 25
+  },
+  {
+   "id": 1054529713,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": 4681,
+   "mc_z": -593,
+   "geometry": [
+    [
+     4605,
+     -598
+    ],
+    [
+     4755,
+     -595
+    ],
+    [
+     4754,
+     -587
+    ],
+    [
+     4605,
+     -591
+    ],
+    [
+     4605,
+     -598
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-2"
+   },
+   "station": "南京三民",
+   "station_ref": "G18",
+   "station_dist": 42
+  },
+  {
+   "id": 1054529714,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": 3418,
+   "mc_z": -616,
+   "geometry": [
+    [
+     3343,
+     -622
+    ],
+    [
+     3493,
+     -619
+    ],
+    [
+     3493,
+     -611
+    ],
+    [
+     3343,
+     -614
+    ],
+    [
+     3343,
+     -622
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-2"
+   },
+   "station": "台北小巨蛋",
+   "station_ref": "G17",
+   "station_dist": 13
+  },
+  {
+   "id": 1054529716,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 4567,
+   "mc_z": 1455,
+   "geometry": [
+    [
+     4493,
+     1447
+    ],
+    [
+     4645,
+     1451
+    ],
+    [
+     4644,
+     1462
+    ],
+    [
+     4492,
+     1459
+    ],
+    [
+     4493,
+     1447
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "台北101/世貿",
+   "station_ref": "R03",
+   "station_dist": 23
+  },
+  {
+   "id": 1054529717,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": 3597,
+   "mc_z": 1436,
+   "geometry": [
+    [
+     3673,
+     1431
+    ],
+    [
+     3673,
+     1443
+    ],
+    [
+     3521,
+     1441
+    ],
+    [
+     3521,
+     1429
+    ],
+    [
+     3673,
+     1431
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-2"
+   },
+   "station": "信義安和",
+   "station_ref": "R04",
+   "station_dist": 33
+  },
+  {
+   "id": 1054531296,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 2437,
+   "mc_z": 7014,
+   "geometry": [
+    [
+     2420,
+     6935
+    ],
+    [
+     2425,
+     6933
+    ],
+    [
+     2455,
+     7095
+    ],
+    [
+     2450,
+     7096
+    ],
+    [
+     2420,
+     6935
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "大坪林",
+   "station_ref": "G04",
+   "station_dist": 10
+  },
+  {
+   "id": 1054531297,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 2374,
+   "mc_z": 5896,
+   "geometry": [
+    [
+     2393,
+     5823
+    ],
+    [
+     2400,
+     5826
+    ],
+    [
+     2355,
+     5969
+    ],
+    [
+     2348,
+     5966
+    ],
+    [
+     2393,
+     5823
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "景美",
+   "station_ref": "G05",
+   "station_dist": 25
+  },
+  {
+   "id": 1054531298,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 2192,
+   "mc_z": 4902,
+   "geometry": [
+    [
+     2167,
+     4832
+    ],
+    [
+     2175,
+     4829
+    ],
+    [
+     2218,
+     4973
+    ],
+    [
+     2210,
+     4975
+    ],
+    [
+     2167,
+     4832
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "萬隆",
+   "station_ref": "G06",
+   "station_dist": 2
+  },
+  {
+   "id": 1054531300,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": -1725,
+   "mc_z": 1225,
+   "geometry": [
+    [
+     -1801,
+     1218
+    ],
+    [
+     -1649,
+     1222
+    ],
+    [
+     -1649,
+     1231
+    ],
+    [
+     -1802,
+     1227
+    ],
+    [
+     -1801,
+     1218
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "龍山寺",
+   "station_ref": "BL10",
+   "station_dist": 76
+  },
+  {
+   "id": 1054531301,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 562,
+   "mc_z": 2196,
+   "geometry": [
+    [
+     600,
+     2263
+    ],
+    [
+     514,
+     2136
+    ],
+    [
+     523,
+     2130
+    ],
+    [
+     609,
+     2257
+    ],
+    [
+     600,
+     2263
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "古亭",
+   "station_ref": "O05;G09",
+   "station_dist": 42
+  },
+  {
+   "id": 1058245569,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "3;4",
+   "level": "-3",
+   "layer": "-4",
+   "lines": "",
+   "mc_x": 1160,
+   "mc_z": 1366,
+   "geometry": [
+    [
+     1236,
+     1369
+    ],
+    [
+     1234,
+     1383
+    ],
+    [
+     1085,
+     1362
+    ],
+    [
+     1087,
+     1348
+    ],
+    [
+     1236,
+     1369
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-3",
+    "layer": "-4"
+   },
+   "station": "東門",
+   "station_ref": "O06;R07",
+   "station_dist": 34
+  },
+  {
+   "id": 1061049273,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-3",
+   "layer": "",
+   "lines": "",
+   "mc_x": 8961,
+   "mc_z": -799,
+   "geometry": [
+    [
+     8774,
+     -772
+    ],
+    [
+     8776,
+     -762
+    ],
+    [
+     9149,
+     -826
+    ],
+    [
+     9148,
+     -836
+    ],
+    [
+     8774,
+     -772
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-3",
+    "operator": "臺灣鐵路管理局"
+   },
+   "station": "南港",
+   "station_ref": "BL22",
+   "station_dist": 145
+  },
+  {
+   "id": 1071347686,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-4",
+   "layer": "-3",
+   "lines": "",
+   "mc_x": 3319,
+   "mc_z": 513,
+   "geometry": [
+    [
+     3228,
+     517
+    ],
+    [
+     3228,
+     506
+    ],
+    [
+     3410,
+     509
+    ],
+    [
+     3410,
+     520
+    ],
+    [
+     3228,
+     517
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-4",
+    "layer": "-3"
+   },
+   "station": "忠孝敦化",
+   "station_ref": "BL16",
+   "station_dist": 87
+  },
+  {
+   "id": 1164881518,
+   "type": "way",
+   "name": "臺北車站(鄭州)",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "0",
+   "layer": "",
+   "lines": "",
+   "mc_x": 37,
+   "mc_z": -233,
+   "geometry": [
+    [
+     8,
+     -235
+    ],
+    [
+     9,
+     -240
+    ],
+    [
+     65,
+     -230
+    ],
+    [
+     65,
+     -225
+    ],
+    [
+     8,
+     -235
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "public_transport": "platform",
+    "level": "0"
+   },
+   "station": "台北車站",
+   "station_ref": "R10;BL12",
+   "station_dist": 236
+  },
+  {
+   "id": 1164891303,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "0",
+   "layer": "",
+   "lines": "",
+   "mc_x": -40,
+   "mc_z": -246,
+   "geometry": [
+    [
+     -8,
+     -244
+    ],
+    [
+     -9,
+     -238
+    ],
+    [
+     -72,
+     -249
+    ],
+    [
+     -71,
+     -255
+    ],
+    [
+     -8,
+     -244
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "public_transport": "platform",
+    "level": "0"
+   },
+   "station": "台北車站",
+   "station_ref": "R10;BL12",
+   "station_dist": 249
+  },
+  {
+   "id": 1168327848,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-1",
+   "layer": "-1",
+   "lines": "",
+   "mc_x": 2068,
+   "mc_z": 9783,
+   "geometry": [
+    [
+     2043,
+     9853
+    ],
+    [
+     2083,
+     9711
+    ],
+    [
+     2092,
+     9714
+    ],
+    [
+     2052,
+     9855
+    ],
+    [
+     2043,
+     9853
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-1",
+    "layer": "-1",
+    "subway": "yes",
+    "covered": "yes"
+   },
+   "station": "新店",
+   "station_ref": "G01",
+   "station_dist": 25
+  },
+  {
+   "id": 1168327849,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "3",
+   "layer": "3",
+   "lines": "",
+   "mc_x": 1376,
+   "mc_z": 8247,
+   "geometry": [
+    [
+     1342,
+     8234
+    ],
+    [
+     1348,
+     8224
+    ],
+    [
+     1409,
+     8260
+    ],
+    [
+     1403,
+     8270
+    ],
+    [
+     1342,
+     8234
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "3",
+    "layer": "3",
+    "covered": "yes"
+   },
+   "station": "小碧潭",
+   "station_ref": "G03A",
+   "station_dist": 19
+  },
+  {
+   "id": 1168339027,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 3824,
+   "mc_z": -4289,
+   "geometry": [
+    [
+     3776,
+     -4302
+    ],
+    [
+     3777,
+     -4305
+    ],
+    [
+     3868,
+     -4277
+    ],
+    [
+     3867,
+     -4273
+    ],
+    [
+     3776,
+     -4302
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "劍南路",
+   "station_ref": "BR15",
+   "station_dist": 11
+  },
+  {
+   "id": 1168339028,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 3826,
+   "mc_z": -4300,
+   "geometry": [
+    [
+     3780,
+     -4312
+    ],
+    [
+     3781,
+     -4316
+    ],
+    [
+     3871,
+     -4288
+    ],
+    [
+     3870,
+     -4284
+    ],
+    [
+     3780,
+     -4312
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "劍南路",
+   "station_ref": "BR15",
+   "station_dist": 12
+  },
+  {
+   "id": 1168339031,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "1",
+   "layer": "1",
+   "lines": "",
+   "mc_x": -7288,
+   "mc_z": -13426,
+   "geometry": [
+    [
+     -7346,
+     -13480
+    ],
+    [
+     -7223,
+     -13380
+    ],
+    [
+     -7230,
+     -13371
+    ],
+    [
+     -7353,
+     -13471
+    ],
+    [
+     -7346,
+     -13480
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "1",
+    "layer": "1"
+   },
+   "station": "淡水",
+   "station_ref": "R28",
+   "station_dist": 16
+  },
+  {
+   "id": 1168339039,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-3",
+   "layer": "",
+   "lines": "",
+   "mc_x": 1578,
+   "mc_z": -1448,
+   "geometry": [
+    [
+     1572,
+     -1370
+    ],
+    [
+     1574,
+     -1527
+    ],
+    [
+     1584,
+     -1526
+    ],
+    [
+     1582,
+     -1370
+    ],
+    [
+     1572,
+     -1370
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-3"
+   },
+   "station": "行天宮",
+   "station_ref": "O09",
+   "station_dist": 17
+  },
+  {
+   "id": 1168339040,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-3",
+   "layer": "",
+   "lines": "",
+   "mc_x": 910,
+   "mc_z": -1824,
+   "geometry": [
+    [
+     833,
+     -1830
+    ],
+    [
+     986,
+     -1826
+    ],
+    [
+     986,
+     -1817
+    ],
+    [
+     833,
+     -1821
+    ],
+    [
+     833,
+     -1830
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-3"
+   },
+   "station": "中山國小",
+   "station_ref": "O10",
+   "station_dist": 4
+  },
+  {
+   "id": 1168339041,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-3",
+   "layer": "",
+   "lines": "",
+   "mc_x": -458,
+   "mc_z": -1880,
+   "geometry": [
+    [
+     -380,
+     -1889
+    ],
+    [
+     -380,
+     -1880
+    ],
+    [
+     -539,
+     -1872
+    ],
+    [
+     -540,
+     -1880
+    ],
+    [
+     -380,
+     -1889
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-3"
+   },
+   "station": "大橋頭",
+   "station_ref": "O12",
+   "station_dist": 31
+  },
+  {
+   "id": 1168339043,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": -9876,
+   "mc_z": 9619,
+   "geometry": [
+    [
+     -9946,
+     9663
+    ],
+    [
+     -9816,
+     9563
+    ],
+    [
+     -9806,
+     9575
+    ],
+    [
+     -9937,
+     9675
+    ],
+    [
+     -9946,
+     9663
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "頂埔",
+   "station_ref": "LB01",
+   "station_dist": 17
+  },
+  {
+   "id": 1168339044,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": -8148,
+   "mc_z": 8806,
+   "geometry": [
+    [
+     -8087,
+     8748
+    ],
+    [
+     -8079,
+     8758
+    ],
+    [
+     -8210,
+     8864
+    ],
+    [
+     -8218,
+     8854
+    ],
+    [
+     -8087,
+     8748
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "永寧",
+   "station_ref": "BL02",
+   "station_dist": 23
+  },
+  {
+   "id": 1168339045,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-2",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": -5331,
+   "mc_z": 3535,
+   "geometry": [
+    [
+     -5272,
+     3472
+    ],
+    [
+     -5403,
+     3595
+    ],
+    [
+     -5398,
+     3602
+    ],
+    [
+     -5265,
+     3481
+    ],
+    [
+     -5272,
+     3472
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-2"
+   },
+   "station": "板橋",
+   "station_ref": "Y16",
+   "station_dist": 76
+  },
+  {
+   "id": 1168339046,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-2",
+   "layer": "-2",
+   "lines": "",
+   "mc_x": -5334,
+   "mc_z": 3575,
+   "geometry": [
+    [
+     -5267,
+     3512
+    ],
+    [
+     -5261,
+     3519
+    ],
+    [
+     -5331,
+     3577
+    ],
+    [
+     -5398,
+     3640
+    ],
+    [
+     -5404,
+     3633
+    ],
+    [
+     -5337,
+     3569
+    ],
+    [
+     -5267,
+     3512
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2",
+    "layer": "-2"
+   },
+   "station": "板橋",
+   "station_ref": "Y16",
+   "station_dist": 116
+  },
+  {
+   "id": 1228832747,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": -5363,
+   "mc_z": -5007,
+   "geometry": [
+    [
+     -5293,
+     -4974
+    ],
+    [
+     -5297,
+     -4966
+    ],
+    [
+     -5435,
+     -5041
+    ],
+    [
+     -5431,
+     -5048
+    ],
+    [
+     -5293,
+     -4974
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "蘆洲",
+   "station_ref": "O54",
+   "station_dist": 72
+  },
+  {
+   "id": 1228832752,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": -4541,
+   "mc_z": 1815,
+   "geometry": [
+    [
+     -4499,
+     1751
+    ],
+    [
+     -4490,
+     1758
+    ],
+    [
+     -4583,
+     1879
+    ],
+    [
+     -4592,
+     1872
+    ],
+    [
+     -4499,
+     1751
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "江子翠",
+   "station_ref": "BL09",
+   "station_dist": 59
+  },
+  {
+   "id": 1228832754,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "",
+   "layer": "1",
+   "lines": "",
+   "mc_x": -30583,
+   "mc_z": 3680,
+   "geometry": [
+    [
+     -30614,
+     3709
+    ],
+    [
+     -30556,
+     3645
+    ],
+    [
+     -30551,
+     3649
+    ],
+    [
+     -30609,
+     3714
+    ],
+    [
+     -30614,
+     3709
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "layer": "1",
+    "covered": "yes"
+   },
+   "station": "高鐵桃園站",
+   "station_ref": "A18",
+   "station_dist": 20
+  },
+  {
+   "id": 1228832757,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": -3163,
+   "mc_z": -3381,
+   "geometry": [
+    [
+     -3229,
+     -3416
+    ],
+    [
+     -3223,
+     -3425
+    ],
+    [
+     -3095,
+     -3344
+    ],
+    [
+     -3100,
+     -3336
+    ],
+    [
+     -3229,
+     -3416
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "三和國中",
+   "station_ref": "O51",
+   "station_dist": 14
+  },
+  {
+   "id": 1228832768,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": -2036,
+   "mc_z": -2618,
+   "geometry": [
+    [
+     -2099,
+     -2660
+    ],
+    [
+     -2095,
+     -2666
+    ],
+    [
+     -1974,
+     -2576
+    ],
+    [
+     -1978,
+     -2570
+    ],
+    [
+     -2099,
+     -2660
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "三重國小",
+   "station_ref": "O50",
+   "station_dist": 11
+  },
+  {
+   "id": 1228832775,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "",
+   "layer": "1",
+   "lines": "",
+   "mc_x": -2358,
+   "mc_z": 10598,
+   "geometry": [
+    [
+     -2334,
+     10571
+    ],
+    [
+     -2330,
+     10575
+    ],
+    [
+     -2382,
+     10626
+    ],
+    [
+     -2386,
+     10622
+    ],
+    [
+     -2334,
+     10571
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "layer": "1",
+    "covered": "yes"
+   },
+   "station": "玫瑰中國城",
+   "station_ref": "K02",
+   "station_dist": 46
+  },
+  {
+   "id": 1228832779,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "",
+   "layer": "1",
+   "lines": "",
+   "mc_x": -30610,
+   "mc_z": 3679,
+   "geometry": [
+    [
+     -30641,
+     3708
+    ],
+    [
+     -30583,
+     3644
+    ],
+    [
+     -30578,
+     3648
+    ],
+    [
+     -30635,
+     3712
+    ],
+    [
+     -30641,
+     3708
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "layer": "1"
+   },
+   "station": "高鐵桃園站",
+   "station_ref": "A18",
+   "station_dist": 10
+  },
+  {
+   "id": 1228832783,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 1075,
+   "mc_z": 2810,
+   "geometry": [
+    [
+     1018,
+     2759
+    ],
+    [
+     1024,
+     2753
+    ],
+    [
+     1132,
+     2860
+    ],
+    [
+     1126,
+     2866
+    ],
+    [
+     1018,
+     2759
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "台電大樓",
+   "station_ref": "G08",
+   "station_dist": 27
+  },
+  {
+   "id": 1228832796,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "2",
+   "layer": "",
+   "lines": "",
+   "mc_x": 3002,
+   "mc_z": -3738,
+   "geometry": [
+    [
+     2970,
+     -3706
+    ],
+    [
+     2964,
+     -3713
+    ],
+    [
+     3036,
+     -3770
+    ],
+    [
+     3041,
+     -3763
+    ],
+    [
+     2970,
+     -3706
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2"
+   },
+   "station": "大直",
+   "station_ref": "BR14",
+   "station_dist": 7
+  },
+  {
+   "id": 1228832797,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "-4",
+   "layer": "",
+   "lines": "",
+   "mc_x": -3800,
+   "mc_z": -3782,
+   "geometry": [
+    [
+     -3868,
+     -3816
+    ],
+    [
+     -3863,
+     -3824
+    ],
+    [
+     -3733,
+     -3749
+    ],
+    [
+     -3738,
+     -3741
+    ],
+    [
+     -3868,
+     -3816
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-4"
+   },
+   "station": "徐匯中學",
+   "station_ref": "O52",
+   "station_dist": 34
+  },
+  {
+   "id": 1228832806,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": -125,
+   "mc_z": 477,
+   "geometry": [
+    [
+     -152,
+     560
+    ],
+    [
+     -108,
+     395
+    ],
+    [
+     -99,
+     397
+    ],
+    [
+     -144,
+     562
+    ],
+    [
+     -152,
+     560
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "台大醫院",
+   "station_ref": "R09",
+   "station_dist": 33
+  },
+  {
+   "id": 1228832809,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-3",
+   "layer": "",
+   "lines": "",
+   "mc_x": 1773,
+   "mc_z": 1401,
+   "geometry": [
+    [
+     1697,
+     1404
+    ],
+    [
+     1698,
+     1394
+    ],
+    [
+     1849,
+     1398
+    ],
+    [
+     1849,
+     1408
+    ],
+    [
+     1697,
+     1404
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-3"
+   },
+   "station": "大安森林公園",
+   "station_ref": "R06",
+   "station_dist": 29
+  },
+  {
+   "id": 1228833712,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-3",
+   "layer": "-3",
+   "lines": "",
+   "mc_x": -5490,
+   "mc_z": 3545,
+   "geometry": [
+    [
+     -5450,
+     3481
+    ],
+    [
+     -5443,
+     3486
+    ],
+    [
+     -5531,
+     3609
+    ],
+    [
+     -5538,
+     3604
+    ],
+    [
+     -5450,
+     3481
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-3",
+    "layer": "-3"
+   },
+   "station": "板橋",
+   "station_ref": "BL07",
+   "station_dist": 10
+  },
+  {
+   "id": 1228833713,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": -7340,
+   "mc_z": 8114,
+   "geometry": [
+    [
+     -7393,
+     8182
+    ],
+    [
+     -7398,
+     8178
+    ],
+    [
+     -7286,
+     8045
+    ],
+    [
+     -7281,
+     8049
+    ],
+    [
+     -7393,
+     8182
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "土城",
+   "station_ref": "BL03",
+   "station_dist": 9
+  },
+  {
+   "id": 1247622883,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "-3",
+   "layer": "-3",
+   "lines": "",
+   "mc_x": -5875,
+   "mc_z": 4182,
+   "geometry": [
+    [
+     -5922,
+     4229
+    ],
+    [
+     -5918,
+     4232
+    ],
+    [
+     -5828,
+     4136
+    ],
+    [
+     -5832,
+     4133
+    ],
+    [
+     -5922,
+     4229
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-3",
+    "layer": "-3"
+   },
+   "station": "府中",
+   "station_ref": "BL06",
+   "station_dist": 20
+  },
+  {
+   "id": 1247622887,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "-4",
+   "layer": "-4",
+   "lines": "",
+   "mc_x": -5875,
+   "mc_z": 4182,
+   "geometry": [
+    [
+     -5922,
+     4229
+    ],
+    [
+     -5918,
+     4232
+    ],
+    [
+     -5828,
+     4136
+    ],
+    [
+     -5832,
+     4133
+    ],
+    [
+     -5922,
+     4229
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-4",
+    "layer": "-4"
+   },
+   "station": "府中",
+   "station_ref": "BL06",
+   "station_dist": 20
+  },
+  {
+   "id": 1298769012,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "",
+   "layer": "1",
+   "lines": "",
+   "mc_x": -3062,
+   "mc_z": 11418,
+   "geometry": [
+    [
+     -3070,
+     11398
+    ],
+    [
+     -3072,
+     11399
+    ],
+    [
+     -3054,
+     11437
+    ],
+    [
+     -3052,
+     11436
+    ],
+    [
+     -3070,
+     11398
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "layer": "1"
+   },
+   "station": "",
+   "station_ref": "",
+   "station_dist": 451
+  },
+  {
+   "id": 1316259122,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1;2",
+   "level": "-2",
+   "layer": "",
+   "lines": "",
+   "mc_x": -4952,
+   "mc_z": 2538,
+   "geometry": [
+    [
+     -4984,
+     2608
+    ],
+    [
+     -4992,
+     2604
+    ],
+    [
+     -4923,
+     2470
+    ],
+    [
+     -4914,
+     2475
+    ],
+    [
+     -4933,
+     2511
+    ],
+    [
+     -4984,
+     2608
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-2"
+   },
+   "station": "新埔",
+   "station_ref": "BL08",
+   "station_dist": 4
+  },
+  {
+   "id": 1318465793,
+   "type": "way",
+   "name": "北上月台",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "北上月台",
+   "level": "地下",
+   "layer": "",
+   "lines": "",
+   "mc_x": -18268,
+   "mc_z": 8159,
+   "geometry": [
+    [
+     -18339,
+     8091
+    ],
+    [
+     -18335,
+     8088
+    ],
+    [
+     -18332,
+     8091
+    ],
+    [
+     -18330,
+     8093
+    ],
+    [
+     -18327,
+     8096
+    ],
+    [
+     -18324,
+     8099
+    ],
+    [
+     -18321,
+     8102
+    ],
+    [
+     -18318,
+     8105
+    ],
+    [
+     -18314,
+     8109
+    ],
+    [
+     -18310,
+     8113
+    ],
+    [
+     -18307,
+     8116
+    ],
+    [
+     -18303,
+     8120
+    ],
+    [
+     -18300,
+     8123
+    ],
+    [
+     -18297,
+     8126
+    ],
+    [
+     -18294,
+     8129
+    ],
+    [
+     -18291,
+     8132
+    ],
+    [
+     -18288,
+     8135
+    ],
+    [
+     -18285,
+     8138
+    ],
+    [
+     -18281,
+     8142
+    ],
+    [
+     -18278,
+     8145
+    ],
+    [
+     -18274,
+     8149
+    ],
+    [
+     -18270,
+     8153
+    ],
+    [
+     -18266,
+     8157
+    ],
+    [
+     -18261,
+     8162
+    ],
+    [
+     -18256,
+     8167
+    ],
+    [
+     -18251,
+     8172
+    ],
+    [
+     -18247,
+     8176
+    ],
+    [
+     -18243,
+     8180
+    ],
+    [
+     -18238,
+     8185
+    ],
+    [
+     -18235,
+     8188
+    ],
+    [
+     -18232,
+     8191
+    ],
+    [
+     -18228,
+     8195
+    ],
+    [
+     -18224,
+     8199
+    ],
+    [
+     -18197,
+     8226
+    ],
+    [
+     -18201,
+     8229
+    ],
+    [
+     -18209,
+     8221
+    ],
+    [
+     -18214,
+     8216
+    ],
+    [
+     -18219,
+     8211
+    ],
+    [
+     -18223,
+     8207
+    ],
+    [
+     -18228,
+     8203
+    ],
+    [
+     -18240,
+     8190
+    ],
+    [
+     -18339,
+     8091
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "地下",
+    "train": "yes",
+    "network": "縱貫線",
+    "operator": "台灣鐵路",
+    "covered": "yes",
+    "surface": "concrete"
+   },
+   "station": "",
+   "station_ref": "",
+   "station_dist": 951
+  },
+  {
+   "id": 1339038748,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "3;4",
+   "level": "-3",
+   "layer": "",
+   "lines": "",
+   "mc_x": 562,
+   "mc_z": 2197,
+   "geometry": [
+    [
+     600,
+     2263
+    ],
+    [
+     514,
+     2137
+    ],
+    [
+     523,
+     2131
+    ],
+    [
+     609,
+     2257
+    ],
+    [
+     600,
+     2263
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "-3"
+   },
+   "station": "古亭",
+   "station_ref": "O05;G09",
+   "station_dist": 43
+  },
+  {
+   "id": 1517396745,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "2",
+   "layer": "1",
+   "lines": "",
+   "mc_x": 18,
+   "mc_z": 8982,
+   "geometry": [
+    [
+     11,
+     9000
+    ],
+    [
+     23,
+     8962
+    ],
+    [
+     26,
+     8963
+    ],
+    [
+     15,
+     9001
+    ],
+    [
+     13,
+     9001
+    ],
+    [
+     11,
+     9000
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2",
+    "layer": "1",
+    "covered": "yes"
+   },
+   "station": "安康",
+   "station_ref": "K06",
+   "station_dist": 1
+  },
+  {
+   "id": 1517396746,
+   "type": "way",
+   "name": "",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "2",
+   "layer": "1",
+   "lines": "",
+   "mc_x": 5,
+   "mc_z": 8977,
+   "geometry": [
+    [
+     -2,
+     8996
+    ],
+    [
+     9,
+     8958
+    ],
+    [
+     13,
+     8959
+    ],
+    [
+     1,
+     8997
+    ],
+    [
+     -1,
+     8997
+    ],
+    [
+     -2,
+     8996
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2",
+    "layer": "1",
+    "covered": "yes"
+   },
+   "station": "安康",
+   "station_ref": "K06",
+   "station_dist": 13
+  },
+  {
+   "id": 1518975604,
+   "type": "way",
+   "name": "1月台",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "1",
+   "level": "2",
+   "layer": "1",
+   "lines": "",
+   "mc_x": 231,
+   "mc_z": 8187,
+   "geometry": [
+    [
+     224,
+     8206
+    ],
+    [
+     235,
+     8167
+    ],
+    [
+     238,
+     8168
+    ],
+    [
+     227,
+     8207
+    ],
+    [
+     224,
+     8206
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2",
+    "layer": "1",
+    "light_rail": "yes",
+    "operator": "新北大眾捷運股份有限公司",
+    "covered": "yes",
+    "surface": "paving_stones"
+   },
+   "station": "陽光運動公園",
+   "station_ref": "K07",
+   "station_dist": 6
+  },
+  {
+   "id": 1518975605,
+   "type": "way",
+   "name": "2月台",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "2",
+   "level": "2",
+   "layer": "1",
+   "lines": "",
+   "mc_x": 243,
+   "mc_z": 8189,
+   "geometry": [
+    [
+     236,
+     8209
+    ],
+    [
+     246,
+     8170
+    ],
+    [
+     250,
+     8171
+    ],
+    [
+     239,
+     8210
+    ],
+    [
+     236,
+     8209
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "level": "2",
+    "layer": "1",
+    "light_rail": "yes",
+    "operator": "新北大眾捷運股份有限公司",
+    "covered": "yes",
+    "surface": "paving_stones"
+   },
+   "station": "陽光運動公園",
+   "station_ref": "K07",
+   "station_dist": 6
+  },
+  {
+   "id": 19404302,
+   "type": "relation",
+   "name": "捷運中和站",
+   "name_zh": "",
+   "name_en": "",
+   "ref": "",
+   "level": "",
+   "layer": "1",
+   "lines": "",
+   "mc_x": -2100,
+   "mc_z": 4912,
+   "geometry": [
+    [
+     -2127,
+     4888
+    ],
+    [
+     -2118,
+     4883
+    ],
+    [
+     -2111,
+     4882
+    ],
+    [
+     -2106,
+     4881
+    ],
+    [
+     -2106,
+     4885
+    ],
+    [
+     -2101,
+     4885
+    ],
+    [
+     -2099,
+     4884
+    ],
+    [
+     -2095,
+     4884
+    ],
+    [
+     -2090,
+     4883
+    ],
+    [
+     -2082,
+     4935
+    ],
+    [
+     -2084,
+     4935
+    ],
+    [
+     -2082,
+     4948
+    ],
+    [
+     -2081,
+     4953
+    ],
+    [
+     -2091,
+     4954
+    ],
+    [
+     -2092,
+     4944
+    ],
+    [
+     -2099,
+     4945
+    ],
+    [
+     -2100,
+     4937
+    ],
+    [
+     -2127,
+     4888
+    ]
+   ],
+   "closed": true,
+   "tags": {
+    "railway": "platform",
+    "public_transport": "platform",
+    "layer": "1",
+    "subway": "yes"
+   },
+   "station": "中和",
+   "station_ref": "Y12",
+   "station_dist": 74
+  }
+ ]
+}

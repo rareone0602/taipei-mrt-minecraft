@@ -1,0 +1,15 @@
+{
+ "x0": -32436,
+ "z0": -17745,
+ "step": 20,
+ "nx": 2163,
+ "nz": 1492,
+ "sea_y": 62,
+ "primary": "NLSC 20m DTM (TWD97/TM2, TWVD2001)",
+ "fallback": [
+  "Copernicus_DSM_COG_10_N24_00_E121_00_DEM.tif",
+  "Copernicus_DSM_COG_10_N25_00_E121_00_DEM.tif"
+ ],
+ "dsm_bias": 4.835,
+ "dtm_coverage": 0.6612
+}
