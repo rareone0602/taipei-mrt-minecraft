@@ -11,17 +11,57 @@ Java Edition 26.2 存檔中，含真實地形、隧道／高架／平面三種�
 ```bash
 python3 -m venv .venv && ./.venv/bin/pip install pyproj nbtlib numpy pillow rasterio
 
-./.venv/bin/python scripts/fetch_network.py     # OSM 路線幾何
-./.venv/bin/python scripts/fetch_stations.py    # OSM 車站節點
-./.venv/bin/python scripts/fetch_way_tags.py    # way 標籤（判斷隧道/橋樑）
-./.venv/bin/python scripts/fetch_branch.py      # 補抓 ref 非標準代號的支線
-./.venv/bin/python scripts/fetch_details.py     # 出入口／站體建物／月台樓層
-./.venv/bin/python scripts/to_minecraft.py      # 投影到 Minecraft 座標
-./.venv/bin/python scripts/make_heightmap.py    # DEM -> 高程網格
-./.venv/bin/python scripts/build_world.py       # 生成世界（--rails 才鋪鐵軌）
+./.venv/bin/python -m mrt.adapters.osm.fetch_network    # OSM 路線幾何
+./.venv/bin/python -m mrt.adapters.osm.fetch_stations   # OSM 車站節點
+./.venv/bin/python -m mrt.adapters.osm.fetch_way_tags   # way 標籤（判斷隧道/橋樑）
+./.venv/bin/python -m mrt.adapters.osm.fetch_branch     # 補抓 ref 非標準代號的支線
+./.venv/bin/python -m mrt.adapters.osm.fetch_details    # 出入口／站體建物／月台樓層
+./.venv/bin/python -m mrt.adapters.projection           # 投影到 Minecraft 座標
+./.venv/bin/python -m mrt.adapters.dem.make_heightmap   # DEM -> 高程網格
+./.venv/bin/python -m cli.build_world                   # 生成世界（--rails 才鋪鐵軌）
 
 cp -R "out/Taipei MRT" ~/Library/Application\ Support/minecraft/saves/
 ```
+
+## 程式結構
+
+相依方向一律由外往內，內層不得引用外層：
+
+```
+mrt/
+  config.py         路徑與世界垂直範圍。所有層都可以引用
+  domain/           純規則，零 I/O
+    alignment.py      取樣、縱斷面、軌道離線位、路線變體挑選
+    geometry.py       多邊形填充、外牆描邊、四坡屋頂
+    rails.py          中心線 -> 鐵軌方塊與 shape
+    terrain.py        高程網格取樣
+    tunnel_layers.py  地下線的深度帶指派
+  ports/            內層對外層開的介面
+    block_sink.py     BlockSink（逐格）、ChunkSink（整段批次）、DictSink（測試用）
+  application/      用例：把 domain 算出來的東西寫進 BlockSink
+    build_line.py     地下／高架／平面三種斷面與車站
+    build_world.py    地形 chunk 組裝、走廊漸變
+    landmarks.py      台北車站（照實際圖面蓋，不是樣板）
+    build_br.py       文湖線專用（第一條線的垂直切片，留著當對照）
+  adapters/         外部資料進來
+    osm/              Overpass 查詢與解析
+    dem/              DEM 重新取樣
+    projection.py     WGS84 -> TWD97/TM2 -> MC 方塊座標
+  infrastructure/   外部技術細節
+    mcworld.py        Anvil 區域檔寫入（實作 BlockSink / ChunkSink）
+    overpass.py       Overpass HTTP：鏡像輪替、重試、快取
+
+cli/                組合根。唯一看得到全部實作的地方
+tools/              驗證與檢視：獨立讀回存檔，不信生成器的自述
+tests/              不需要產生世界就能跑的測試
+```
+
+生成器一直都是把世界當參數收（`def build_station(w, ...)`）而且只呼叫
+`w.set()` —— 介面本來就存在，`ports/block_sink.py` 只是把它講出來。
+所以測試可以塞一個 dict 進去，不必先產生 1 GB 的存檔。
+
+分層靠 `tests/test_architecture.py` 守住：它 parse 每個模組的 import，
+內層引用外層就讓測試紅掉。目錄名稱本身擋不住任何人。
 
 ## 核心決定
 
@@ -85,31 +125,36 @@ relation 的成員順序不保證、方向可能相反，直接串接會產生�
 
 ## 驗證
 
-不相信生成器的自述，一律從磁碟獨立讀回來比對：
+不相信生成器的自述，一律從磁碟獨立讀回來比對。不必產生世界就能跑的部分：
+
+```bash
+./.venv/bin/python tests/run_all.py
+```
+
 
 - `roundtrip.py` — 4,235 個方塊跨 chunk/section 邊界、負座標、y=−64~319、含方塊狀態
-- `verify_render.py` — 讀回區域檔算俯視圖，未列入配色的方塊會顯示洋紅。
+- `tools/verify_render.py` — 讀回區域檔算俯視圖，未列入配色的方塊會顯示洋紅。
   `--bbox X0 Z0 X1 Z1` 可以只畫一小塊出局部特寫（配 `--scale 1` 就是 1 m/px）。
   **注意**：終端輸出只列前 20 種方塊，新加的材質排不進去就看不到「未列入配色」
   的提示 —— 要直接掃圖上有沒有洋紅像素才算數（而且洋紅會被高度陰影調暗，
   判斷條件是 g=0 且 r=b，不是 r>200）
-- `verify_rails.py` — 讀回全部鐵軌，檢查每根宣告的連接方向對面真的有軌道接回來、
+- `tools/verify_rails.py` — 讀回全部鐵軌，檢查每根宣告的連接方向對面真的有軌道接回來、
   斜軌高程對得上、底下不是空氣。生成器自己的單元測試只證明「算出來的路徑」合法，
   證明不了寫進世界之後還是那樣
-- `shapes.py` / `landmarks.py` — 各自帶單元測試（多邊形填充面積、外圈、內縮、
+- `tests/` — 幾何、線形、鐵軌、地標各自帶單元測試（多邊形填充面積、外圈、內縮、
   屋頂收斂、折返梯的踏面與淨空），不必產生世界就能跑
-- `tunnel_layers.py` — 分帶後自己驗算：任兩條異線的地下格若相鄰，帶號必須不同
+- `mrt/domain/tunnel_layers.py` — 分帶後自己驗算：任兩條異線的地下格若相鄰，帶號必須不同
 - ASCII 橫斷面 — 直接把剖面印出來看
 
 這樣抓到過：懸空隧道、被覆蓋掉的樓梯半磚（`STEP=0.5` 導致每階只前進 1 m）、
 相機 `clip_end` 預設 100 m 造成的全黑算圖。
 
-`scripts/slice_world.py` 直接從存檔切 ASCII 剖面，是唯一能看出「蓋出來的東西
+`tools/slice_world.py` 直接從存檔切 ASCII 剖面，是唯一能看出「蓋出來的東西
 到底長怎樣」的方法：
 
 ```
-./.venv/bin/python scripts/slice_world.py 忠孝復興          # 垂直於路線
-./.venv/bin/python scripts/slice_world.py 忠孝復興 --long   # 沿著路線
+./.venv/bin/python tools/slice_world.py 忠孝復興          # 垂直於路線
+./.venv/bin/python tools/slice_world.py 忠孝復興 --long   # 沿著路線
 ```
 
 車站兩端被襯砌牆封死、出入口只有一口沒有階梯的直井，都是這樣看出來的。
@@ -167,7 +212,7 @@ dy -2  ────────────  底板
 其他 180 座車站都是同一個樣板沿線掃出來的。台北車站不是 —— 它照實際圖面蓋，
 每個數字都有出處。
 
-**站體大樓**（`scripts/landmarks.py` 的 `Building`）
+**站體大樓**（`mrt/application/landmarks.py` 的 `Building`）
 
 平面圖來自 OSM way 23641610（25 個頂點）。但沿主軸量是 169×141 m，
 比官方尺寸大 —— 多出來的是屋簷出挑與地面雨庇。臺鐵出借範圍示意圖上的
@@ -215,14 +260,14 @@ OSM 的月台 way 是**封閉的外框**而不是中心線。一開始沿線刷�
 ## 鐵軌
 
 **預設不鋪。** 走行面（`smooth_stone`）照留，軌道要不要鋪、鋪成什麼樣，
-交給玩家用模組決定。`build_world.py --rails` 會鋪一套原版鐵軌。
+交給玩家用模組決定。`cli.build_world --rails` 會鋪一套原版鐵軌。
 
-真要鋪的話，`scripts/rails.py` 負責把浮點中心線變成礦車跑得完的鐵軌。
+真要鋪的話，`mrt/domain/rails.py` 負責把浮點中心線變成礦車跑得完的鐵軌。
 世界是直接寫 NBT、沒有方塊更新，所以 `shape` 必須自己算對 —— 鐵軌不會自動接起來。
 規則：對角步拆成兩個正交步、斜軌不能同時是彎道（高差要挪到最近的直線段）、
 相鄰兩條邊不准都有高差、動力軌沒有彎道形狀。每 12 格一根動力軌、底下墊紅石塊供電。
 
-`scripts/verify_rails.py` 從存檔獨立讀回來驗證連通性。開 `--rails` 實測 548,609 根，
+`tools/verify_rails.py` 從存檔獨立讀回來驗證連通性。開 `--rails` 實測 548,609 根，
 缺陷 27 處，全部落在**同一條線的支線分歧點**（松山新店線的小碧潭支線、
 機場捷運的直達／普通車分歧、中和新蘆線的分歧）—— 沒有真的道岔，見「已知限制」。
 
@@ -236,7 +281,7 @@ OSM 的月台 way 是**封閉的外框**而不是中心線。一開始沿線刷�
 BL/G/O/R 四條線在市中心兩兩都會交會（K4 完全圖），每線一個固定深度就需要
 四層，最深要挖到地下 60 m —— 北捷實際最深約 30 m。
 
-`scripts/tunnel_layers.py` 改成**逐取樣點指派**：平常走最淺的帶，只有在目前
+`mrt/domain/tunnel_layers.py` 改成**逐取樣點指派**：平常走最淺的帶，只有在目前
 的帶被別條線占用時才換帶，換帶時還會前瞻 1.5 km 挑一個撐得最久的帶。
 縱斷面的 4% 坡度限制會自動把換帶處拉成 375 m 的潛降段，不必另外處理。
 

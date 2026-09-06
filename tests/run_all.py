@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+"""跑完所有不需要產生世界的測試。
+
+不含 tools/ 底下那幾支 —— 它們要先有存檔才驗得了，見 README「驗證」。
+
+用法: ./.venv/bin/python tests/run_all.py
+"""
+import os
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+TESTS = ["test_architecture.py", "test_geometry.py", "test_alignment.py",
+         "test_rails.py", "test_landmarks.py"]
+
+
+def main():
+    failed = []
+    for t in TESTS:
+        print(f"\n{'=' * 60}\n{t}\n{'=' * 60}")
+        r = subprocess.run([sys.executable, os.path.join(HERE, t)])
+        if r.returncode != 0:
+            failed.append(t)
+
+    print(f"\n{'=' * 60}")
+    if failed:
+        print(f"{len(failed)} 支失敗: {', '.join(failed)}")
+        return 1
+    print(f"{len(TESTS)} 支測試全部通過")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
