@@ -26,7 +26,7 @@ mrt/
   config.py         專案路徑與世界垂直範圍。所有層都可以引用
   domain/           純規則，零 I/O：線形、鐵軌形狀、建築幾何、隧道分層、高程取樣、
                     地下街動線 (concourse)、真實出入口與轉乘通道的擺放與避讓 (exits)、
-                    行走可達性 (walk)
+                    疊式車站與袋狀軌 (stacked)、行走可達性 (walk)
   ports/            內層對外層開的介面：BlockSink（逐格）、ChunkSink（整段批次）
   application/      用例：把 domain 算出來的東西寫進 BlockSink
   adapters/         外部資料進來：OSM (osm/)、DEM (dem/)、投影 (projection.py)
@@ -74,6 +74,7 @@ tests/              不需要產生世界就能跑的測試
 ./.venv/bin/python -m mrt.adapters.osm.fetch_branch       # 非標準代號的支線
 ./.venv/bin/python -m mrt.adapters.osm.fetch_details      # 出入口／站體／月台樓層
 ./.venv/bin/python -m mrt.adapters.osm.fetch_indoor       # 地下人行動線（地下街）
+./.venv/bin/python -m mrt.adapters.osm.fetch_sidings      # 袋狀軌／橫渡線／機廠線
 ./.venv/bin/python -m mrt.adapters.projection             # 投影到 MC 座標
 ./.venv/bin/python -m mrt.adapters.dem.make_heightmap     # DEM -> 高程網格
 
@@ -90,6 +91,9 @@ tests/              不需要產生世界就能跑的測試
 ./.venv/bin/python tools/verify_rails.py [存檔]           # 讀回驗證鐵軌連通性
 ./.venv/bin/python tools/verify_exits.py <存檔>           # 讀回每座出入口，從街上走到月台
 ./.venv/bin/python tools/verify_concourse.py <存檔> --stations 台北車站 北門 中山 雙連
+./.venv/bin/python tools/verify_exits.py <存檔> --levels 府中 西門   # 疊式站要走得到兩層月台
+./.venv/bin/python tools/verify_tracks.py <存檔> --station 西門 --expect 4 --levels 2
+                                                          # 讀回每一刀有幾股鐵軌、各在哪個高度
 ./.venv/bin/python tools/slice_world.py 忠孝復興          # ASCII 剖面
 ```
 
@@ -101,6 +105,13 @@ tests/              不需要產生世界就能跑的測試
 **穿堂層的高度只有一個定義**：`alignment.station_kind` / `LEVEL_DY`
 （地下 +7、橋下 −6、月台上方 +8）。蓋車站的、擺出入口井的、接轉乘通道的、
 驗證的都從那裡拿，別在別處再算一次 —— 差一格就是一整站走不通。
+疊式車站（`domain/stacked.py`：府中、西門）也守這一條：上層就是原本的島式站，
+下層整層複製到 `LEVEL_H` 格底下，穿堂仍在 +7。要改層距只能改 `LEVEL_H`。
+
+**共用站體的兩條線在 `assign_bands` 裡是自己人**（`shared=`），而且規劃完
+一定要看 `check_clearance` 的那一行：帶號沒衝突不代表箱涵沒交疊。
+西門的釘樁曾經把板南線嚇到帶 2，台北車站的板南線因此撞進淡水信義線的站體，
+帶號驗算完全沒發現。
 
 ## 授權
 
