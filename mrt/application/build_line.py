@@ -9,6 +9,7 @@ ports.block_sink.BlockSink，不是特定的存檔實作，所以測試可以塞
 """
 import math
 
+from mrt.domain import stacked as SK
 from mrt.domain.alignment import (
     GROUND, STEP, PIER_EVERY, PLATFORM_LEN, BOX_HALF, PLAT_HALF,
     TUN_TRACK_OFF, MEZZ_DY, BOX_TOP_DY, LEVEL_DY, structure_for_ground,
@@ -98,6 +99,42 @@ def sec_tunnel(w, x, z, nx, nz, y, light=False, hw=5, toff=TUN_TRACK_OFF):
             w.set(round(x + nx * off), y + 6, round(z + nz * off), LAMP)
 
 
+def sec_multi(w, x, z, nx, nz, tracks, light=False, half=2):
+    """多股道或上下分層的隧道斷面。tracks = [(離線位, 軌面 y), ...]。
+
+    同高的股道併成一個箱涵：內部從最外側股道再往外 half 格，股道之間立分隔矮牆
+    （跟 sec_tunnel 一樣：兩股道在 ±3 時內部是 ±5、矮牆在 0；袋狀軌三股道
+    −6/0/6 時內部 ±8、矮牆在 ±3）。不同高的股道各開各的箱涵，交疊處取聯集，
+    襯砌只砌在聯集的外圈 —— 分層過渡段裡下潛那股道的箱涵一路從隔壁滑到正下方，
+    襯砌逐點算才不會把對方的淨空砌死。上層先鋪，下層的淨空不會把上層的樓板挖掉。
+    """
+    groups = {}
+    for off, y in tracks:
+        groups.setdefault(int(y), []).append(int(round(off)))
+    interior = {}                                   # (off, y) -> 方塊
+    for y in sorted(groups, reverse=True):
+        offs = sorted(groups[y])
+        o0, o1 = offs[0] - half, offs[-1] + half
+        curbs = {o0, o1} | {(a + b) // 2 for a, b in zip(offs, offs[1:])}
+        for o in range(o0, o1 + 1):
+            interior.setdefault((o, y - 1), CONC)
+            interior.setdefault((o, y), CONC if o in curbs else DECK)
+            for dy in range(1, 7):
+                interior.setdefault((o, y + dy), WALL if (dy == 1 and o in curbs) else AIR)
+    shell = set()
+    for o, yy in interior:
+        for do in (-2, -1, 0, 1, 2):
+            for dyy in (-1, 0, 1):
+                c = (o + do, yy + dyy)
+                if c not in interior:
+                    shell.add(c)
+    for o, yy in shell:
+        w.set(round(x + nx * o), yy, round(z + nz * o), LINING)
+    for (o, yy), blk in interior.items():
+        w.set(round(x + nx * o), yy, round(z + nz * o), blk)
+    if light:
+        for off, y in tracks:
+            w.set(round(x + nx * off), int(y) + 6, round(z + nz * off), LAMP)
 
 
 def build_alignment(w, samples, ys):
@@ -206,14 +243,20 @@ def _stair_run(w, samples, ys, s0, d, per_m, y_from, y_to, off_lo, off_hi,
 # ---------- 車站 ----------
 
 def build_station(w, samples, ys, idx, underground, label=None, grounds=None,
-                  access=True):
+                  access=True, stacked=None):
     """access=False 時不蓋樣板的出入口樓梯 —— 有真實出入口
     （application/build_exits.py）的車站用那些，樣板的那座只會多出一個
-    誰也不會走的洞。地下站與側式月台站都適用。"""
+    誰也不會走的洞。地下站與側式月台站都適用。
+
+    stacked 是 domain/stacked.layout() 的版面：兩股道分到上下兩層的地下站
+    （府中的側式疊式、西門那種兩線共用的島式疊式）。samples 這時是站體座標系
+    （共用站體的是兩線中線的 frame，見 stacked.station_samples）。"""
     n = len(samples)
     half = int(PLATFORM_LEN / 2 / STEP)
     lo, hi = max(0, idx - half), min(n - 1, idx + half)
-    if underground:
+    if stacked is not None:
+        _station_stacked(w, samples, ys, grounds, lo, hi, label, stacked, access=access)
+    elif underground:
         _station_island(w, samples, ys, grounds, lo, hi, label, access=access)
     else:
         _station_side(w, samples, ys, grounds, lo, hi, label, access=access)
@@ -318,20 +361,47 @@ def _gates(w, samples, ys, s0, per_m, floor_dy=MEZZ_DY, half=BOX_HALF - 2):
                     w.set(bx, yy, bz, AIR)
 
 
-def _plat_stair(w, samples, ys, s0, per_m):
-    """穿堂層下到月台的樓梯，順便在樓板上開口。"""
+def _plat_stair(w, samples, ys, s0, per_m, off_lo=-3, off_hi=3):
+    """穿堂層下到月台的樓梯，順便在樓板上開口。off_lo..off_hi 是踏面的離線位
+    （島式月台放在正中央 −3..3，側式疊式的放在月台上）。"""
     y0 = int(ys[min(s0, len(ys) - 1)])
     steps = _stair_run(w, samples, ys, s0, 1, per_m,
-                       y0 + MEZZ_DY + 1, y0 + 2, -3, 3,
+                       y0 + MEZZ_DY + 1, y0 + 2, off_lo, off_hi,
                        clear_dy=BOX_TOP_DY - 1)
     for si, yb in steps:                                # 開口兩側加欄杆
         x, z, ux, uz, _ = samples[si]
         nx, nz = -uz, ux
         ym = int(ys[si]) + MEZZ_DY
-        for off in (-4, 4):
+        for off in (off_lo - 1, off_hi + 1):
             bx, bz = round(x + nx * off), round(z + nz * off)
             w.set(bx, ym, bz, CONC)
             w.set(bx, ym + 1, bz, BARS)
+
+
+def _level_stair(w, samples, ys, s0, per_m, drop, off_lo, off_hi):
+    """疊式站上層月台下到下層月台的樓梯（站立面從軌面 +2 降到 +2 − drop）。
+
+    頭部淨空最多挖到軌面 +5：梯頂就在上層月台上，四格淨空會把 +6 的穿堂樓板
+    挖穿。上層月台被挖開的那幾階兩側圍欄杆，洞的盡頭橫著再圍一排 —— 從月台
+    另一頭走過來的人，不圍的話一步就踩進四格深的洞。
+    """
+    y0 = int(ys[min(s0, len(ys) - 1)])
+    steps = _stair_run(w, samples, ys, s0, 1, per_m, y0 + 2, y0 + 2 - drop,
+                       off_lo, off_hi, head=4, clear_max_dy=5)
+    opened = []
+    for si, yb in steps:
+        opened.append(yb + 4 >= int(ys[si]) + 1)      # 淨空挖到上層月台面（+1）
+    for k, (si, yb) in enumerate(steps):
+        x, z, ux, uz, _ = samples[si]
+        nx, nz = -uz, ux
+        stand = int(ys[si]) + 2
+        if opened[k] and yb < int(ys[si]):
+            for off in (off_lo - 1, off_hi + 1):
+                w.set(round(x + nx * off), stand, round(z + nz * off), BARS)
+        elif not opened[k] and k > 0 and opened[k - 1]:
+            for off in range(off_lo - 1, off_hi + 2):
+                w.set(round(x + nx * off), stand, round(z + nz * off), BARS)
+    return steps
 
 
 def _station_access(w, samples, ys, grounds, lo, hi, label):
@@ -432,17 +502,100 @@ def _hall(w, samples, ys, s0, d, per_m, g0, label, t0, t1, o0, o1,
                    facing=(nx, nz))
 
 
-def _plat_signs(w, samples, ys, lo, hi, label):
-    """月台門上每 20 m 一面站名牌，牌面朝月台內側。"""
+def _plat_signs(w, samples, ys, lo, hi, label, offs=(PLAT_HALF, -PLAT_HALF), dy0=0):
+    """月台門上每 20 m 一面站名牌，牌面朝月台內側。offs 是月台門的離線位，
+    dy0 是這一層軌面相對線形軌面的高差（疊式站的下層是 −LEVEL_H）。"""
     ref, zh, en = label
     per_m = max(1, int(round(1.0 / STEP)))
     for i in range(lo + 20 * per_m, hi - 8 * per_m, 20 * per_m):
         x, z, ux, uz, _ = samples[i]
         nx, nz = -uz, ux
-        y = int(ys[i])
-        for off, face in ((PLAT_HALF, (-nx, -nz)), (-PLAT_HALF, (nx, nz))):
+        y = int(ys[i]) + dy0
+        for off in offs:
+            face = (-nx, -nz) if off > 0 else (nx, nz)
             bx, bz = round(x + nx * off), round(z + nz * off)
             w.sign(bx, y + 2, bz, [ref, zh, en, ""], facing=face)
+
+
+# ===== 疊式地下站：兩股道分到上下兩層 =====
+
+def _station_stacked(w, samples, ys, grounds, lo, hi, label, lay, access=True):
+    """雙層地下站（domain/stacked.py）。上層與島式站同一套尺寸 —— 穿堂仍在
+    軌面 +7，出入口、轉乘通道與驗證工具全部不必改；下層整層複製到 LEVEL_H
+    格底下，頂板就是上層的底板。lay 是 stacked.layout() 的版面：側式疊式
+    （府中）每層一股道、月台在同一側；共用島式（西門）每層兩股道各屬一條線。
+
+    跟島式站一樣分兩趟：先把 21 格高的箱涵挖乾淨，再安裝兩層的設備。
+    端面在每一層的隧道斷面高度各開一個洞（上層 dy −1..6、下層 dy −9..−3）。
+    """
+    per_m = max(1, int(round(1.0 / STEP)))
+    H, bot = SK.LEVEL_H, SK.BOX_BOTTOM_DY
+
+    for i in range(lo, hi + 1):                         # ---- 第一趟：挖空 ----
+        x, z, ux, uz, _ = samples[i]
+        nx, nz = -uz, ux
+        y = int(ys[i])
+        end = i in (lo, hi)
+        for off in range(-BOX_HALF, BOX_HALF + 1):
+            bx, bz = round(x + nx * off), round(z + nz * off)
+            for dy in range(bot, BOX_TOP_DY + 1):
+                portal = abs(off) <= BOX_HALF - 2 and (-1 <= dy <= 6 or bot + 1 <= dy <= -3)
+                solid = (abs(off) >= BOX_HALF - 1 or dy in (bot, -2, BOX_TOP_DY)
+                         or (end and not portal))
+                w.set(bx, y + dy, bz, LINING if solid else AIR)
+
+    for dy0 in (0, -H):                                 # ---- 第二趟：兩層月台 ----
+        _stacked_level(w, samples, ys, lo, hi, dy0, lay)
+
+    for i in range(lo, hi + 1):                         # 穿堂樓板與照明
+        x, z, ux, uz, _ = samples[i]
+        nx, nz = -uz, ux
+        y = int(ys[i])
+        for off in range(-(BOX_HALF - 2), BOX_HALF - 1):
+            w.set(round(x + nx * off), y + MEZZ_DY, round(z + nz * off), CONC)
+        if (((i - lo) * STEP) % 8.0) < STEP:
+            for off in (-7, 0, 7):
+                w.set(round(x + nx * off), y + BOX_TOP_DY - 1, round(z + nz * off), LAMP)
+
+    _gates(w, samples, ys, lo + 14 * per_m, per_m)
+    s0, s1 = lay["stair"]
+    for a0 in (24, 48):
+        _plat_stair(w, samples, ys, lo + a0 * per_m, per_m, off_lo=s0, off_hi=s1)
+    l0, l1 = lay["lstair"]
+    _level_stair(w, samples, ys, lo + 4 * per_m, per_m, H, l0, l1)
+    if access:
+        _station_access(w, samples, ys, grounds, lo, hi, label)
+    if label:
+        for dy0 in (0, -H):
+            _plat_signs(w, samples, ys, lo, hi, label, offs=lay["psd"], dy0=dy0)
+
+
+def _stacked_level(w, samples, ys, lo, hi, dy0, lay):
+    """疊式站的一層：軌面在線形軌面 + dy0。月台鋪面（含月台門那一排）、
+    警示帶、月台門、其餘都是走行面；燈掛在這一層頂板底下。"""
+    p0, p1 = lay["plat"]
+    plat = set(range(p0, p1 + 1)) | set(lay["psd"])
+    for i in range(lo, hi + 1):
+        x, z, ux, uz, _ = samples[i]
+        nx, nz = -uz, ux
+        y = int(ys[i]) + dy0
+        along = (i - lo) * STEP
+        door = (along % 7.0) < 2.0
+        for off in range(-(BOX_HALF - 2), BOX_HALF - 1):
+            bx, bz = round(x + nx * off), round(z + nz * off)
+            w.set(bx, y - 1, bz, CONC)
+            if off in plat:
+                w.set(bx, y, bz, CONC)
+                w.set(bx, y + 1, bz, YELLOW if off in lay["yellow"] else PLAT)
+            else:
+                w.set(bx, y, bz, DECK)
+        for off in lay["psd"]:
+            bx, bz = round(x + nx * off), round(z + nz * off)
+            for yy in range(y + 2, y + MEZZ_DY):
+                w.set(bx, yy, bz, AIR if door else PSD)
+        if (along % 8.0) < STEP:
+            for off in (-10, -3, 3, 10):
+                w.set(round(x + nx * off), y + MEZZ_DY - 1, round(z + nz * off), LAMP)
 
 
 # ===== 高架／平面站：側式月台 =====

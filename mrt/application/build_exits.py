@@ -28,6 +28,7 @@ import collections
 from mrt.application import build_concourse as BCC
 from mrt.domain import exits as EX
 from mrt.domain.alignment import station_kind
+from mrt.domain.stacked import station_samples
 
 PIER_EVERY = 6         # 空橋每幾公尺一根柱
 APRON = "minecraft:grass_block"   # 出入口門前的前庭地坪：算地形，驗證「門開在街上」認它
@@ -177,11 +178,13 @@ def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
     used = EX.Occupancy() if used is None else used
     occ = EX.index_segments(segs)
 
+    # 站體座標系用 stacked.station_samples：共用站體（西門）的是兩線中線的 frame，
+    # 出入口與轉乘通道都要接到那座箱涵的側牆，不是接到路線自己的中心線旁邊
     boxes = collections.defaultdict(dict)          # 站名 -> {(li, bi): ...}
     labels = {}
     for li, sg in enumerate(segs):
         for bi, (full, name, en) in sg["stn"].items():
-            boxes[name][(li, bi)] = (sg["samples"], sg["ys"], bi)
+            boxes[name][(li, bi)] = (station_samples(sg, bi), sg["ys"], bi)
             labels[(li, bi)] = (full, name, en)
 
     objs, exits, report = [], {}, {}
@@ -192,8 +195,9 @@ def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
 
     def interior_of(key):
         sg = segs[key[0]]
-        lo, hi, _ = EX.station_frame(sg["samples"], sg["ys"], key[1])
-        return EX.box_cells(sg["samples"], lo, hi, EX.BOX_HALF - 2)
+        fr = station_samples(sg, key[1])
+        lo, hi, _ = EX.station_frame(fr, sg["ys"], key[1])
+        return EX.box_cells(fr, lo, hi, EX.BOX_HALF - 2)
 
     def kind_of(key):
         sg = segs[key[0]]
@@ -203,8 +207,9 @@ def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
         """一座站體的出入口。回傳 (計畫, 井)。"""
         li, bi = key
         sg = segs[li]
-        plan = EX.plan_station(sg["samples"], sg["ys"], sg["ground"], bi,
-                               ents, ground_at, occ, used_, own_tag=li)
+        plan = EX.plan_station(station_samples(sg, bi), sg["ys"], sg["ground"], bi,
+                               ents, ground_at, occ, used_, own_tag=li,
+                               ally_tags=sg.get("ally_segs", {}).get(bi, ()))
         out = []
         full, zh, en = labels[key]
         for s in plan["shafts"]:
@@ -227,7 +232,7 @@ def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
         def bx(key):
             li, bi = key
             sg = segs[li]
-            return dict(samples=sg["samples"], ys=sg["ys"], grounds=sg["ground"],
+            return dict(samples=station_samples(sg, bi), ys=sg["ys"], grounds=sg["ground"],
                         idx=bi, tag=li, key=key)
         pairs, rest, cur = [], keys[1:], keys[0]
         while rest:

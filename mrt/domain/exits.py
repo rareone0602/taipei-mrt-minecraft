@@ -39,6 +39,7 @@ from mrt.domain.alignment import (
     BOX_HALF, MEZZ_DY, BOX_TOP_DY, PLATFORM_LEN, STEP, LEVEL_DY,
     structure_for_ground, station_kind,
 )
+from mrt.domain.stacked import BOX_BOTTOM_DY
 
 PASS_OFF   = BOX_HALF + 3      # 接駁通道中心線的離線位（站體外側 3 m）
 PASS_HALF  = 2                 # 通道半寬 -> 5 m 寬
@@ -104,9 +105,11 @@ class Occupancy:
 
     def blocked(self, x, z, y0, y1, skip_tag=None, ignore=None):
         """ignore(tag) 回 True 的占用不算數 —— 轉乘通道跟同一座站體、同一層的
-        出入口通道重疊是正常的（兩條通道併成一片地板），跟別的東西重疊才是撞。"""
+        出入口通道重疊是正常的（兩條通道併成一片地板），跟別的東西重疊才是撞。
+        skip_tag 可以是一個 tag，也可以是一組（共用站體的兩條線都算自己人）。"""
+        skip = _tags(skip_tag)
         for a, b, t in self.cells.get((int(x), int(z)), ()):
-            if a <= y1 and b >= y0 and (skip_tag is None or t != skip_tag) \
+            if a <= y1 and b >= y0 and t not in skip \
                     and not (ignore is not None and ignore(t)):
                 return True
         return False
@@ -120,12 +123,22 @@ class Occupancy:
     def who(self, cells, y0, y1, skip_tag=None, ignore=None):
         """擋住這批格子的是哪些 tag（給報表用）。"""
         out = set()
+        skip = _tags(skip_tag)
         for x, z in cells:
             for a, b, t in self.cells.get((int(x), int(z)), ()):
-                if a <= y1 and b >= y0 and (skip_tag is None or t != skip_tag) \
+                if a <= y1 and b >= y0 and t not in skip \
                         and not (ignore is not None and ignore(t)):
                     out.add(t)
         return out
+
+
+def _tags(skip_tag):
+    """skip_tag -> 要略過的 tag 集合（None = 空集合；集合／tuple 照收）。"""
+    if skip_tag is None:
+        return frozenset()
+    if isinstance(skip_tag, (set, frozenset, tuple, list)):
+        return frozenset(skip_tag)
+    return frozenset((skip_tag,))
 
 
 def index_segments(segs, box_half=BOX_HALF):
@@ -142,22 +155,30 @@ def index_segments(segs, box_half=BOX_HALF):
     for li, sg in enumerate(segs):
         samples, ys, gnd = sg["samples"], sg["ys"], sg["ground"]
         hws = sg.get("hw")
+        frames, stacked, y_side = sg.get("frames", {}), sg.get("stacked", {}), sg.get("y_side")
+        nob = sg.get("nobuild", set())              # 共用站體裡 partner 的那一段：箱涵由 primary 記
         stn_rng = []
         for bi in sg.get("stn", ()):
-            stn_rng.append((max(0, bi - half), min(len(samples) - 1, bi + half)))
+            stn_rng.append((max(0, bi - half), min(len(samples) - 1, bi + half), bi))
         n = len(samples)
         for i in range(0, n, 2):                    # 每 1 m 一點就夠了
+            if i in nob:
+                continue
             x, z, ux, uz, _ = samples[i]
             nx, nz = -uz, ux
             y, g = int(ys[i]), int(gnd[i])
             hw = int(hws[i]) if hws is not None else 5
             st = structure_for_ground(y, g)
-            in_stn = any(lo <= i <= hi for lo, hi in stn_rng)
+            in_stn = next((bi for lo, hi, bi in stn_rng if lo <= i <= hi), None)
             if st == "tunnel":
-                if in_stn:
-                    occ.add_span(x, z, nx, nz, box_half + 1, y - 2, y + BOX_TOP_DY, li)
+                if in_stn is not None:
+                    # 疊式站的箱涵深到下層底板；共用站體以兩線中線的 frame 為準
+                    fx, fz, fux, fuz, _ = frames.get(in_stn, samples)[i]
+                    y0 = y + (BOX_BOTTOM_DY if in_stn in stacked else -2)
+                    occ.add_span(fx, fz, -fuz, fux, box_half + 1, y0, y + BOX_TOP_DY, li)
                 else:
-                    occ.add_span(x, z, nx, nz, hw + 2, y - 2, y + 7, li)
+                    ylo = y if y_side is None else min(y, int(y_side[1][i]), int(y_side[-1][i]))
+                    occ.add_span(x, z, nx, nz, hw + 2, ylo - 2, y + 7, li)
             elif st == "viaduct":
                 occ.add_span(x, z, nx, nz, hw + 1, y - 2, y + 8, li)
                 occ.add_span(x, z, nx, nz, 2, g - 4, y, li)          # 橋墩
@@ -470,7 +491,7 @@ def passage_tag(own_tag, level):
 
 
 def plan_station(samples, ys, grounds, idx, entrances, ground_at, occ, used,
-                 own_tag=None):
+                 own_tag=None, ally_tags=()):
     """把一座車站的出入口全部接上（地下站接穿堂層，高架與平面站接橋下或
     月台上方的穿堂 —— 型態與高度由 alignment.station_kind / LEVEL_DY 決定）。
 
@@ -484,6 +505,9 @@ def plan_station(samples, ys, grounds, idx, entrances, ground_at, occ, used,
                         一邊規劃一邊長出來的。有高度：轉乘站兩座站體的穿堂層
                         差了 15 m，兩邊的通道在平面上交叉但根本碰不到
     own_tag             這條路段在 occ 裡的 tag，通道檢查時略過（見 Occupancy）
+    ally_tags           一起略過的 tag：共用站體（西門）的另一條線。它的分層過渡段
+                        就貼在站體側牆外，出入口通道沿站體外側走一定會擦到，
+                        跟擦到自己那條線的張開段是同一回事
 
     回傳 dict：
       kind     車站型態
@@ -567,9 +591,10 @@ def plan_station(samples, ys, grounds, idx, entrances, ground_at, occ, used,
             continue
         # 通道不准穿過別線的結構，也不准穿過別的井（自己的井身與坡道除外）
         chk = pcells - own - own_box
-        if occ.any_blocked(chk, ym - 1, ym + 3, skip_tag=own_tag):
+        skip = {own_tag, *ally_tags}
+        if occ.any_blocked(chk, ym - 1, ym + 3, skip_tag=skip):
             skipped.append((g["refs"], ex, ez, "通道撞到別線的結構",
-                            occ.who(chk, ym - 1, ym + 3, skip_tag=own_tag)))
+                            occ.who(chk, ym - 1, ym + 3, skip_tag=skip)))
             continue
         # 同一段路線、同一層的通道（這一站先接好的轉乘通道）可以重疊：併成一片地板
         same = passage_tag(own_tag, ym)

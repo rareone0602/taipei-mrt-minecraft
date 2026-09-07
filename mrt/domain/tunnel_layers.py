@@ -39,7 +39,7 @@ def band_depth(band):
     return -(BAND0 + BAND_DY * np.maximum(np.asarray(band), 0))
 
 
-def assign_bands(raw, cell=CELL_M, look_m=LOOK_M, pins=()):
+def assign_bands(raw, cell=CELL_M, look_m=LOOK_M, pins=(), shared=()):
     """raw: [(ref, samples), ...]，samples 是 AL.resample 的輸出。
 
     回傳與 raw 等長的 list，每個元素是該段的 per-sample 帶號 int 陣列
@@ -57,10 +57,24 @@ def assign_bands(raw, cell=CELL_M, look_m=LOOK_M, pins=()):
     上下只差 3 m，兩座箱涵直接交疊。所以往前探一段斜坡：目前的帶在前方
     375 m 內會被占用，就現在換；換掉的舊帶在斜坡走完之前也繼續算占用，
     免得別條線鑽進斜坡底下。
+
+    shared 是 [(x, z, 半徑, {ref, ...})]：共用一座站體的幾條線（西門的板南線與
+    松山新店線）在那一帶本來就疊在同一帶裡，彼此不算占用。少了這一條，
+    松山新店線的釘樁會把板南線嚇跑：板南線往前探到「帶 0 在西門被 G 占了」，
+    就在台北車站與西門之間潛到帶 2，再被自己的釘樁拉回帶 0 —— 縱斷面因此把
+    西門與台北車站都拖低 13 m，台北車站的板南線直接撞進淡水信義線的站體。
     """
     look = int(look_m / AL.STEP)
     ramp = int(RAMP_M / AL.STEP)
     occ = {}                       # cell -> {band: ref}
+
+    ally = {}                      # cell -> 在這一格彼此不算占用的路線
+    for sx, sz, sr, refs in shared:
+        c0 = int(math.floor((sx - sr) / cell)); c1 = int(math.floor((sx + sr) / cell))
+        d0 = int(math.floor((sz - sr) / cell)); d1 = int(math.floor((sz + sr) / cell))
+        for cx in range(c0, c1 + 1):
+            for cz in range(d0, d1 + 1):
+                ally.setdefault((cx, cz), set()).update(refs)
 
     pin_by_ref = {}
     for px, pz, pr, pref, pb in pins:
@@ -77,8 +91,10 @@ def assign_bands(raw, cell=CELL_M, look_m=LOOK_M, pins=()):
         t = set()
         for dx in (-1, 0, 1):
             for dz in (-1, 0, 1):
-                for b, r in occ.get((ck[0] + dx, ck[1] + dz), {}).items():
-                    if r != ref:
+                c = (ck[0] + dx, ck[1] + dz)
+                al = ally.get(c)
+                for b, r in occ.get(c, {}).items():
+                    if r != ref and not (al is not None and ref in al and r in al):
                         t.add(b)
         return t
 
@@ -143,6 +159,68 @@ def assign_bands(raw, cell=CELL_M, look_m=LOOK_M, pins=()):
                     del hold[b]
         out[idx] = arr
     return out
+
+
+def check_clearance(segs, shared=(), cell=16, every=4, shared_r=300.0):
+    """實際幾何的跨線淨距檢查：任兩條不同路線的地下結構不准在空間裡交疊。
+
+    帶號的驗算只知道「帶號不同」；疊式站的雙層箱涵比一帶還高、釘平的縱斷面
+    又可能離開帶的深度，所以另外拿每一點真正的箱涵範圍（半寬與上下緣）算一次。
+    segs 是 cli 規劃完的路段（samples / ys / ground / stn / hw，可有 frames /
+    stacked / y_side）。shared 是 [(x, z, ref_a, ref_b)]：共用一座站體的兩條線
+    在 shared_r 內本來就疊在一起，不算衝突。
+
+    回傳 [(ref_a, ref_b, x, z, ya0, ya1, yb0, yb1), ...]，每個格子每對路線最多一筆。
+    """
+    from mrt.domain.stacked import BOX_BOTTOM_DY
+    half = int(AL.PLATFORM_LEN / 2 / AL.STEP)
+    grid = {}
+    for sg in segs:
+        samples, ys, gnd = sg["samples"], sg["ys"], sg["ground"]
+        hws = sg.get("hw")
+        frames, stk, yside = sg.get("frames", {}), sg.get("stacked", {}), sg.get("y_side")
+        nob = sg.get("nobuild", set())
+        n = len(samples)
+        rng = [(max(0, bi - half), min(n - 1, bi + half), bi) for bi in sg.get("stn", ())]
+        for i in range(0, n, every):
+            y, g = int(ys[i]), int(gnd[i])
+            if AL.structure_for_ground(y, g) != "tunnel" or i in nob:
+                continue
+            bi = next((b for lo, hi, b in rng if lo <= i <= hi), None)
+            if bi is not None:
+                x, z = frames.get(bi, samples)[i][:2]
+                r = AL.BOX_HALF + 1
+                y0 = y + (BOX_BOTTOM_DY if bi in stk else -2)
+                y1 = y + AL.BOX_TOP_DY
+            else:
+                x, z = samples[i][0], samples[i][1]
+                r = (int(hws[i]) if hws is not None else 5) + 2
+                ylo = y if yside is None else min(y, int(yside[1][i]), int(yside[-1][i]))
+                y0, y1 = ylo - 2, y + 7
+            grid.setdefault((int(x // cell), int(z // cell)), []).append(
+                (sg["ref"], x, z, r, y0, y1))
+
+    def exempt(ra, rb, x, z):
+        return any({ra, rb} == {a, b} and math.hypot(x - sx, z - sz) <= shared_r
+                   for sx, sz, a, b in shared)
+
+    bad, seen = [], set()
+    for (cx, cz), pts in grid.items():
+        near = []
+        for dx in (-1, 0, 1):
+            for dz in (-1, 0, 1):
+                near += grid.get((cx + dx, cz + dz), ())
+        for ra, xa, za, rra, a0, a1 in pts:
+            for rb, xb, zb, rrb, b0, b1 in near:
+                if rb <= ra or (ra, rb, cx, cz) in seen:
+                    continue
+                # 上下緣都是襯砌那一排；兩座箱涵共用一排襯砌不算交疊（西門北側
+                # 板南線與松山新店線的箱涵就是這樣貼著過）
+                if math.hypot(xa - xb, za - zb) < rra + rrb and a0 < b1 and b0 < a1 \
+                        and not exempt(ra, rb, xa, za):
+                    seen.add((ra, rb, cx, cz))
+                    bad.append((ra, rb, xa, za, a0, a1, b0, b1))
+    return bad
 
 
 # ---------- 以下只是分析報告 ----------

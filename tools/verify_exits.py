@@ -137,11 +137,13 @@ def check_station(save, name, signs, stn_pts, verbose):
             continue
         feet[tag] = c
     ok_plat = ok_street = 0
+    levels = set()                  # 走得到的警示帶在哪幾個高度（疊式站要有兩層）
     for tag, c in feet.items():
         dist, _ = walk.flood(get, [c], bounds=bounds, floor_ok=man_made)
-        hit = sum(1 for y in yellow if y in dist)
-        if hit:
+        hits = [y for y in yellow if y in dist]
+        if hits:
             ok_plat += 1
+            levels |= {p[1] for p in hits}
         else:
             low = min((p[1] for p in dist), default=c[1])
             bad.append(f"{tag}: 不踩土走不到月台（走到 {len(dist)} 格，最低 y{low}）")
@@ -159,7 +161,7 @@ def check_station(save, name, signs, stn_pts, verbose):
     comps = walk.components(get, list(feet.values()), bounds=bounds, floor_ok=man_made) \
         if feet else []
     return dict(n=len(signs), ok_plat=ok_plat, ok_street=ok_street,
-                comps=len(comps), bad=bad, yellow=len(yellow))
+                comps=len(comps), bad=bad, yellow=len(yellow), levels=sorted(levels))
 
 
 def main():
@@ -168,6 +170,8 @@ def main():
     ap.add_argument("--stations", nargs="*")
     ap.add_argument("--bbox", nargs=4, type=int, metavar=("X0", "Z0", "X1", "Z1"))
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("--levels", nargs="*", default=[],
+                    help="疊式車站：這些站的出入口要走得到上下兩層月台的警示帶")
     a = ap.parse_args()
     if not os.path.isdir(a.save):
         print(f"找不到存檔 {a.save}")
@@ -209,11 +213,17 @@ def main():
         if transfer and r["comps"] > 1:
             r["bad"].append(f"轉乘站的出入口分成 {r['comps']} 團：兩座站體之間沒有走得通的轉乘通道")
             tot["split"] += 1
+        # 疊式站：兩層月台的警示帶高度差 LEVEL_H，走得到的高度至少要有兩個
+        two = name in a.levels
+        if two and len(r["levels"]) < 2:
+            r["bad"].append(f"疊式站只走得到一層月台（警示帶高度 {r['levels']}）")
         flag = "" if (r["ok_plat"] == r["n"] and r["ok_street"] == r["n"]
-                      and not (transfer and r["comps"] > 1)) else "   <- 有問題"
+                      and not (transfer and r["comps"] > 1)
+                      and not (two and len(r["levels"]) < 2)) else "   <- 有問題"
+        lv = f"  月台層 y{'/'.join(str(v) for v in r['levels'])}" if (two or len(r["levels"]) > 1) else ""
         print(f"  {name:<8} 出口 {r['n']:>2} 座  通到月台 {r['ok_plat']:>2}  "
               f"通到街上 {r['ok_street']:>2}  分量 {r['comps']}"
-              f"{'  轉乘站' if transfer else ''}{flag}")
+              f"{'  轉乘站' if transfer else ''}{lv}{flag}")
         for b in r["bad"]:
             print(f"      {b}")
         if flag:
