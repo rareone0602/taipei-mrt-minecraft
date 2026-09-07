@@ -158,6 +158,52 @@ def structure_for_ground(y, ground):
         return "surface"
     return "tunnel"
 
+def extend_ends(samples, step, need_start=0.0, need_end=0.0):
+    """把取樣序列沿兩端的切線方向各往外延伸幾公尺（種類沿用端點的）。
+
+    終點站的站體以站點為中心前後各 35 m，但 OSM 的路線幾何在終點站的站點就
+    結束了：淡水、頂埔、鶯桃福德……站體只有半座，月台樓梯與轉乘通道也沒地方放。
+    真實的終點站本來就有一段尾軌，多延伸出去正好。
+    """
+    if not samples:
+        return samples
+    out = list(samples)
+    n0 = int(round(need_start / step))
+    if n0 > 0:
+        x, z, ux, uz, k = out[0]
+        head = [(x - ux * step * t, z - uz * step * t, ux, uz, k) for t in range(n0, 0, -1)]
+        out = head + out
+    n1 = int(round(need_end / step))
+    if n1 > 0:
+        x, z, ux, uz, k = out[-1]
+        out += [(x + ux * step * t, z + uz * step * t, ux, uz, k) for t in range(1, n1 + 1)]
+    return out
+
+
+def terminus_extension(samples, station_pts, others=(), margin=5.0, junction_m=30.0):
+    """線形兩端各要延伸多少公尺，才放得下端點附近的車站：回傳 (起點, 終點)。
+
+    station_pts 是這條線的站點座標。端點 35 m 內有站點時，延伸到站點外
+    半座站體再加 margin；站點落在端點之外（最多 35 m）也算進去。
+
+    others 是同一條線其他變體的取樣點：端點 junction_m 內有別的變體經過，
+    表示這裡不是終點而是支線接上幹線的地方（七張、北投），延伸出去的
+    尾軌會直直插進幹線的站體 —— 那種端點不延伸。
+    """
+    half_m = PLATFORM_LEN / 2
+    need = [0.0, 0.0]
+    for slot, end, sgn in ((0, samples[0], -1), (1, samples[-1], 1)):
+        x, z, ux, uz, _ = end
+        if any(math.hypot(ox - x, oz - z) <= junction_m for ox, oz in others):
+            continue
+        for sx, sz in station_pts:
+            along = ((sx - x) * ux + (sz - z) * uz) * sgn     # 正值 = 在端點之外
+            off = abs(-(sx - x) * uz + (sz - z) * ux)
+            if -half_m <= along <= half_m and off <= 30:
+                need[slot] = max(need[slot], half_m + along + margin)
+    return need[0], need[1]
+
+
 # ---------- 路線變體 ----------
 
 def _length(pts):

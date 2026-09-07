@@ -46,34 +46,34 @@ runs = BW.runs
 terrain_chunk = BW.terrain_chunk
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default=config.DEFAULT_SAVE)
-    ap.add_argument("--corridor", type=int, default=96, help="完整地形的半寬（公尺）")
-    ap.add_argument("--fade", type=int, default=64, help="再往外漸變回平坦的寬度")
-    ap.add_argument("--lines", nargs="*", default=None)
-    ap.add_argument("--bbox", nargs=4, type=int, metavar=("X0", "Z0", "X1", "Z1"),
-                    help="只產生落在這個範圍內的 region（測試單一站區用，"
-                         "省得為了看台北車站等三十分鐘）")
-    ap.add_argument("--rails", action="store_true",
-                    help="順便鋪鐵軌。預設不鋪 —— 走行面留白，方便用模組自己鋪")
-    a = ap.parse_args()
-    outer = a.corridor + a.fade
-
-    terr = Terrain()
-    lines = json.load(open(config.MC_LINES_JSON, encoding="utf-8"))
-    refs = a.lines or sorted(lines)
-
+def load_stations():
+    """mc_stations.csv -> [(refs, 中文名, mc_x, mc_z, 英文名, ref字串)]"""
     stations = []
     with open(config.MC_STATIONS_CSV, encoding="utf-8") as f:
         for r in csv.DictReader(f):
             stations.append((r["ref"].split(";"), r["name_zh"] or r["name_en"],
                              int(r["mc_x"]), int(r["mc_z"]), r["name_en"], r["ref"]))
+    return stations
+
+
+def plan_segments(refs=None, terr=None, verbose=True):
+    """規劃全網但不蓋：取樣、深度帶、縱斷面、車站對應、去重、離線位、共用幹線遮罩。
+
+    回傳 (segs, stations, terr)。每個路段是 dict(ref, samples, ys, ground, stn,
+    band, toff, hw, build, fresh)。工具與測試靠這個拿到跟生成器一模一樣的路段
+    （出入口、轉乘通道的規劃都以它為準），不必真的產生世界。
+    """
+    terr = terr or Terrain()
+    lines = json.load(open(config.MC_LINES_JSON, encoding="utf-8"))
+    refs = refs or sorted(lines)
+    stations = load_stations()
+    say = print if verbose else (lambda *a, **k: None)
 
     # ---- 規劃：所有線的取樣點、縱斷面、車站對應 ----
     # 先把所有線的平面取樣做完，才能決定深度帶：某條線要不要潛下去，
     # 取決於別條線在哪裡，一條一條各自算是看不出來的。
     raw = []
+    n_ext = 0.0
     for ref in refs:
         if ref not in lines:
             continue
@@ -84,14 +84,28 @@ def main():
             samples = AL.resample(pts, kinds, STEP)
             if len(samples) >= 10:
                 raw.append((ref, samples))
+    # 終點站的線形在站點就斷了，站體只蓋得出半座：往外延伸一段尾軌。
+    # 支線接上幹線的那一端（七張、北投）不是終點，延伸出去會插進幹線的站體
+    for k, (ref, samples) in enumerate(raw):
+        spts = [(sx, sz) for rs, _, sx, sz, _, _ in stations
+                if any(t.startswith(ref) and len(t) > len(ref) and t[len(ref)].isdigit()
+                       for t in rs)]
+        others = [(o[0], o[1]) for j, (oref, osm) in enumerate(raw)
+                  if j != k and oref == ref for o in osm[::20]]
+        n0, n1 = AL.terminus_extension(samples, spts, others)
+        if n0 or n1:
+            raw[k] = (ref, AL.extend_ends(samples, STEP, n0, n1))
+            n_ext += n0 + n1
 
+    if n_ext:
+        say(f"終點站尾軌：線形端點共延伸 {n_ext:.0f} m，讓終點站蓋得出整座站體")
     pins = TL.station_pins()
     bands = TL.assign_bands(raw, pins=pins)
     if pins:
-        print(f"隧道深度釘樁 {len(pins)} 根（依 OSM 月台 level 還原真實上下關係）")
+        say(f"隧道深度釘樁 {len(pins)} 根（依 OSM 月台 level 還原真實上下關係）")
     nb = np.bincount(np.concatenate([b[b >= 0] for b in bands]) if bands else [0],
                      minlength=1)
-    print("隧道深度帶：" + "  ".join(
+    say("隧道深度帶：" + "  ".join(
         f"地下{TL.BAND0 + TL.BAND_DY * k} m {c * STEP / 1000:.1f} km"
         for k, c in enumerate(nb) if c))
 
@@ -125,14 +139,11 @@ def main():
             else:
                 claimed.add(key)
     if dropped:
-        print(f"（跨支線重複的車站略過 {dropped} 座，避免站體重疊）")
+        say(f"（跨支線重複的車站略過 {dropped} 座，避免站體重疊）")
 
     # 軌道離線位（進站張開成島式月台）與隧道半寬，必須在車站去重後才算，
     # 否則被砍掉的重複車站也會在區間隧道上開出一段莫名其妙的張開段。
-    rail_b = {}
-    nrail = nskip = nmask = 0
-    # 預設不鋪鐵軌：走行面（smooth_stone）照留，軌道要不要鋪、鋪成什麼樣
-    # 交給玩家用模組決定。--rails 才會鋪。
+    nmask = 0
     # 同一條線的變體常常共用一大段幹線（中和新蘆、淡海輕軌）。兩份幾何差個
     # 一兩公尺就會互相蓋掉對方的鐵軌，把幹線打成碎片。做法是先鋪最長的那一段，
     # 之後的變體只鋪「連續 200 m 以上真正沒鋪過」的區段 —— 也就是支線本身。
@@ -161,23 +172,48 @@ def main():
             for i in range(lo_i, hi_i):
                 build[i] = True
         sg["build"] = build
+        sg["fresh"] = fresh                  # 鐵軌也照這張遮罩鋪，見 main()
         nmask += len(samples) - sum(build)
-        if not a.rails:
-            continue
-        for lo_i, hi_i in runs(fresh, 400):
-            for side in (1, -1):
-                pts = []
-                for i in range(lo_i, hi_i):
-                    x, z, ux, uz, _ = samples[i]
-                    o = side * toff[i]
-                    pts.append((x - uz * o, int(ys[i]) + 1, z + ux * o))
-                for e in rails.rail_path(pts):
-                    rail_b.setdefault((e[0] >> 9, e[2] >> 9), []).append(e)
-                    nrail += 1
-        nskip += 2 * (len(samples) - sum(h - l for l, h in runs(fresh, 400)))
     if nmask:
-        print(f"支線與幹線共用的路廊只蓋一次：略過 {nmask * STEP / 1000:.1f} km 的重複斷面")
+        say(f"支線與幹線共用的路廊只蓋一次：略過 {nmask * STEP / 1000:.1f} km 的重複斷面")
+    return segs, stations, terr
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", default=config.DEFAULT_SAVE)
+    ap.add_argument("--corridor", type=int, default=96, help="完整地形的半寬（公尺）")
+    ap.add_argument("--fade", type=int, default=64, help="再往外漸變回平坦的寬度")
+    ap.add_argument("--lines", nargs="*", default=None)
+    ap.add_argument("--bbox", nargs=4, type=int, metavar=("X0", "Z0", "X1", "Z1"),
+                    help="只產生落在這個範圍內的 region（測試單一站區用，"
+                         "省得為了看台北車站等三十分鐘）")
+    ap.add_argument("--rails", action="store_true",
+                    help="順便鋪鐵軌。預設不鋪 —— 走行面留白，方便用模組自己鋪")
+    a = ap.parse_args()
+    outer = a.corridor + a.fade
+
+    segs, stations, terr = plan_segments(a.lines)
+
+    # 預設不鋪鐵軌：走行面（smooth_stone）照留，軌道要不要鋪、鋪成什麼樣
+    # 交給玩家用模組決定。--rails 才會鋪。鋪的範圍照 plan_segments 的
+    # sg["fresh"]：只鋪「連續 200 m 以上真正沒鋪過」的區段，幹線與支線各自連通。
+    rail_b = {}
+    nrail = nskip = 0
     if a.rails:
+        for sg in segs:
+            samples, ys, toff, fresh = sg["samples"], sg["ys"], sg["toff"], sg["fresh"]
+            for lo_i, hi_i in runs(fresh, 400):
+                for side in (1, -1):
+                    pts = []
+                    for i in range(lo_i, hi_i):
+                        x, z, ux, uz, _ = samples[i]
+                        o = side * toff[i]
+                        pts.append((x - uz * o, int(ys[i]) + 1, z + ux * o))
+                    for e in rails.rail_path(pts):
+                        rail_b.setdefault((e[0] >> 9, e[2] >> 9), []).append(e)
+                        nrail += 1
+            nskip += 2 * (len(samples) - sum(h - l for l, h in runs(fresh, 400)))
         print(f"鐵軌 {nrail:,} 段（雙線，含加速軌）"
               + (f"，與幹線重疊而未重鋪 {nskip:,} 段" if nskip else ""))
     else:
