@@ -71,17 +71,23 @@ def scan(rdir):
                 zlib.decompress(blob) if raw[q+4] == 2 else blob))
             root = root[''] if '' in root else root
             bx, bz = int(root["xPos"]) * 16, int(root["zPos"]) * 16
+            # 先把整個 chunk 的 section 解開：鐵軌落在 section 最底一排
+            # （y % 16 == 0）時，底下那格在下一個 section 裡，要跨 section 查。
+            # 原本只在同一個 section 內往下看，每 16 排就有一排的懸空漏檢。
+            decoded = {}
             for sec in root["sections"]:
                 bs = sec["block_states"]
                 pal = [str(e["Name"]) + (
                     "[" + ",".join(f"{k}={v}" for k, v in e["Properties"].items()) + "]"
                     if "Properties" in e else "") for e in bs["palette"]]
+                idx = (unpack(bs["data"], max(4, (len(pal) - 1).bit_length()))
+                       if "data" in bs else np.zeros(4096, dtype=np.int64))
+                decoded[int(sec["Y"])] = (pal, idx)
+            for sy, (pal, idx) in decoded.items():
                 names = [s.split("[")[0] for s in pal]
                 if not any("rail" in n for n in names):
                     continue
-                base = int(sec["Y"]) * 16
-                idx = (unpack(bs["data"], max(4, (len(pal) - 1).bit_length()))
-                       if "data" in bs else np.zeros(4096, dtype=np.int64))
+                base = sy * 16
                 for k in np.nonzero(np.isin(idx, [j for j, n in enumerate(names)
                                                   if n.endswith("rail")]))[0]:
                     j = int(idx[k])
@@ -93,14 +99,21 @@ def scan(rdir):
                                         "powered=true" in pal[j])
                 # 記下軌道底下那一格是不是空氣
                 air = [j for j, n in enumerate(names) if n == "minecraft:air"]
+                below = decoded.get(sy - 1)
                 for k in np.nonzero(np.isin(idx, [j for j, n in enumerate(names)
                                                   if n.endswith("rail")]))[0]:
+                    y = base + int(k) // 256
+                    z = bz + (int(k) % 256) // 16
+                    x = bx + int(k) % 16
                     kb = int(k) - 256
                     if kb >= 0:
-                        y = base + int(k) // 256
-                        z = bz + (int(k) % 256) // 16
-                        x = bx + int(k) % 16
                         solid[(x, y, z)] = int(idx[kb]) not in air
+                    elif below is not None:
+                        bpal, bidx = below
+                        solid[(x, y, z)] = bpal[int(bidx[kb + 4096])].split("[")[0] \
+                            != "minecraft:air"
+                    else:
+                        solid[(x, y, z)] = False
         if fi % 50 == 0 or fi == len(files):
             print(f"  [{fi}/{len(files)}] {len(rails):,} 根鐵軌", flush=True)
     return rails, solid

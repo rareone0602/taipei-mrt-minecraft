@@ -121,7 +121,12 @@ class Reader:
 def load_station(name):
     with open(config.MC_STATIONS_CSV, encoding="utf-8") as f:
         rows = [r for r in csv.DictReader(f)]
-    hit = [r for r in rows if name in (r.get("name_zh") or r.get("name") or "")]
+    # 先找完全相同的站名，找不到才退回包含比對 —— 「中山」包含在「中山國中」
+    # 裡、「松山」包含在「松山機場」裡，CSV 又是依代號排序，包含比對會先
+    # 撞到別的站，切出來的剖面根本不是你要看的那一座。
+    hit = [r for r in rows if (r.get("name_zh") or r.get("name") or "") == name]
+    if not hit:
+        hit = [r for r in rows if name in (r.get("name_zh") or r.get("name") or "")]
     if not hit:
         keys = list(rows[0].keys())
         raise SystemExit(f"找不到車站 {name}；欄位={keys}")

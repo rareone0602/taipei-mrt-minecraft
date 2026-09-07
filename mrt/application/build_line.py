@@ -310,7 +310,7 @@ def _station_access(w, samples, ys, grounds, lo, hi, label):
                 w.set(bx, yy, bz, AIR)
             w.set(bx, ymm + 4, bz, LINING)
 
-    _stair_run(w, samples, ys, sd + d * 2 * per_m, d, per_m, ym, g0, 13, 17,
+    _stair_run(w, samples, ys, sd + d * 2 * per_m, d, per_m, ym, g0 + 1, 13, 17,
                head=4, wall_offs=(12, 18), wall_ground=g0)
     # 樓梯最後幾階的頭部淨空會把地表挖穿，站屋要往回罩到 t=-9，
     # 否則出入口前面會留一條沒有蓋子的壕溝。
@@ -460,17 +460,20 @@ def build_entrance(w, samples, ys, lo, hi, grounds=None, label=None):
     start = min(lo + 4 * per_m, len(ys) - 1)
     g0 = int(grounds[start]) if grounds is not None else GROUND
     y_plat = int(ys[start]) + 2
-    need = (abs(y_plat - g0) * 2 + 4) * per_m
+    # 站在地表方塊 g0 上面時腳在 g0+1，樓梯從那裡起算才接得平站廳地坪
+    need = (abs(y_plat - g0 - 1) * 2 + 4) * per_m
     d = 1 if start + need < len(samples) else -1
     if not (0 <= start + d * need < len(samples)):
         return
-    steps = _stair_run(w, samples, ys, start, d, per_m, g0, y_plat, 11, 13,
+    steps = _stair_run(w, samples, ys, start, d, per_m, g0 + 1, y_plat, 11, 13,
                        head=4, wall_offs=(10, 14), wall_ground=g0)
     if not steps:
         return
-    # 樓梯腳下的地面站廳，閘門擺在裡面
+    # 樓梯腳下的地面站廳，閘門擺在裡面。平面站的月台就在地面高度，
+    # 站廳擺在 off 9 會把月台外側兩排與玻璃牆蓋掉，得整個往外挪到月台外。
+    o0 = 11 if y_plat - g0 <= 6 else 9
     _hall(w, samples, ys, start, d, per_m, g0, label, t0=-11, t1=0,
-          o0=9, o1=17, floor_t0=-11, door_t=-11, open_end=0, gate_t=-4)
+          o0=o0, o1=o0 + 8, floor_t0=-11, door_t=-11, open_end=0, gate_t=-4)
     si, _ = steps[-1]
     for s in range(max(0, si - per_m), min(len(samples), si + 2 * per_m)):
         x, z, ux, uz, _ = samples[s]                    # 梯頂平台，接上月台面

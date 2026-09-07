@@ -145,5 +145,9 @@ def terrain_chunk(ch, cx, cz, terr, blend, rx, rz):
                np.where(yy >= H3 - 3, np.where(beach, SD, D), S)))
         code = np.where((yy > H3) & (yy <= SEA_Y), W, code)      # 海平面以下灌水
         code = np.where(yy == -64, B, code)
-        if (code != A).any():
+        # 全空氣的 section 也要寫，只要它落在超平坦背景地層的高度以內：
+        # 存檔寫入時沒寫過的 section 會填回背景地層（草皮在 y=64），
+        # 河面上整個 section 都是空氣就跳過的話，基隆河、淡水河面上會
+        # 浮著一層 y=64 的草皮，底下是空氣、再底下才是水。
+        if (code != A).any() or sy * 16 <= FLAT_Y:
             ch.set_section(sy, code, names)
