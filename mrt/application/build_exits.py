@@ -78,6 +78,68 @@ def make_well(s, sign):
                           bottom_door=True, sign_bottom=sign, apron=APRON)
 
 
+class GroundGate:
+    """平面出入口：通道直接開到街上，門外接一段坡道與前庭。
+
+    高架站的橋下穿堂只比地面高 3～7 m，山坡上的出入口街面可能就在穿堂那個
+    高度前後兩公尺內。這時折返梯井蓋不出來：井的兩扇門開在同一面牆上，落差
+    不到三格井底的門洞只剩一格，門前的前庭又剛好清掉空橋的樓板（淡江大學的
+    預設出入口就是這樣「門口沒有接到街面」）。差 0～2 m 根本不需要井 ——
+    通道的盡頭就是門，門外每格升降一格接到街面，再鋪一小塊前庭。
+
+    座標系與 ShaftStair 一樣：(x0, z0) 是門那一格（通道的最後一格，地板由
+    通道鋪），u = (ux, uz) 指向街上，坡道與前庭在 a = 1..run、b = -half..half。
+    通道的地板要先蓋（通道的刷寬會蓋過 a = 1..2），這裡再把它們改成坡道。
+    """
+
+    def __init__(self, x0, z0, ux, uz, street, level, sign=None,
+                 step=BCC.STAIR, apron=APRON, run=EX.GATE_RUN, half=EX.PASS_HALF):
+        self.x0, self.z0 = int(x0), int(z0)
+        self.ux, self.uz = int(round(ux)), int(round(uz))
+        self.street, self.level = int(street), int(level)   # 街面與穿堂的站立高度
+        self.sign = list(sign) if sign else None
+        self.step, self.apron = step, apron
+        self.run, self.half = int(run), int(half)
+
+    def _w(self, a, b):
+        vx, vz = -self.uz, self.ux
+        return self.x0 + self.ux * a + vx * b, self.z0 + self.uz * a + vz * b
+
+    def bbox(self):
+        pts = [self._w(a, b) for a in (0, self.run + 1)
+               for b in (-self.half - 1, self.half + 1)]
+        xs = [p[0] for p in pts]; zs = [p[1] for p in pts]
+        return min(xs) - 1, min(zs) - 1, max(xs) + 1, max(zs) + 1
+
+    def floor_at(self, a):
+        """門外第 a 格的地坪：從通道樓板每格升降一格接到街面，之後就是街面。"""
+        d = self.street - self.level
+        sgn = (d > 0) - (d < 0)
+        return self.level - 1 + sgn * min(a, abs(d))
+
+    def build(self, w):
+        for a in range(1, self.run + 1):
+            y = self.floor_at(a)
+            blk = self.apron if y == self.street - 1 else self.step
+            for b in range(-self.half, self.half + 1):
+                x, z = self._w(a, b)
+                w.set(x, y, z, blk)
+                for yy in range(y + 1, y + 4):
+                    w.set(x, yy, z, BCC.AIR)
+        # 出口牌立在前庭旁邊、街上那一頭，牌面朝著從街上走過來的人
+        if self.sign and hasattr(w, "sign"):
+            x, z = self._w(self.run, self.half + 1)
+            w.set(x, self.street - 1, z, self.step)
+            w.sign(x, self.street, z, self.sign[:4], facing=(self.ux, self.uz))
+            w.set(x, self.street + 1, z, BCC.AIR)
+
+
+def make_gate(s, sign):
+    """照計畫蓋一座平面出入口（exits.plan_station 的 gates 項目）。"""
+    return GroundGate(s["x0"], s["z0"], s["ux"], s["uz"], s["g0"] + 1, s["y_to"],
+                      sign=sign)
+
+
 def make_tile(cells, no_wall, level, kind, ground_at):
     """一層的通道地板：地下站是隧道，其餘是玻璃空橋（地形比它低就架柱子）。"""
     ring = BCC.outer_ring(cells) - no_wall
@@ -150,6 +212,12 @@ def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
             well.label = (name, s["refs"])
             well.underground = False
             out.append(well)
+        for s in plan["gates"]:
+            gate = make_gate(s, sign_lines(s["refs"], zh, en))
+            gate.label = (name, s["refs"])
+            gate.underground = False
+            out.append(gate)
+        plan["built"] = plan["shafts"] + plan["gates"]
         return plan, out
 
     def plan_transfers(name, used_):
@@ -197,22 +265,24 @@ def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
                 if mine:
                     plan, ws = plan_exits(name, key, mine, used_)
                     r["skipped"] += plan["skipped"]
-                    r["built"] += plan["shafts"]
-                    if plan["shafts"]:
+                    r["built"] += plan["built"]
+                    if plan["built"]:
                         r["floors"][(key[0], key[1], plan["ym"])] |= plan["cells"]
+                        r["open"].setdefault(key, set()).update(plan["open"])
                         r["wells"] += ws
-                        r["exits"][key] = r["exits"].get(key, 0) + len(plan["shafts"])
+                        r["exits"][key] = r["exits"].get(key, 0) + len(plan["built"])
                 if key in r["exits"] or name in no_default:
                     continue
                 # 沒有資料、或全部接不上：用預設位置的出入口，兩側各試一次
                 samples, ys, bi = boxes[name][key]
                 for e in EX.default_entrances(samples, ys, bi):
                     plan, ws = plan_exits(name, key, [e], used_)
-                    if plan["shafts"]:
-                        r["built"] += plan["shafts"]
+                    if plan["built"]:
+                        r["built"] += plan["built"]
                         r["floors"][(key[0], key[1], plan["ym"])] |= plan["cells"]
+                        r["open"].setdefault(key, set()).update(plan["open"])
                         r["wells"] += ws
-                        r["exits"][key] = len(plan["shafts"])
+                        r["exits"][key] = len(plan["built"])
                         r["n_default"] += 1
                         break
 
@@ -280,18 +350,21 @@ def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
                             transfer=[(ka, kb, res) for ka, kb, res, _ in r["transfer"]]
                             if r["transfer"] else None)
 
-    # ---- 地板（每座站體每一層一片），然後才是井：井要在地板之後蓋，
-    #      井壁才會把通道刷到的那一排補回去、門才開得出來 ----
+    # ---- 地板（每座站體每一層一片），然後才是井與平面出入口：井要在地板之後蓋，
+    #      井壁才會把通道刷到的那一排補回去、門才開得出來；坡道要把通道刷過去的
+    #      那兩格樓板改成階梯 ----
     for (li, bi, level), cells in sorted(floors.items()):
         objs.append(make_tile(cells, no_wall[(li, bi)], level, kinds[(li, bi)], ground_at))
     objs += wells
 
     if verbose:
         nb = sum(len(r["built"]) for r in report.values())
+        ng = sum(1 for o in wells if isinstance(o, GroundGate))
         ns = sum(len(r["skipped"]) for r in report.values())
         why = collections.Counter(s[3] for r in report.values() for s in r["skipped"])
-        print(f"  真實出入口：{len(exits)} 座站體共 {nb} 座樓梯井"
-              + (f"（其中 {n_default} 座是沒有資料的車站的預設出入口）" if n_default else "")
+        print(f"  真實出入口：{len(exits)} 座站體共 {nb} 座"
+              + (f"（{nb - ng} 座樓梯井、{ng} 座平面出入口" if ng else "（")
+              + (f"；{n_default} 座是沒有資料的車站的預設出入口）" if n_default else "）")
               + (f"，接不上的 {ns} 個（"
                  + "、".join(f"{k} {v}" for k, v in why.most_common()) + "）"
                  if ns else ""))

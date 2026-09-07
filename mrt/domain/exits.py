@@ -49,7 +49,10 @@ SAME_REF_M = 40.0              # 同一站同編號的兩個節點在這個距�
 HOLE_ALONG = 7                 # 側牆開洞位置：自站體 lo 端起算幾公尺（閘門在 14）
 HOLE_HALF  = 2                 # 洞的半寬（沿線方向）
 MIN_DROP   = 3                 # 地面到穿堂層至少要差這麼多才值得蓋井（地下站）
-MIN_RISE   = 2                 # 高架站：街面到穿堂層至少差這麼多才蓋井往上爬
+MIN_RISE   = 3                 # 高架站：街面到穿堂層至少差這麼多才蓋井往上爬。井的兩扇門開在
+                               # 同一面牆上，差 2 的話井底的門洞只剩一格、門前的前庭又剛好
+                               # 清掉空橋的樓板；差 0～2 的改用平面出入口（見 GATE_RUN）
+GATE_RUN   = 3                 # 平面出入口：門外的坡道加前庭有幾格長
 MAX_ALONG  = 350               # 出入口離站體中心沿線超過這個距離就不接
 MAX_OFF    = 300               # 離中心線超過這個距離就不接
 MERGE_M    = 12.0              # 兩個出入口靠得比這近就共用一座井
@@ -278,6 +281,17 @@ def shaft_cells(x0, z0, ux, uz, margin=0):
     return out
 
 
+def gate_cells(x0, z0, ux, uz, margin=0):
+    """平面出入口門外的坡道與前庭：門格 (x0, z0) 往街上 1..GATE_RUN 格、兩側各
+    PASS_HALF 格（與通道同寬），margin 再往外擴一圈。"""
+    vx, vz = -uz, ux
+    out = set()
+    for a in range(1, GATE_RUN + margin + 1):
+        for b in range(-PASS_HALF - margin, PASS_HALF + margin + 1):
+            out.add((x0 + ux * a + vx * b, z0 + uz * a + vz * b))
+    return out
+
+
 def _quantize(vx, vz):
     if abs(vx) >= abs(vz):
         return (1 if vx >= 0 else -1), 0
@@ -359,6 +373,49 @@ def drop_ok(kind, g0, level):
     return abs(g0 + 1 - level) >= MIN_RISE
 
 
+def place_gate(samples, ys, lo, hi, ex, ez, ym, occ, used, ground_at,
+               extra=frozenset()):
+    """替街面與穿堂差不到 MIN_RISE 的出入口找平面出入口的位置。
+
+    高架站的橋下穿堂只比地面高 3～7 m，山坡上的出入口街面可能就在穿堂那個
+    高度前後兩公尺內。這時井蓋不出來 —— 井的兩扇門開在同一面牆上，落差
+    不到三格井底的門洞只剩一格 —— 也根本不需要井：通道的盡頭就是門，門外
+    每格升降一格接到街面，再鋪一小塊前庭。
+
+    回傳 (x0, z0, ux, uz, g0, 推了幾公尺) 或 None：(x0, z0) 是門那一格
+    （通道的盡頭），u 是背對站體、量化成正交的方向，坡道與前庭在門外 u 方向
+    1..GATE_RUN 格。g0 是前庭盡頭的地面：人是從那裡走上坡道的，所以那裡的
+    街面得在穿堂前後 MIN_RISE-1 格內，不然再往外推。
+
+    跟 place_shaft 一樣沿法向往外推：坡道（含一格邊距）離中心線至少
+    CLEAR_OFF，別的出入口的通道才能從門前經過；不撞別線的結構、別的井與
+    通道，也不壓到這一站自己已經鋪好的通道（extra）。
+    """
+    i, _ = nearest_index(samples, ex, ez, lo, hi)
+    along, off = local_coords(samples, i, ex, ez)
+    side = 1 if off >= 0 else -1
+    sx, sz, ux, uz, _ = samples[i]
+    nx, nz = -uz * side, ux * side              # 指向出入口那一側的法向
+    dx, dz = _quantize(nx, nz)
+    for slide in range(0, SLIDE_MAX + 1):
+        x0 = int(round(ex + nx * slide))
+        z0 = int(round(ez + nz * slide))
+        wide = gate_cells(x0, z0, dx, dz, margin=1) | {(x0, z0)}
+        di, _ = nearest_index(samples, x0, z0)
+        near = min(abs(local_coords(samples, di, cx, cz)[1]) for cx, cz in wide)
+        if near < CLEAR_OFF:
+            continue
+        if any(c in extra for c in wide):
+            continue
+        g0 = int(ground_at(x0 + dx * GATE_RUN, z0 + dz * GATE_RUN))
+        if abs(g0 + 1 - ym) >= MIN_RISE:
+            continue                             # 前庭那裡的地面離穿堂太遠，再推
+        if occ.any_blocked(wide, ym - 3, ym + 4) or used.any_blocked(wide, ym - 3, ym + 4):
+            continue
+        return x0, z0, dx, dz, g0, slide
+    return None
+
+
 # ---------- 整座車站的計畫 ----------
 
 def merge_entrances(entrances, merge_m=MERGE_M, same_ref_m=SAME_REF_M):
@@ -431,9 +488,12 @@ def plan_station(samples, ys, grounds, idx, entrances, ground_at, occ, used,
     回傳 dict：
       kind     車站型態
       ym       穿堂層站立面 y
-      shafts   [dict(refs, x0, z0, ux, uz, g0, y_to, slide)]
+      shafts   [dict(refs, x0, z0, ux, uz, g0, y_to, slide)]  折返梯井
+      gates    [dict(refs, x0, z0, ux, uz, g0, y_to, slide)]  平面出入口：
+               (x0, z0) 是門格（通道盡頭），u 指向街上，g0 是前庭的地面
       cells    接駁通道的地板格（含側牆開洞）
-      no_wall  不准砌牆的格子（站體內部）
+      open     平面出入口門外不准砌牆的格子（坡道與前庭，通道的外牆不能封住它）
+      no_wall  不准砌牆的格子（站體內部加 open）
       skipped  [(refs, x, z, 原因, 擋住的是誰)]
     """
     lo, hi, hole = station_frame(samples, ys, idx)
@@ -441,8 +501,8 @@ def plan_station(samples, ys, grounds, idx, entrances, ground_at, occ, used,
     ym = int(ys[hole]) + LEVEL_DY[kind]
     interior = box_cells(samples, lo, hi, BOX_HALF - 2)
     own_box = box_cells(samples, lo, hi, BOX_HALF + 2)   # 通道本來就要穿進自己的站體
-    cells, shafts, skipped = set(), [], []
-    sides_used = set()
+    cells, shafts, gates, skipped = set(), [], [], []
+    open_cells, sides_used = set(), set()
 
     groups = merge_entrances(entrances)
 
@@ -454,27 +514,39 @@ def plan_station(samples, ys, grounds, idx, entrances, ground_at, occ, used,
             skipped.append((g["refs"], ex, ez, "離站體太遠", set()))
             continue
         g_here = int(ground_at(ex, ez))
-        if not drop_ok(kind, g_here, ym):
-            skipped.append((g["refs"], ex, ez,
-                            "地面太低，沒有落差" if kind == "tunnel" else "街面與穿堂同高",
-                            set()))
+        if kind == "tunnel" and not drop_ok(kind, g_here, ym):
+            skipped.append((g["refs"], ex, ez, "地面太低，沒有落差", set()))
             continue
-        # 井不准壓到這一站已經鋪好的通道；通道之間則可以重疊（同一層、同高）
-        placed = place_shaft(samples, ys, lo, hi, ex, ez, ym, g_here, occ,
-                             used, ground_at, extra=cells, kind=kind)
-        if placed is None:
+        placed = gate = None
+        if drop_ok(kind, g_here, ym):
+            # 井不准壓到這一站已經鋪好的通道；通道之間則可以重疊（同一層、同高）
+            placed = place_shaft(samples, ys, lo, hi, ex, ez, ym, g_here, occ,
+                                 used, ground_at, extra=cells, kind=kind)
+        if placed is None and kind != "tunnel":
+            # 高架站的街面就在穿堂那個高度前後兩公尺內（或者井往外推以後變成
+            # 這樣）：不蓋井，通道直接開到街上，門外接一段坡道
+            gate = place_gate(samples, ys, lo, hi, ex, ez, ym, occ, used,
+                              ground_at, extra=cells)
+        if placed is None and gate is None:
             skipped.append((g["refs"], ex, ez, "井擺不下（撞到別線或別的井）", set()))
             continue
-        x0, z0, dx, dz, g0, slide, kind_ = placed
 
-        # 接駁通道：門 -> 站體外側 PASS_OFF 處 -> 沿線走到開洞位置 -> 洞。
-        # 順著線形擺的井，門朝著線形方向，出門先直走三格再轉向站體 ——
-        # 直接斜著轉的話通道的刷寬會切到井口那一排井壁。
-        door = (x0 - dx, z0 - dz)
-        pts = [door]
-        if kind_ == "tangent":
-            door = (x0 - 4 * dx, z0 - 4 * dz)
-            pts.append(door)
+        if gate is not None:
+            x0, z0, dx, dz, g0, slide = gate
+            door = (x0, z0)
+            pts = [door]
+            own = gate_cells(x0, z0, dx, dz, margin=1)
+        else:
+            x0, z0, dx, dz, g0, slide, kind_ = placed
+            # 接駁通道：門 -> 站體外側 PASS_OFF 處 -> 沿線走到開洞位置 -> 洞。
+            # 順著線形擺的井，門朝著線形方向，出門先直走三格再轉向站體 ——
+            # 直接斜著轉的話通道的刷寬會切到井口那一排井壁。
+            door = (x0 - dx, z0 - dz)
+            pts = [door]
+            if kind_ == "tangent":
+                door = (x0 - 4 * dx, z0 - 4 * dz)
+                pts.append(door)
+            own = shaft_cells(x0, z0, dx, dz)
         di, _ = nearest_index(samples, door[0], door[1])
         _, doff = local_coords(samples, di, door[0], door[1])
         side = 1 if doff >= 0 else -1
@@ -493,9 +565,8 @@ def plan_station(samples, ys, grounds, idx, entrances, ground_at, occ, used,
         if kind == "tunnel" and any(int(ground_at(x, z)) < ym + 4 for x, z in pcells):
             skipped.append((g["refs"], ex, ez, "通道會露出地面", set()))
             continue
-        # 通道不准穿過別線的結構，也不准穿過別的井
-        shaft_own = shaft_cells(x0, z0, dx, dz)
-        chk = pcells - shaft_own - own_box
+        # 通道不准穿過別線的結構，也不准穿過別的井（自己的井身與坡道除外）
+        chk = pcells - own - own_box
         if occ.any_blocked(chk, ym - 1, ym + 3, skip_tag=own_tag):
             skipped.append((g["refs"], ex, ez, "通道撞到別線的結構",
                             occ.who(chk, ym - 1, ym + 3, skip_tag=own_tag)))
@@ -507,11 +578,18 @@ def plan_station(samples, ys, grounds, idx, entrances, ground_at, occ, used,
                             used.who(chk, ym - 1, ym + 3, ignore=lambda t: t == same)))
             continue
 
+        cells |= pcells
+        sides_used.add(side)
+        if gate is not None:
+            for c in own:
+                used.add(c[0], c[1], ym - 3, ym + 4, ("井", tuple(g["refs"])))
+            open_cells |= own
+            gates.append(dict(refs=g["refs"], x0=x0, z0=z0, ux=dx, uz=dz,
+                              g0=g0, y_to=ym, slide=slide, ex=ex, ez=ez, kind=kind))
+            continue
         y_lo, y_hi = well_span(ym, g0 + 1)
         for c in shaft_cells(x0, z0, dx, dz, margin=1):
             used.add(c[0], c[1], y_lo, y_hi, ("井", tuple(g["refs"])))
-        cells |= pcells
-        sides_used.add(side)
         shafts.append(dict(refs=g["refs"], x0=x0, z0=z0, ux=dx, uz=dz,
                            g0=g0, y_to=ym, slide=slide, ex=ex, ez=ez, kind=kind))
 
@@ -521,7 +599,8 @@ def plan_station(samples, ys, grounds, idx, entrances, ground_at, occ, used,
         used.add(c[0], c[1], ym - 1, ym + 3, passage_tag(own_tag, ym))
 
     return dict(kind=kind, ym=ym, lo=lo, hi=hi, hole=hole, shafts=shafts,
-                cells=cells, no_wall=interior, skipped=skipped)
+                gates=gates, cells=cells, open=open_cells,
+                no_wall=interior | open_cells, skipped=skipped)
 
 
 def default_entrances(samples, ys, idx, offs=(24, -24), along_m=HOLE_ALONG):
