@@ -10,17 +10,21 @@ BlockSink 的實作（infrastructure 的 World）會自動丟掉不屬於目前 
 
 自我測試: ./.venv/bin/python -m tests.test_landmarks
 """
+import collections
 import os, math, json
 
 from mrt import config
 from mrt.application import build_concourse as BCC
+from mrt.application import build_exits as BX
 from mrt.application.build_concourse import ShaftStair
 from mrt.domain import geometry as shapes
 
 AIR = "minecraft:air"
 
-# 台北車站複合體：地下街同時服務台北車站與北門（台北地下街西端在北門站）
-COMPLEX = ("台北車站", "北門")
+# 台北車站複合體：地下街同時服務台北車站與北門（台北地下街西端在北門站），
+# 中山地下街則一路通到中山、雙連 —— 這兩站的出入口現實中就是開在地下街上，
+# 各自另拉樓梯井的話會把地下街挖穿，所以一併交給地下街處理。
+COMPLEX = ("台北車站", "北門", "中山", "雙連")
 INDOOR_R = 1500        # 收多遠以內的通道；中山地下街一路通到雙連
 
 
@@ -336,16 +340,46 @@ class RailHall:
 # ---------- 世界層級的地標清單 ----------
 
 def for_world(segs, stations, terr):
-    """回傳這個世界要蓋的地標。build_world 會依 bbox() 分桶，
+    """回傳 (地標清單, 真實出入口)。build_world 會依 bbox() 把地標分桶，
     再對每個涵蓋到的 region 呼叫 build(w)。
 
-    segs     : build_world 規劃出來的路段（含 samples / ys / ground / stn）
+    segs     : build_world 規劃出來的路段（含 samples / ys / ground / stn / hw）
     stations : (refs, 中文名, mc_x, mc_z, 英文名, ref字串) 串列
     terr     : Terrain，用來查地面高程
+
+    真實出入口是 {(路段索引, 取樣索引): 井數}：有真實出入口的車站不再蓋
+    樣板樓梯，cli 靠這張表把它關掉。
     """
     out = []
-    out += taipei_main(segs, stations, terr)
-    return out
+    tm, leftover = taipei_main(segs, stations, terr)
+    out += tm
+    # 台北車站一帶的出入口由地下街負責；其餘地下站照 entrances.json 蓋。
+    # 複合站裡地下街接不上的出入口也交給這裡，各自接進所屬站體。
+    # 地下街的地板與樓梯先占位，後蓋的井與通道才不會挖穿它。
+    by_name = collections.defaultdict(list)
+    for e in _load("entrances.json"):
+        if e.get("source") == "near_station" or not e.get("station"):
+            continue                    # 一般建物大門，不是捷運出入口
+        if e["station"] in COMPLEX:
+            continue
+        ref = str(e.get("ref") or e.get("name_zh") or e.get("name") or "")
+        by_name[e["station"]].append((ref, int(e["mc_x"]), int(e["mc_z"])))
+    for name, lst in leftover.items():
+        by_name[name] = lst
+    ex_objs, exits, _ = BX.station_exits(
+        segs, by_name, lambda x, z: int(terr.y_at(x, z)),
+        used=BX.footprint(tm))
+    out += ex_objs
+    # 複合站的地下站體由地下街的連絡梯進出，樣板樓梯要關掉：那座樓梯從穿堂層
+    # 一路爬到地面，正好穿過地下街那一層，踏面橫在通道裡把路封死 ——
+    # 中山站的松山新店線月台就是這樣從地下街走不到的。
+    from mrt.domain.alignment import structure_for_ground
+    for li, sg in enumerate(segs):
+        for bi, (full, name, en) in sg["stn"].items():
+            if name in COMPLEX and structure_for_ground(
+                    int(sg["ys"][bi]), int(sg["ground"][bi])) == "tunnel":
+                exits.setdefault((li, bi), 0)
+    return out, exits
 
 
 def _load(name):
@@ -355,14 +389,18 @@ def _load(name):
     return json.load(open(f, encoding="utf-8"))["items"]
 
 
-def _station_on_lines(segs, zh):
+def _station_on_lines(segs, zh, underground_only=False):
     """找出某座車站在各條線上的位置：{ref: (x, z, ux, uz, 軌面y)}"""
+    from mrt.domain.alignment import structure_for_ground
     out = {}
     for sg in segs:
         for bi, (full, nm, en) in sg["stn"].items():
             if nm == zh and sg["ref"] not in out:
                 x, z, ux, uz, _ = sg["samples"][bi]
-                out[sg["ref"]] = (x, z, ux, uz, int(sg["ys"][bi]))
+                y, g = int(sg["ys"][bi]), int(sg["ground"][bi])
+                if underground_only and structure_for_ground(y, g) != "tunnel":
+                    continue
+                out[sg["ref"]] = (x, z, ux, uz, y)
     return out
 
 
@@ -389,7 +427,7 @@ def taipei_main(segs, stations, terr):
     blds = _load("station_buildings.json")
     tp = [b for b in blds if (b.get("name_zh") or b.get("name")) == "臺北車站"]
     if not tp:
-        return []
+        return [], {}
     b = tp[0]
     poly = [(p[0], p[1]) for p in b["polygon"]]
     cx, cz = shapes.centroid(poly)
@@ -458,14 +496,21 @@ def taipei_main(segs, stations, terr):
     # 蓋出來是十四座各自獨立的洞。改成照 OSM 實際測繪的地下街網路蓋：
     # 台北車站一帶有 7.7 km 的通道中心線（台北地下街、站前地下街、中山地下街、
     # 凱薩美食街、M/K 區穿堂），照著蓋出來本來就是連通的。
-    onl = _station_on_lines(segs, "台北車站")
     ways = [w for w in _load("indoor.json")
             if math.hypot(w["mc_x"] - cx, w["mc_z"] - cz) <= INDOOR_R]
     picked = [(str(e.get("ref") or ""), e["mc_x"], e["mc_z"]) for e in ents
               if e.get("station") in COMPLEX and str(e.get("ref") or "")
               and math.hypot(e["mc_x"] - cx, e["mc_z"] - cz) <= INDOOR_R]
-    links = [(sx, sz, ty + 7, ref, ux, uz)
-             for ref, (sx, sz, ux, uz, ty) in onl.items()]
+    station_of = {(e["mc_x"], e["mc_z"]): e["station"] for e in ents
+                  if e.get("station") in COMPLEX}
+    # 每座複合站在每條地下線上的穿堂層都要接一座連絡梯。原本只接台北車站
+    # 自己的三條線，北門的松山新店線月台從地下街根本走不到。
+    links = []
+    for name in COMPLEX:
+        for ref, (sx, sz, ux, uz, ty) in _station_on_lines(
+                segs, name, underground_only=True).items():
+            tag = ref if name == "台北車站" else f"{ref}@{name}"
+            links.append((sx, sz, ty + 7, tag, ux, uz))
     if rail_hall_y is not None:
         # 台鐵／高鐵大廳也要接上 —— 現實中台北車站的地下街本來就是先通到
         # 台鐵 B1 大廳，再往下到月台。
@@ -482,26 +527,32 @@ def taipei_main(segs, stations, terr):
           f"地板 {rep['cells']:,} 格、出入口 {len(rep['exits'])} 座樓梯"
           + (f"、接不上的 {len(rep['orphan'])} 個" if rep["orphan"] else ""))
     for nm, sx0, sz0, yto, yg0 in rep["links"]:
-        print(f"    連絡梯樓梯井 {nm:<4} ({sx0},{sz0})  "
+        print(f"    連絡梯樓梯井 {nm:<8} ({sx0},{sz0})  "
               f"地下街 y{yg0 + 1} -> 穿堂 y{yto}")
 
     # 接不上地下街的出入口（OSM 沒畫那一帶的通道）退回舊做法：
     # 一座樓梯井下到 B1 大廳。大廳本身有被地下街接到，所以還是連通的。
     # 限 260 m 內：更遠的（北門西側那幾個）OSM 那一帶根本沒有通道，
-    # 硬拉一條六百公尺的通道過去只會把沿路的東西全鑿穿。
-    for r, ex, ez in [t for t in rep["orphan"]
-                      if math.hypot(t[1] - cx, t[2] - cz) <= 260][:8]:
+    # 硬拉一條六百公尺的通道過去只會把沿路的東西全鑿穿 ——
+    # 那些交還給一般車站的出入口規劃（build_exits），各自接進所屬站體。
+    leftover = collections.defaultdict(list)
+    handled = 0
+    for r, ex, ez in rep["orphan"]:
         eg = int(terr.y_at(ex, ez))
         d = math.hypot(cx - ex, cz - ez)
-        if d < 12 or b1 + 1 >= eg - 4:
+        if d <= 260 and handled < 8 and d >= 12 and b1 + 1 < eg - 4:
+            ux, uz = (cx - ex) / d, (cz - ez) / d
+            if abs(ux) >= abs(uz):
+                dx, dz = (1 if ux > 0 else -1), 0
+            else:
+                dx, dz = 0, (1 if uz > 0 else -1)
+            out.append(ShaftStair(ex, ez, dx, dz, eg, b1 + 1))
+            bx = ex + dx * (ShaftStair.FLIGHT + 2)
+            bz = ez + dz * (ShaftStair.FLIGHT + 2)
+            out.append(Passage(bx, bz, cx, cz, b1 + 1))
+            handled += 1
             continue
-        ux, uz = (cx - ex) / d, (cz - ez) / d
-        if abs(ux) >= abs(uz):
-            dx, dz = (1 if ux > 0 else -1), 0
-        else:
-            dx, dz = 0, (1 if uz > 0 else -1)
-        out.append(ShaftStair(ex, ez, dx, dz, eg, b1 + 1))
-        bx = ex + dx * (ShaftStair.FLIGHT + 2)
-        bz = ez + dz * (ShaftStair.FLIGHT + 2)
-        out.append(Passage(bx, bz, cx, cz, b1 + 1))
-    return out
+        st = station_of.get((int(ex), int(ez)))
+        if st:
+            leftover[st].append((r, int(ex), int(ez)))
+    return out, leftover

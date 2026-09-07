@@ -259,13 +259,15 @@ class ShaftStair:
                  step="minecraft:smooth_stone",
                  slab="minecraft:smooth_stone_slab",
                  rail="minecraft:iron_bars",
-                 lamp="minecraft:sea_lantern"):
+                 lamp="minecraft:sea_lantern",
+                 sign=None):
         self.x0, self.z0 = int(x0), int(z0)
         self.ux, self.uz = int(round(ux)), int(round(uz))
         self.g0, self.y_to = int(g0), int(y_to)
         self.bottom_door = bool(bottom_door)
         self.wall, self.step, self.slab = wall, step, slab
         self.rail, self.lamp = rail, lamp
+        self.sign = list(sign) if sign else None    # 井口門邊的告示牌（最多四行）
 
     # 井內座標 (a 沿 u, b 沿 v) -> 世界座標
     def _w(self, a, b):
@@ -375,6 +377,12 @@ class ShaftStair:
                 # 地下街走過去會直接掉下去，掉得下去爬不上來，等於不連通。
                 for y in range(self.y_to, min(self.y_to + 3, self.g0)):
                     w.set(x, y, z, AIR)
+        # 出口編號牌立在門外側，牌面朝著走過來的人。底下墊一塊，免得
+        # 地形在那格剛好低一點，告示牌浮在半空中。
+        if self.sign and hasattr(w, "sign"):
+            x, z = self._w(-2, 2)
+            w.set(x, self.g0, z, self.step)
+            w.sign(x, self.g0 + 1, z, self.sign[:4], facing=(-self.ux, -self.uz))
 
 
 
@@ -418,26 +426,92 @@ def plan(ways, entrances, ground_at, y_stand, links=(), half_w=3,
     #
     # g0 傳 y_stand-1：井口平台剛好落在地下街樓板上、門開在地下街的淨空裡、
     # 頂蓋剛好是地下街頂板。井身沿站體法向往外，避開月台樓梯（在中線 ±3 格）。
+    # ---- 出入口樓梯先規劃（還不蓋）：連絡梯的井要避開它們 ----
+    # 靠得很近的出入口共用一座樓梯。台北車站的北3門與台北地下街 Y8 相距
+    # 只有 8 m，現實中本來就是同一個出入口的兩個名字；各蓋一座的話，
+    # 後蓋的那座側牆會把前一座封死（實測北3門因此變成獨立的連通分量）。
+    stair_plan, exits_flat, merged, taken = [], [], [], []
+    stair_fp = set()
+    for ref, ex, ez, n, d in sorted(connected, key=lambda e: e[4]):
+        g = int(ground_at(ex, ez))
+        if g - y_stand < 2:
+            exits_flat.append((ref, ex, ez))
+            continue
+        near_t = next((t for t in taken
+                       if math.hypot(t[1] - ex, t[2] - ez) <= merge_m), None)
+        if near_t is not None:
+            near_t[0].append(ref)
+            merged.append((ref, ex, ez))
+            continue
+        refs = [ref]
+        taken.append((refs, ex, ez))
+        dx, dz = CC.outward(pos, adj, n, ex, ez)
+        stair_plan.append((refs, ref, ex, ez, dx, dz, g))
+        run = 2 * (g + 1 - y_stand)
+        vx, vz = -dz, dx
+        for a in range(-3, run + 8):
+            for b in range(-4, 5):
+                stair_fp.add((int(ex) + dx * a + vx * b, int(ez) + dz * a + vz * b))
+
+    # 井擺在哪、朝哪邊，要挑：
+    #  · 兩座連絡梯靠得近時（中山站的松山新店線與淡水信義線穿堂只差 14 m）
+    #    井身會疊在一起，後蓋的那座把先蓋的樓梯挖成一個空洞 —— 從剖面看
+    #    兩座井都在，走一遍才發現一座是空的
+    #  · 井壓在通道上會把通道切成兩截：中山地下街就在淡水信義線正上方，
+    #    井擺在站體中心正好橫在通道裡，比通道還寬，北段南段從此不相通。
+    #    所以井可以沿站體法向往旁邊挪，挪到通道邊上，門再用接駁段接回來；
+    #    井底的門仍在穿堂層裡（|離線位| <= 9）
+    # 每個候選位置與方向算一個分數：壓到別座井、壓到通道、接駁段穿過別座井
+    # 都扣分，挑最好的；挪得越少越好。
+    from mrt.domain.exits import shaft_cells
+    corridor = set(cells)
     link_objs = []
+    taken_fp, taken_st = set(), set()
     for lk in links:
         lx, lz, ly, name = lk[0], lk[1], lk[2], lk[3]
         ux, uz = (lk[4], lk[5]) if len(lk) > 5 else (1.0, 0.0)
         if ly >= y_stand - 1 or not group:
             continue
         px, pz = -uz, ux                        # 站體法向
-        if abs(px) >= abs(pz):
-            dx, dz = (1 if px > 0 else -1), 0
-        else:
-            dx, dz = 0, (1 if pz > 0 else -1)
-        x0, z0 = int(round(lx)) + dx, int(round(lz)) + dz
+        cands = []
+        for vx, vz in ((px, pz), (-px, -pz), (ux, uz), (-ux, -uz)):
+            q = ((1 if vx > 0 else -1), 0) if abs(vx) >= abs(vz) \
+                else (0, (1 if vz > 0 else -1))
+            if q not in cands:
+                cands.append(q)
+        # 門沿站體往前挪 7 m：穿堂層往月台的兩座樓梯在樓板上開了洞，
+        # 分別在站體中心的 -8..-1 m 與 +16..+23 m，門正對中心的話一出門
+        # 就是往下五公尺的洞（中山站的松山新店線就是這樣從地下街走不到月台）。
+        best = None
+        for shift in (0, 8, -8, 9, -9):
+            cx_ = lx + ux * 7 + px * shift
+            cz_ = lz + uz * 7 + pz * shift
+            for dx, dz in cands:
+                x0, z0 = int(round(cx_)) + dx, int(round(cz_)) + dz
+                fp = shaft_cells(x0, z0, dx, dz, margin=1)
+                door = (x0 - dx, z0 - dz)
+                # 出門先直走四格再轉向最近的節點。門只有三格寬，開在井壁那一排
+                # 的正中央；接駁段若從門口斜著出去，刷寬會掃到門兩側的井壁，
+                # 而井是在通道之後才蓋的，井壁一補回去，門前那一小段就被封死
+                # —— 北門與雙連的連絡梯就是這樣走不進地下街的。
+                porch = (door[0] - 4 * dx, door[1] - 4 * dz)
+                near_n = min(group, key=lambda n: math.hypot(pos[n][0] - porch[0],
+                                                             pos[n][1] - porch[1]))
+                st = (stroke(door, porch, max(2, half_w - 1))
+                      | stroke(porch, pos[near_n], max(2, half_w - 1)))
+                bad = (10 * (len(fp & taken_fp) + len(st & taken_fp) + len(fp & taken_st)
+                             + len(fp & stair_fp))
+                       + len(fp & corridor) + abs(shift))
+                if best is None or bad < best[0]:
+                    best = (bad, dx, dz, x0, z0, door, near_n, fp, st)
+        _, dx, dz, x0, z0, door, near_n, fp, st = best
         well = ShaftStair(x0, z0, dx, dz, y_stand - 1, ly, bottom_door=True)
         well.label = name
         link_objs.append(well)
+        taken_fp |= fp
+        taken_st |= st
         # 井口的門開在 a=-1，也就是站體中心那一格。把它接回通道網。
-        door = (x0 - dx, z0 - dz)
-        near_n = min(group, key=lambda n: math.hypot(pos[n][0] - door[0],
-                                                     pos[n][1] - door[1]))
-        cells |= stroke(door, pos[near_n], max(2, half_w - 1))
+        cells |= st
 
     # ---- 2. 頂板高度 ----
     # 隨地形，但絕不高過地表。地表太低的地方（中山地下街北段一帶地面只有
@@ -470,26 +544,12 @@ def plan(ways, entrances, ground_at, y_stand, links=(), half_w=3,
         objs.append(Tile(cs, rs, y_stand, ceil_of))
 
     # ---- 4. 出入口樓梯（一定要排在地板之後，才挖得開自己的洞）----
-    # 靠得很近的出入口共用一座樓梯。台北車站的北3門與台北地下街 Y8 相距
-    # 只有 8 m，現實中本來就是同一個出入口的兩個名字；各蓋一座的話，
-    # 後蓋的那座側牆會把前一座封死（實測北3門因此變成獨立的連通分量）。
-    exits_built, exits_flat, merged = [], [], []
-    taken = []
-    for ref, ex, ez, n, d in sorted(connected, key=lambda e: e[4]):
-        g = int(ground_at(ex, ez))
-        if g - y_stand < 2:
-            exits_flat.append((ref, ex, ez))
-            continue
-        near = next((t for t in taken
-                     if math.hypot(t[1] - ex, t[2] - ez) <= merge_m), None)
-        if near is not None:
-            near[0].append(ref)
-            merged.append((ref, ex, ez))
-            continue
-        refs = [ref]
-        taken.append((refs, ex, ez))
-        dx, dz = CC.outward(pos, adj, n, ex, ez)
-        objs.append(Stair(ex, ez, dx, dz, y_stand, g, half_w=2,
+    # 位置與方向在上面決定好了；這裡只是照著蓋。
+    exits_built = []
+    for refs, ref, ex, ez, dx, dz, g in stair_plan:
+        # g 是地表方塊，人站在上面腳在 g+1；梯頂要爬到 g+1，出入口亭的
+        # 地坪才與街面齊平。原本停在 g，出門要跳一格、進門掉一格。
+        objs.append(Stair(ex, ez, dx, dz, y_stand, g + 1, half_w=2,
                           label=refs, headhouse=True, open_cells=cells))
         exits_built.append((ref, ex, ez))
     objs += link_objs

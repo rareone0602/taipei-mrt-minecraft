@@ -221,7 +221,7 @@ def main():
                         terr_pts.setdefault((rx, rz), []).append((x, z))
 
     # ---- 地標：不是沿線掃出來的東西（車站大樓、地下大廳、實際位置的出入口）----
-    marks = LM.for_world(segs, stations, terr)
+    marks, real_exits = LM.for_world(segs, stations, terr)
     mark_b = {}
     for m in marks:
         mx0, mz0, mx1, mz1 = m.bbox()
@@ -305,7 +305,9 @@ def main():
             for i in idxs:
                 if i in stn:
                     under = AL.structure_for_ground(int(ys[i]), int(gnd[i])) == "tunnel"
-                    BL.build_station(w, samples, ys, i, under, label=stn[i], grounds=gnd)
+                    # 有真實出入口的站不蓋樣板樓梯（見 application/build_exits.py）
+                    BL.build_station(w, samples, ys, i, under, label=stn[i], grounds=gnd,
+                                     access=(li, i) not in real_exits)
 
         # 地標蓋在沿線結構之後：站體箱涵先挖好，大廳才好接進去
         for m in mark_b.get((rx, rz), ()):

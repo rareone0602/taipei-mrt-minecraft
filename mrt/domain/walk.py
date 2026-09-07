@@ -63,31 +63,41 @@ def is_support(block):
     return not is_passable(block) and not is_bottom_slab(block)
 
 
-def standable(get, x, y, z, head=2):
+def standable(get, x, y, z, head=2, floor_ok=None):
     """(x, y, z) 能不能站人 —— 這一格是「腳」所在的格。
 
     要件：腳這一格與其上 head-1 格通得過；腳底下是實心，或腳這一格
     本身是下半磚（半磚把人墊高半格，等於自己當自己的地板）。
+
+    floor_ok(方塊名) 可以再限制腳下踩的是什麼。驗證出入口用它擋掉地形：
+    「不踩土」就走不到街上，也就不能沿街繞到別的出入口再下去 ——
+    這樣驗出來的才是「這一座樓梯自己通不通」。
     """
     foot = get(x, y, z)
     slab = is_bottom_slab(foot)
     if not slab and not is_passable(foot):
         return False
-    for dy in range(1, head):
+    # 站在下半磚上人被墊高半格，頭頂會伸進再上面那一格，所以要多查一格
+    for dy in range(1, head + (1 if slab else 0)):
         if not is_passable(get(x, y + dy, z)):
             return False
-    return slab or is_support(get(x, y - 1, z))
+    if slab:
+        return floor_ok is None or floor_ok(base_name(foot))
+    below = get(x, y - 1, z)
+    return is_support(below) and (floor_ok is None or floor_ok(base_name(below)))
 
 
 NEIGHBOURS = ((1, 0), (-1, 0), (0, 1), (0, -1))
 
 
-def flood(get, starts, bounds=None, head=2, limit=4_000_000):
+def flood(get, starts, bounds=None, head=2, limit=4_000_000, floor_ok=None,
+          allow=None):
     """從 starts 洪水填滿走得到的腳格。
 
     get(x, y, z) 回傳方塊名稱字串。bounds 是 (x0, y0, z0, x1, y1, z1) 含端點，
     用來把搜尋圈在關心的範圍內 —— 少了它，一條通到地面的樓梯會讓洪水漫過
-    整張地圖。
+    整張地圖。allow(x, y, z) 是再細一層的範圍：驗地下街用它擋掉「這一格
+    已經在地表附近」—— 地形有高低，一個固定的 y 上限圈不住起伏的地面。
 
     回傳 (dist, came)：dist 是 {腳格: 步數}，came 是 {腳格: 上一格}，
     後者用來把路徑倒推出來給人看。
@@ -96,16 +106,18 @@ def flood(get, starts, bounds=None, head=2, limit=4_000_000):
         x0, y0, z0, x1, y1, z1 = bounds
 
         def inside(x, y, z):
-            return x0 <= x <= x1 and y0 <= y <= y1 and z0 <= z <= z1
+            return (x0 <= x <= x1 and y0 <= y <= y1 and z0 <= z <= z1
+                    and (allow is None or allow(x, y, z)))
     else:
         def inside(x, y, z):
-            return True
+            return allow is None or allow(x, y, z)
 
     dist, came = {}, {}
     q = collections.deque()
     for c in starts:
         c = (int(c[0]), int(c[1]), int(c[2]))
-        if c not in dist and inside(*c) and standable(get, *c, head=head):
+        if c not in dist and inside(*c) and standable(get, *c, head=head,
+                                                       floor_ok=floor_ok):
             dist[c] = 0
             q.append(c)
 
@@ -120,7 +132,7 @@ def flood(get, starts, bounds=None, head=2, limit=4_000_000):
                 n = (nx, ny, nz)
                 if n in dist or not inside(*n):
                     continue
-                if standable(get, nx, ny, nz, head=head):
+                if standable(get, nx, ny, nz, head=head, floor_ok=floor_ok):
                     dist[n] = d
                     came[n] = (x, y, z)
                     q.append(n)
@@ -128,7 +140,7 @@ def flood(get, starts, bounds=None, head=2, limit=4_000_000):
     return dist, came
 
 
-def nearest_standable(get, x, y, z, radius=6, head=2, dy=8):
+def nearest_standable(get, x, y, z, radius=6, head=2, dy=8, floor_ok=None):
     """在 (x, y, z) 附近找一格站得住的地方。
 
     出入口的座標是 OSM 的節點位置，不保證正好落在樓梯的踏面上；
@@ -140,7 +152,7 @@ def nearest_standable(get, x, y, z, radius=6, head=2, dy=8):
         for ddx in range(-radius, radius + 1):
             for ddz in range(-radius, radius + 1):
                 c = (x + ddx, y + ddy, z + ddz)
-                if not standable(get, *c, head=head):
+                if not standable(get, *c, head=head, floor_ok=floor_ok):
                     continue
                 w = ddx * ddx + ddz * ddz + 4 * ddy * ddy
                 if best is None or w < best[0]:
@@ -158,7 +170,7 @@ def path(came, cell):
     return out
 
 
-def components(get, cells, bounds=None, head=2):
+def components(get, cells, bounds=None, head=2, floor_ok=None, allow=None):
     """把一批腳格分成連通分量。回傳 [[cell, ...], ...]，大的在前。
 
     「所有出入口互相連得到」等價於「只有一個分量」，分不開的時候這個
@@ -169,7 +181,8 @@ def components(get, cells, bounds=None, head=2):
     for c in todo:
         if c in seen:
             continue
-        dist, _ = flood(get, [c], bounds=bounds, head=head)
+        dist, _ = flood(get, [c], bounds=bounds, head=head, floor_ok=floor_ok,
+                        allow=allow)
         group = [d for d in todo if d in dist]
         seen.update(group)
         if group:

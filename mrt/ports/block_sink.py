@@ -54,12 +54,22 @@ class DictSink:
 
     def __init__(self):
         self.blocks = {}
+        self.signs = {}                     # (x, y, z) -> 四行文字
 
     def set(self, x, y, z, block):
         self.blocks[(int(x), int(y), int(z))] = block
 
     def get(self, x, y, z, default="minecraft:air"):
         return self.blocks.get((int(x), int(y), int(z)), default)
+
+    def sign(self, x, y, z, lines, facing=(0, 1), wood="oak"):
+        """告示牌：方塊照放，文字另外記在 signs 裡，測試可以查牌上寫什麼。
+
+        infrastructure 的 World 也有同名方法（那邊才真的寫 NBT）；生成器
+        放站名牌時呼叫的是這個介面，測試的 sink 不能少了它。
+        """
+        self.set(x, y, z, "minecraft:%s_sign" % wood)
+        self.signs[(int(x), int(y), int(z))] = [str(t) for t in list(lines)[:4]]
 
     def __len__(self):
         return len(self.blocks)

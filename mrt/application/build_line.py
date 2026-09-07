@@ -156,19 +156,23 @@ def _stair_run(w, samples, ys, s0, d, per_m, y_from, y_to, off_lo, off_hi,
 
 # ---------- 車站 ----------
 
-def build_station(w, samples, ys, idx, underground, label=None, grounds=None):
+def build_station(w, samples, ys, idx, underground, label=None, grounds=None,
+                  access=True):
+    """access=False 時地下站不蓋樣板的出入口樓梯 —— 有真實出入口
+    （application/build_exits.py）的車站用那些，樣板的那座只會多出一個
+    誰也不會走的洞。"""
     n = len(samples)
     half = int(PLATFORM_LEN / 2 / STEP)
     lo, hi = max(0, idx - half), min(n - 1, idx + half)
     if underground:
-        _station_island(w, samples, ys, grounds, lo, hi, label)
+        _station_island(w, samples, ys, grounds, lo, hi, label, access=access)
     else:
         _station_side(w, samples, ys, grounds, lo, hi, label)
 
 
 # ===== 地下站：島式月台 + 穿堂層 =====
 
-def _station_island(w, samples, ys, grounds, lo, hi, label):
+def _station_island(w, samples, ys, grounds, lo, hi, label, access=True):
     """地下島式月台車站。
 
     北捷地下站幾乎都是島式：軌道分到兩側、月台居中，上面再疊一層穿堂。
@@ -231,7 +235,8 @@ def _station_island(w, samples, ys, grounds, lo, hi, label):
     _gates(w, samples, ys, lo + 14 * per_m, per_m)
     for a0 in (24, 48):
         _plat_stair(w, samples, ys, lo + a0 * per_m, per_m)
-    _station_access(w, samples, ys, grounds, lo, hi, label)
+    if access:
+        _station_access(w, samples, ys, grounds, lo, hi, label)
     if label:
         _plat_signs(w, samples, ys, lo, hi, label)
 
@@ -288,7 +293,10 @@ def _station_access(w, samples, ys, grounds, lo, hi, label):
     y0 = int(ys[sd])
     ym = y0 + MEZZ_DY + 1                               # 穿堂層可站立高度
     g0 = int(grounds[sd]) if grounds is not None else GROUND
-    n = g0 - ym
+    # g0 是地表最上面那塊方塊，人站在它上面時腳在 g0+1；樓梯要爬到 g0+1
+    # 才接得平站屋的地坪（_hall 把地坪墊到 g0）。原本爬到 g0 就停，
+    # 梯頂到站屋差一格 —— 走得下去，上來要跳。
+    n = g0 + 1 - ym
     if n < 2:
         return
     need = (2 * n + 12) * per_m

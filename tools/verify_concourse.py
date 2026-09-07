@@ -35,6 +35,19 @@ from mrt.infrastructure.savereader import read_volume
 PLAT_EDGE = "minecraft:yellow_concrete"     # 月台邊緣警戒帶，build_line 的 YELLOW
 
 
+def walk_candidates(get, x, y, z, radius=8, dy=20):
+    """(x, y, z) 附近站得住的格子，近的在前。"""
+    out = []
+    for ddy in range(-dy, dy + 1):
+        for ddx in range(-radius, radius + 1):
+            for ddz in range(-radius, radius + 1):
+                c = (x + ddx, y + ddy, z + ddz)
+                if walk.standable(get, *c):
+                    out.append((ddx * ddx + ddz * ddz + 4 * ddy * ddy, c))
+    out.sort()
+    return [c for _, c in out]
+
+
 def load_entrances(stations, margin):
     """挑出屬於這幾座車站的出入口，並算出要讀回來的範圍。"""
     items = json.load(open(config.ENTRANCES_JSON, encoding="utf-8"))["items"]
@@ -60,8 +73,9 @@ def main():
     ap.add_argument("--stations", nargs="+", default=["台北車站"])
     ap.add_argument("--margin", type=int, default=60,
                     help="出入口範圍再往外擴幾公尺")
-    ap.add_argument("--depth", type=int, default=40,
-                    help="從地面往下讀幾公尺")
+    ap.add_argument("--depth", type=int, default=60,
+                    help="從地面往下讀幾公尺（第 2 帶的站體軌面在地下 45 m，"
+                         "北門的松山新店線月台就在那裡，40 m 讀不到）")
     a = ap.parse_args()
 
     if not os.path.isdir(a.save):
@@ -79,24 +93,37 @@ def main():
     g_hi = max(gs)
     y1 = g_hi + 6                       # 含地面出入口亭
     y0 = min(gs) - a.depth
-    # 地下的定義取最低的地面再減 3：出入口亭的地坪也算地面，不能放行
-    ug_top = min(gs) - 3
+
+    # 「地下」逐格看當地地面：腳的高度要比地表方塊低 2 格以上。原本拿所有
+    # 出入口裡最低的地面當全域上限，中山、雙連那頭的地面比台北車站低 3 m，
+    # 一併驗的時候整條地下街都被判成「地表」，剩下零星的口袋各成一個分量。
+    # 出入口亭的地坪在地表方塊上、梯頂兩階在地表下一格，都不算地下。
+    import numpy as np
+    GX, GZ = np.meshgrid(np.arange(x0, x1 + 1), np.arange(z0, z1 + 1))
+    T = terr.y_at(GX, GZ)
+
+    def underground(x, y, z):
+        return y <= int(T[z - z0, x - x0]) - 2
 
     print(f"存檔 {a.save}")
     print(f"車站 {', '.join(a.stations)}：出入口 {len(ents)} 個")
     print(f"範圍 x {x0}..{x1}  z {z0}..{z1}  y {y0}..{y1}"
-          f"（地面 y {min(gs)}~{g_hi}，地下的上限取 y<={ug_top}）")
+          f"（地面 y {min(gs)}~{g_hi}，地下 = 腳比當地地表低 2 格以上）")
 
     vol = read_volume(a.save, x0, y0, z0, x1, y1, z1)
     get = vol.get
-    ug_bounds = (x0, y0, z0, x1, ug_top, z1)
+    ug_bounds = (x0, y0, z0, x1, g_hi, z1)
 
     # ---- 1. 每個出入口在地下有沒有立足點 ----
     foot, nowhere = {}, []
-    for ref, st, x, z in ents:
-        c = walk.nearest_standable(get, x, ug_top - 4, z, radius=8, dy=20)
-        if c and c[1] <= ug_top:
-            foot[(ref, st)] = c
+    for (ref, st, x, z), g in zip(ents, gs):
+        best = None
+        for c in walk_candidates(get, x, g - 6, z):
+            if underground(*c):
+                best = c
+                break
+        if best:
+            foot[(ref, st)] = best
         else:
             nowhere.append(f"{ref}({st})")
 
@@ -111,7 +138,7 @@ def main():
 
     # ---- 2. 不出地面的連通性 ----
     cells = list(foot.values())
-    comps = walk.components(get, cells, bounds=ug_bounds)
+    comps = walk.components(get, cells, bounds=ug_bounds, allow=underground)
     inv = collections.defaultdict(list)
     for (ref, st), c in foot.items():
         # ref 在不同車站會重複（台北車站與北門都有 1、2、3 號出入口），
@@ -125,7 +152,7 @@ def main():
 
     # 最遠的一對走幾步：地下街不該繞遠路
     main_comp = comps[0]
-    dist, came = walk.flood(get, [main_comp[0]], bounds=ug_bounds)
+    dist, came = walk.flood(get, [main_comp[0]], bounds=ug_bounds, allow=underground)
     far = max(((dist.get(c, -1), c) for c in main_comp), key=lambda t: t[0])
     if far[0] > 0:
         refs = ", ".join(inv[far[1]])
@@ -135,10 +162,10 @@ def main():
     # ---- 3. 走不走得到月台 ----
     print("\n[3] 從最大分量走得到的月台邊緣：")
     edges = []
-    for yy in range(y0, ug_top + 1):
+    for yy in range(y0, g_hi + 1):
         for zz in range(z0, z1 + 1, 4):
             for xx in range(x0, x1 + 1, 4):
-                if get(xx, yy, zz) == PLAT_EDGE:
+                if get(xx, yy, zz) == PLAT_EDGE and underground(xx, yy + 1, zz):
                     edges.append((xx, yy + 1, zz))
     if not edges:
         print("    範圍內沒有月台警戒帶（這個存檔可能沒蓋車站）")
