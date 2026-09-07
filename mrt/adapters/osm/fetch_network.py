@@ -20,8 +20,12 @@ def main():
     for ref in REFS:
         path = f"{OUT}/{ref}.json"
         if os.path.exists(path):
+            # 空的結果（elements 是空清單）不算已存在：三鶯線曾經因為鏡像的資料
+            # 太舊而抓到空檔案，之後每次重跑都被這一行略過，永遠補不回來。
             try:
-                json.load(open(path, encoding="utf-8")); print(f"{ref:<3} 已存在，略過"); continue
+                if json.load(open(path, encoding="utf-8")).get("elements"):
+                    print(f"{ref:<3} 已存在，略過"); continue
+                print(f"{ref:<3} 檔案是空的，重抓")
             except Exception: pass
         d = fetch(ref)
         if d is None:

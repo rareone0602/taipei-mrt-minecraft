@@ -147,8 +147,10 @@ def main():
         json.dump(lines, f, ensure_ascii=False)
 
     if empty:
-        # 檔案在但一條路線都拼不出來。目前已知的是三鶯線（LB）——
-        # 還在興建中，OSM 上沒有完整的 route relation，見 README「已知落差」。
+        # 檔案在但一條路線都拼不出來。三鶯線（LB）曾經是這樣：它的 relation
+        # 到 2026-06-30 才補上 route=subway，在那之前用 route 篩的查詢一條都
+        # 抓不到；而且 fetch_network 看到檔案存在就略過，空檔案永遠不會重抓。
+        # 抓到空檔案時把它刪掉再重跑 fetch_network，並確認鏡像的資料日期夠新。
         # 印出來是為了讓「少了一條線」這件事出現在執行輸出裡，而不是只有 README 知道。
         print(f"注意：{', '.join(empty)} 的路線檔沒有可用的 route relation，"
               f"這幾條線不會出現在世界裡\n")

@@ -10,7 +10,7 @@ import json, os, time
 from mrt import config
 from mrt.infrastructure.overpass import BBOX, query
 
-REFS = ["R", "G", "O", "BL", "BR", "Y", "A", "V", "K"]
+REFS = ["R", "G", "O", "BL", "BR", "Y", "A", "V", "K", "LB"]
 OUT = config.WAY_TAGS_JSON
 
 KEEP = ("tunnel", "bridge", "layer", "railway", "usage", "service", "name", "level")
