@@ -130,13 +130,21 @@ def main():
     # 軌道離線位（進站張開成島式月台）與隧道半寬，必須在車站去重後才算，
     # 否則被砍掉的重複車站也會在區間隧道上開出一段莫名其妙的張開段。
     rail_b = {}
-    nrail = nskip = 0
+    nrail = nskip = nmask = 0
     # 預設不鋪鐵軌：走行面（smooth_stone）照留，軌道要不要鋪、鋪成什麼樣
     # 交給玩家用模組決定。--rails 才會鋪。
     # 同一條線的變體常常共用一大段幹線（中和新蘆、淡海輕軌）。兩份幾何差個
     # 一兩公尺就會互相蓋掉對方的鐵軌，把幹線打成碎片。做法是先鋪最長的那一段，
     # 之後的變體只鋪「連續 200 m 以上真正沒鋪過」的區段 —— 也就是支線本身。
     # 交會處會斷一格（沒有真的道岔），但至少幹線與支線各自都是連通的。
+    #
+    # 斷面也一樣只蓋「真正沒蓋過」的區段（sg["build"]）。原本共用幹線的
+    # 斷面蓋兩次，以為只是浪費時間 —— 其實第二份是在第一份的車站蓋好之後
+    # 才掃過去的，而它的重複車站已經被上面去重砍掉、沒有張開段，於是一條
+    # 15 m 寬的素隧道直直穿過 25 m 寬的站體：月台、月台門、穿堂樓板全部
+    # 被挖成空氣，頂板襯砌橫在穿堂層的高度。中和新蘆線共用幹線上的 12 座
+    # 車站（頂溪到大橋頭）就這樣整座被抹掉，七張、北投與淡海輕軌七站被
+    # 抹掉一部分 —— 從存檔切剖面才看出來，生成紀錄上每一站都是「已完成」。
     seen = {}
     for sg in sorted(segs, key=lambda s: -len(s["samples"])):
         samples, ys = sg["samples"], sg["ys"]
@@ -148,6 +156,12 @@ def main():
                  for x, z, _, _, _ in samples]
         for i, (x, z, _, _, _) in enumerate(samples):
             grid.add((int(x) >> 3, int(z) >> 3))
+        build = [False] * len(samples)
+        for lo_i, hi_i in runs(fresh, 400):
+            for i in range(lo_i, hi_i):
+                build[i] = True
+        sg["build"] = build
+        nmask += len(samples) - sum(build)
         if not a.rails:
             continue
         for lo_i, hi_i in runs(fresh, 400):
@@ -161,6 +175,8 @@ def main():
                     rail_b.setdefault((e[0] >> 9, e[2] >> 9), []).append(e)
                     nrail += 1
         nskip += 2 * (len(samples) - sum(h - l for l, h in runs(fresh, 400)))
+    if nmask:
+        print(f"支線與幹線共用的路廊只蓋一次：略過 {nmask * STEP / 1000:.1f} km 的重複斷面")
     if a.rails:
         print(f"鐵軌 {nrail:,} 段（雙線，含加速軌）"
               + (f"，與幹線重疊而未重鋪 {nskip:,} 段" if nskip else ""))
@@ -265,7 +281,10 @@ def main():
             sg = segs[li]
             samples, ys, gnd, stn = sg["samples"], sg["ys"], sg["ground"], sg["stn"]
             lights = []
+            build = sg["build"]
             for i in idxs:
+                if not build[i]:            # 幹線已經蓋過這一段，見上面的說明
+                    continue
                 x, z, ux, uz, _ = samples[i]
                 nx, nz = -uz, ux
                 y, g = int(ys[i]), int(gnd[i])

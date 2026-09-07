@@ -83,7 +83,13 @@ def profile(samples, terr, ref=None, band=None):
 
 
 def runs(mask, min_len):
-    """把 True 的區段抓出來，太短的丟掉（前後的空隙一併吸收進來）。"""
+    """把 True 的區段抓出來，太短的丟掉（中間 min_len/2 以內的空隙一併吸收）。
+
+    回傳 [(起, 迄)]，迄不含。內圈停下來時 j 指在最後一個看過的格子之後，
+    扣掉尾端的空隙才是這一段的迄；下一段從 j + gap 接著看 —— 原本多加了 1，
+    每個空隙後面的第一格都沒看到，剛好 min_len/2 長的空隙後面那一段會少一格，
+    差一格就不到門檻的話整段消失。
+    """
     out, i, n = [], 0, len(mask)
     while i < n:
         if not mask[i]:
@@ -97,7 +103,7 @@ def runs(mask, min_len):
         j -= gap
         if j - i >= min_len:
             out.append((i, j))
-        i = j + gap + 1
+        i = j + gap
     return out
 
 
