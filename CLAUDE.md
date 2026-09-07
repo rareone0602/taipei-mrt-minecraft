@@ -21,7 +21,8 @@ Clean Architecture。**相依方向一律由外往內，內層不得引用外層
 mrt/
   config.py         專案路徑與世界垂直範圍。所有層都可以引用
   domain/           純規則，零 I/O：線形、鐵軌形狀、建築幾何、隧道分層、高程取樣、
-                    地下街動線 (concourse)、行走可達性 (walk)
+                    地下街動線 (concourse)、真實出入口的擺放與避讓 (exits)、
+                    行走可達性 (walk)
   ports/            內層對外層開的介面：BlockSink（逐格）、ChunkSink（整段批次）
   application/      用例：把 domain 算出來的東西寫進 BlockSink
   adapters/         外部資料進來：OSM (osm/)、DEM (dem/)、投影 (projection.py)
@@ -81,8 +82,14 @@ tests/              不需要產生世界就能跑的測試
 ./.venv/bin/python tests/run_all.py                       # 全部單元測試
 ./.venv/bin/python tools/verify_render.py <存檔> out.png  # 讀回算俯視圖
 ./.venv/bin/python tools/verify_rails.py [存檔]           # 讀回驗證鐵軌連通性
+./.venv/bin/python tools/verify_exits.py <存檔>           # 讀回每座出入口，從街上走到月台
+./.venv/bin/python tools/verify_concourse.py <存檔> --stations 台北車站 北門 中山 雙連
 ./.venv/bin/python tools/slice_world.py 忠孝復興          # ASCII 剖面
 ```
+
+驗證的規則有兩條，別搞混：`verify_concourse` 是「不出地面」（腳要比當地地表低
+兩格，逐格看地形），`verify_exits` 是「不踩土」（腳下只准是人造方塊）。
+後者更嚴，出入口亭本身就在地面上，用前者驗不了它。
 
 ## 授權
 
@@ -98,3 +105,13 @@ OpenStreetMap）。兩者都是 copyleft。新增資料檔到 `data/` 時要確�
 `verify_render.py` 有個坑：終端輸出只列前 20 種方塊，新加的材質排不進去就
 看不到「未列入配色」的提示 —— 要直接掃圖上有沒有洋紅像素才算數
 （洋紅會被高度陰影調暗，判斷條件是 `g=0 且 r=b`，不是 `r>200`）。
+
+**驗證器自己也會騙人。** 兩個真的發生過的例子：把「地下」定成一個全域的
+y 上限，車站多加兩座、地面低 3 m，整條地下街就被判成地表，六十個出入口
+各成一個分量；驗證器用出口編號當鍵，西門捷運站 1 號與西門地下街 1 號互相蓋掉，
+壞的那一半根本不會出現在報表裡。看到離奇的結果，先懷疑驗證器。
+
+**改了生成器，要對照舊版存檔。** `git worktree add <暫存目錄> HEAD` 加一個
+`data/heightmap.npy` 的 symlink 就能用舊程式蓋同一塊地，再逐格 diff
+（`savereader.read_volume` 兩邊各讀一次）；共用幹線把十二座車站挖空、
+樓梯頂端差一格，都是這樣才看出來哪些差異是刻意的、哪些是壞掉的。
