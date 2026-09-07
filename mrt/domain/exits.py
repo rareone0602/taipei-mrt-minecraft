@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
-"""真實出入口：把 OSM 的出入口座標接到樣板車站的穿堂層。
+"""真實出入口與轉乘通道：把 OSM 的出入口座標接到車站的穿堂層，再把轉乘站的
+兩座站體接起來。
 
 除了台北車站以外，每座車站原本只有一座樣板樓梯，開在站體側邊固定的位置。
 但 `data/entrances.json` 早就有全網 786 個真實出入口的座標與編號 ——
 中正紀念堂 6 號出口離站體 264 m、公館有 27 個出入口。這裡把它們接上。
 
 每個出入口做三件事：
-  1. 一座折返式樓梯井（build_concourse.ShaftStair）從地面下到穿堂層的高度
-  2. 一段接駁通道，從井底的門沿著站體外側走到站體側牆
+  1. 一座折返式樓梯井（build_concourse.ShaftStair）從街上到穿堂層的高度 ——
+     地下站往下挖，高架站往上爬到橋下的穿堂（alignment.station_kind 決定型態，
+     LEVEL_DY 決定高度；全專案只有這一個定義）
+  2. 一段接駁通道，從井的門沿著站體外側走到站體側牆（高架站是空橋）
   3. 在側牆開一個洞通進穿堂層的非付費區（閘門前那一段）
+
+轉乘站另外規劃一條付費區對付費區的轉乘通道（plan_transfer）：兩層一樣高就
+一條通道，不一樣高就在兩座站體之間立一座井，兩層各接一段通道到井的門。
 
 三件事全是純幾何，這一層只算「東西該放在哪」，不放方塊；放方塊在
 application/build_exits.py。
@@ -30,7 +36,8 @@ application/build_exits.py。
 import math
 
 from mrt.domain.alignment import (
-    BOX_HALF, MEZZ_DY, BOX_TOP_DY, PLATFORM_LEN, STEP, structure_for_ground,
+    BOX_HALF, MEZZ_DY, BOX_TOP_DY, PLATFORM_LEN, STEP, LEVEL_DY,
+    structure_for_ground, station_kind,
 )
 
 PASS_OFF   = BOX_HALF + 3      # 接駁通道中心線的離線位（站體外側 3 m）
@@ -41,7 +48,8 @@ CLEAR_OFF  = PASS_OFF + PASS_HALF + 1   # 井身（含一格邊距）離中心�
 SAME_REF_M = 40.0              # 同一站同編號的兩個節點在這個距離內算同一個出入口
 HOLE_ALONG = 7                 # 側牆開洞位置：自站體 lo 端起算幾公尺（閘門在 14）
 HOLE_HALF  = 2                 # 洞的半寬（沿線方向）
-MIN_DROP   = 3                 # 地面到穿堂層至少要差這麼多才值得蓋井
+MIN_DROP   = 3                 # 地面到穿堂層至少要差這麼多才值得蓋井（地下站）
+MIN_RISE   = 2                 # 高架站：街面到穿堂層至少差這麼多才蓋井往上爬
 MAX_ALONG  = 350               # 出入口離站體中心沿線超過這個距離就不接
 MAX_OFF    = 300               # 離中心線超過這個距離就不接
 MERGE_M    = 12.0              # 兩個出入口靠得比這近就共用一座井
@@ -76,6 +84,12 @@ class Occupancy:
     def __init__(self):
         self.cells = {}
 
+    def copy(self):
+        """複本，拿來試規劃：不成就丟掉，成了再把 cells 換回來。"""
+        o = Occupancy()
+        o.cells = {c: list(v) for c, v in self.cells.items()}
+        return o
+
     def add(self, x, z, y0, y1, tag=None):
         c = (int(round(x)), int(round(z)))
         self.cells.setdefault(c, []).append((int(y0), int(y1), tag))
@@ -85,24 +99,28 @@ class Occupancy:
         for o in range(-r, r + 1):
             self.add(x + nx * o, z + nz * o, y0, y1, tag)
 
-    def blocked(self, x, z, y0, y1, skip_tag=None):
+    def blocked(self, x, z, y0, y1, skip_tag=None, ignore=None):
+        """ignore(tag) 回 True 的占用不算數 —— 轉乘通道跟同一座站體、同一層的
+        出入口通道重疊是正常的（兩條通道併成一片地板），跟別的東西重疊才是撞。"""
         for a, b, t in self.cells.get((int(x), int(z)), ()):
-            if a <= y1 and b >= y0 and (skip_tag is None or t != skip_tag):
+            if a <= y1 and b >= y0 and (skip_tag is None or t != skip_tag) \
+                    and not (ignore is not None and ignore(t)):
                 return True
         return False
 
-    def any_blocked(self, cells, y0, y1, skip_tag=None):
+    def any_blocked(self, cells, y0, y1, skip_tag=None, ignore=None):
         for x, z in cells:
-            if self.blocked(x, z, y0, y1, skip_tag):
+            if self.blocked(x, z, y0, y1, skip_tag, ignore):
                 return True
         return False
 
-    def who(self, cells, y0, y1, skip_tag=None):
+    def who(self, cells, y0, y1, skip_tag=None, ignore=None):
         """擋住這批格子的是哪些 tag（給報表用）。"""
         out = set()
         for x, z in cells:
             for a, b, t in self.cells.get((int(x), int(z)), ()):
-                if a <= y1 and b >= y0 and (skip_tag is None or t != skip_tag):
+                if a <= y1 and b >= y0 and (skip_tag is None or t != skip_tag) \
+                        and not (ignore is not None and ignore(t)):
                     out.add(t)
         return out
 
@@ -140,10 +158,12 @@ def index_segments(segs, box_half=BOX_HALF):
             elif st == "viaduct":
                 occ.add_span(x, z, nx, nz, hw + 1, y - 2, y + 8, li)
                 occ.add_span(x, z, nx, nz, 2, g - 4, y, li)          # 橋墩
-                if in_stn:                                            # 地面站廳
-                    occ.add_span(x, z, nx, nz, 11, g - 3, y + 8, li)
+                if in_stn:                        # 站體連同橋下／月台上方的穿堂
+                    occ.add_span(x, z, nx, nz, 11, g - 3, y + 12, li)
             else:
                 occ.add_span(x, z, nx, nz, hw + 2, y - 2, y + 8, li)
+                if in_stn:                        # 平面站的穿堂跨在月台上方
+                    occ.add_span(x, z, nx, nz, 11, g - 3, y + 12, li)
     return occ
 
 
@@ -264,8 +284,18 @@ def _quantize(vx, vz):
     return 0, (1 if vz >= 0 else -1)
 
 
+def well_span(level, street):
+    """井占用的高度區間 (y_lo, y_hi)：兩端的站立面各往外留樓板與頂蓋。
+
+    地下站的井從街上往下挖到穿堂，高架站的井從街上往上爬到橋下的穿堂 ——
+    同一座井、同一套幾何，只是哪一端在上面不一樣。
+    """
+    top, bot = max(level, street), min(level, street)
+    return bot - 1, top + 5
+
+
 def place_shaft(samples, ys, lo, hi, ex, ez, ym, g_top, occ, used, ground_at,
-                extra=frozenset()):
+                extra=frozenset(), kind="tunnel"):
     """替一個出入口找井的位置與方向。
 
     回傳 (x0, z0, ux, uz, g0, 推了幾公尺, 方向種類) 或 None；
@@ -283,6 +313,10 @@ def place_shaft(samples, ys, lo, hi, ex, ez, ym, g_top, occ, used, ground_at,
       · 井身與所有地下結構（occ）、已經蓋好的井與通道（used）都不相撞；
         extra 是這一站自己已經鋪好的通道格，井不准壓上去
     推的距離越短越好。
+
+    kind 是車站型態（alignment.station_kind）：地下站的井往下挖，街面要比
+    穿堂高 MIN_DROP 才有意義；高架站的井往上爬，街面與穿堂差不到 MIN_RISE
+    的話門洞會矮到鑽不過去。
     """
     i, _ = nearest_index(samples, ex, ez, lo, hi)
     along, off = local_coords(samples, i, ex, ez)
@@ -295,10 +329,9 @@ def place_shaft(samples, ys, lo, hi, ex, ez, ym, g_top, occ, used, ground_at,
         q = _quantize(*t)
         if q != dirs[0][0] and q != (-dirs[0][0][0], -dirs[0][0][1]):
             dirs.append((q, "tangent"))
-    y_lo = ym - 1                                # 井底樓板
     for slide in range(0, SLIDE_MAX + 1):
         px, pz = ex + nx * slide, ez + nz * slide
-        for (dx, dz), kind in dirs:
+        for (dx, dz), kind_ in dirs:
             x0, z0 = int(round(px)), int(round(pz))
             door = (x0 - dx, z0 - dz)
             di, _ = nearest_index(samples, door[0], door[1])
@@ -310,12 +343,20 @@ def place_shaft(samples, ys, lo, hi, ex, ez, ym, g_top, occ, used, ground_at,
             if any(c in extra for c in cells):
                 continue
             g0 = int(ground_at(*door))
-            if g0 - ym < MIN_DROP:
-                return None                      # 這裡的地面太低，井沒有意義
-            if occ.any_blocked(cells, y_lo, g0 + 5) or used.any_blocked(cells, y_lo, g0 + 5):
+            if not drop_ok(kind, g0, ym):
+                return None                      # 這裡的地面高度不對，井沒有意義
+            y_lo, y_hi = well_span(ym, g0 + 1)
+            if occ.any_blocked(cells, y_lo, y_hi) or used.any_blocked(cells, y_lo, y_hi):
                 continue
-            return x0, z0, dx, dz, g0, slide, kind
+            return x0, z0, dx, dz, g0, slide, kind_
     return None
+
+
+def drop_ok(kind, g0, level):
+    """街面（地表方塊 g0）與穿堂站立面 level 的高差夠不夠蓋井。"""
+    if kind == "tunnel":
+        return g0 - level >= MIN_DROP
+    return abs(g0 + 1 - level) >= MIN_RISE
 
 
 # ---------- 整座車站的計畫 ----------
@@ -350,9 +391,31 @@ def merge_entrances(entrances, merge_m=MERGE_M, same_ref_m=SAME_REF_M):
     return groups
 
 
+def hole_cells(samples, lo, hi, k, side):
+    """側牆開洞：|off| 11..13（襯砌兩格加外側一格），沿線 k ± HOLE_HALF。
+
+    不往裡多挖：穿堂層 |off| <= 10 本來就是空的，多鋪只是把樓板換色。
+    地下站的側牆在 11..12、高架穿堂的玻璃牆在 11，同一組格子兩種都打得穿。
+    """
+    out = set()
+    for kk in range(k - HOLE_HALF * 2, k + HOLE_HALF * 2 + 1):
+        if not (lo <= kk <= hi):
+            continue
+        for o in range(BOX_HALF - 1, BOX_HALF + 2):
+            x, z = offset_point(samples, kk, side * o)
+            out.add((int(round(x)), int(round(z))))
+    return out
+
+
+def passage_tag(own_tag, level):
+    """通道在 used 裡的 tag：同一段路線、同一層的通道可以互相重疊（併成一片地板）。"""
+    return ("通道", own_tag, int(level))
+
+
 def plan_station(samples, ys, grounds, idx, entrances, ground_at, occ, used,
                  own_tag=None):
-    """把一座地下站的出入口全部接上。
+    """把一座車站的出入口全部接上（地下站接穿堂層，高架與平面站接橋下或
+    月台上方的穿堂 —— 型態與高度由 alignment.station_kind / LEVEL_DY 決定）。
 
     samples/ys/grounds  cli 規劃好的路段陣列
     idx                 車站的取樣索引
@@ -366,6 +429,7 @@ def plan_station(samples, ys, grounds, idx, entrances, ground_at, occ, used,
     own_tag             這條路段在 occ 裡的 tag，通道檢查時略過（見 Occupancy）
 
     回傳 dict：
+      kind     車站型態
       ym       穿堂層站立面 y
       shafts   [dict(refs, x0, z0, ux, uz, g0, y_to, slide)]
       cells    接駁通道的地板格（含側牆開洞）
@@ -373,7 +437,8 @@ def plan_station(samples, ys, grounds, idx, entrances, ground_at, occ, used,
       skipped  [(refs, x, z, 原因, 擋住的是誰)]
     """
     lo, hi, hole = station_frame(samples, ys, idx)
-    ym = int(ys[hole]) + MEZZ_DY + 1
+    kind = station_kind(int(ys[idx]), int(grounds[idx]))
+    ym = int(ys[hole]) + LEVEL_DY[kind]
     interior = box_cells(samples, lo, hi, BOX_HALF - 2)
     own_box = box_cells(samples, lo, hi, BOX_HALF + 2)   # 通道本來就要穿進自己的站體
     cells, shafts, skipped = set(), [], []
@@ -389,23 +454,25 @@ def plan_station(samples, ys, grounds, idx, entrances, ground_at, occ, used,
             skipped.append((g["refs"], ex, ez, "離站體太遠", set()))
             continue
         g_here = int(ground_at(ex, ez))
-        if g_here - ym < MIN_DROP:
-            skipped.append((g["refs"], ex, ez, "地面太低，沒有落差", set()))
+        if not drop_ok(kind, g_here, ym):
+            skipped.append((g["refs"], ex, ez,
+                            "地面太低，沒有落差" if kind == "tunnel" else "街面與穿堂同高",
+                            set()))
             continue
         # 井不准壓到這一站已經鋪好的通道；通道之間則可以重疊（同一層、同高）
         placed = place_shaft(samples, ys, lo, hi, ex, ez, ym, g_here, occ,
-                             used, ground_at, extra=cells)
+                             used, ground_at, extra=cells, kind=kind)
         if placed is None:
             skipped.append((g["refs"], ex, ez, "井擺不下（撞到別線或別的井）", set()))
             continue
-        x0, z0, dx, dz, g0, slide, kind = placed
+        x0, z0, dx, dz, g0, slide, kind_ = placed
 
         # 接駁通道：門 -> 站體外側 PASS_OFF 處 -> 沿線走到開洞位置 -> 洞。
         # 順著線形擺的井，門朝著線形方向，出門先直走三格再轉向站體 ——
         # 直接斜著轉的話通道的刷寬會切到井口那一排井壁。
         door = (x0 - dx, z0 - dz)
         pts = [door]
-        if kind == "tangent":
+        if kind_ == "tangent":
             door = (x0 - 4 * dx, z0 - 4 * dz)
             pts.append(door)
         di, _ = nearest_index(samples, door[0], door[1])
@@ -420,9 +487,10 @@ def plan_station(samples, ys, grounds, idx, entrances, ground_at, occ, used,
         pts.append(offset_point(samples, hole, side * (BOX_HALF - 1)))
         pcells = polyline_cells(pts, PASS_HALF)
         pcells -= interior                                   # 站體裡面不必再鋪
-        # 通道是平的，地形不是：板橋站往環狀線那頭地面低了 6 m，通道走過去
-        # 頂板會冒出街面。頂板上面至少要留一格土。
-        if any(int(ground_at(x, z)) < ym + 4 for x, z in pcells):
+        # 地下的通道是平的，地形不是：板橋站往環狀線那頭地面低了 6 m，通道走
+        # 過去頂板會冒出街面。頂板上面至少要留一格土。高架站的通道是空橋，
+        # 地形高過它就切進坡裡，低了就架橋墩，怎樣都蓋得成。
+        if kind == "tunnel" and any(int(ground_at(x, z)) < ym + 4 for x, z in pcells):
             skipped.append((g["refs"], ex, ez, "通道會露出地面", set()))
             continue
         # 通道不准穿過別線的結構，也不准穿過別的井
@@ -432,31 +500,280 @@ def plan_station(samples, ys, grounds, idx, entrances, ground_at, occ, used,
             skipped.append((g["refs"], ex, ez, "通道撞到別線的結構",
                             occ.who(chk, ym - 1, ym + 3, skip_tag=own_tag)))
             continue
-        if used.any_blocked(chk, ym - 1, ym + 3):
+        # 同一段路線、同一層的通道（這一站先接好的轉乘通道）可以重疊：併成一片地板
+        same = passage_tag(own_tag, ym)
+        if used.any_blocked(chk, ym - 1, ym + 3, ignore=lambda t: t == same):
             skipped.append((g["refs"], ex, ez, "通道撞到別的井或通道",
-                            used.who(chk, ym - 1, ym + 3)))
+                            used.who(chk, ym - 1, ym + 3, ignore=lambda t: t == same)))
             continue
 
+        y_lo, y_hi = well_span(ym, g0 + 1)
         for c in shaft_cells(x0, z0, dx, dz, margin=1):
-            used.add(c[0], c[1], ym - 1, g0 + 5, ("井", tuple(g["refs"])))
+            used.add(c[0], c[1], y_lo, y_hi, ("井", tuple(g["refs"])))
         cells |= pcells
         sides_used.add(side)
         shafts.append(dict(refs=g["refs"], x0=x0, z0=z0, ux=dx, uz=dz,
-                           g0=g0, y_to=ym, slide=slide, ex=ex, ez=ez))
+                           g0=g0, y_to=ym, slide=slide, ex=ex, ez=ez, kind=kind))
 
-    # 開洞：側牆 |off| 11..12 加上外側一格，沿線 ±HOLE_HALF。
-    # 不往裡多挖：穿堂層 |off| <= 10 本來就是空的，多鋪只是把樓板換色。
-    holes = set()
     for side in sides_used:
-        for k in range(hole - HOLE_HALF * 2, hole + HOLE_HALF * 2 + 1):
-            if not (lo <= k <= hi):
-                continue
-            for o in range(BOX_HALF - 1, BOX_HALF + 2):
-                x, z = offset_point(samples, k, side * o)
-                holes.add((int(round(x)), int(round(z))))
-    cells |= holes
+        cells |= hole_cells(samples, lo, hi, hole, side)
     for c in cells:
-        used.add(c[0], c[1], ym - 1, ym + 3, ("通道", ym))
+        used.add(c[0], c[1], ym - 1, ym + 3, passage_tag(own_tag, ym))
 
-    return dict(ym=ym, lo=lo, hi=hi, hole=hole, shafts=shafts, cells=cells,
-                no_wall=interior, skipped=skipped)
+    return dict(kind=kind, ym=ym, lo=lo, hi=hi, hole=hole, shafts=shafts,
+                cells=cells, no_wall=interior, skipped=skipped)
+
+
+def default_entrances(samples, ys, idx, offs=(24, -24), along_m=HOLE_ALONG):
+    """沒有真實出入口資料的車站（機場線桃園段、安坑輕軌…）用的預設出入口：
+    開洞位置正對面、離中心線 offs 公尺的一點，兩側各一個候選，先成功的算數。
+    """
+    lo, hi, hole = station_frame(samples, ys, idx)
+    out = []
+    for o in offs:
+        x, z = offset_point(samples, hole, o)
+        out.append(("", int(round(x)), int(round(z))))
+    return out
+
+
+# ---------- 轉乘通道 ----------
+
+TRANSFER_MAX_M = 400     # 兩座站體最近的接點相距超過這個距離就不接（三重 A/O 302 m）
+PAID_FROM_M    = 20      # 轉乘通道的洞開在付費區：閘門在 lo+14..16，洞本身寬 ±2 m，再留 2 m
+PAID_END_M     = 4       # 離站體端牆至少留幾公尺
+STAIR_END_M    = 18      # 高架穿堂的兩座月台樓梯都在 hi 端（build_line._side_concourse）
+LEVEL_DIRECT   = 1       # 兩層差不到這個數就直接一條通道接過去（差一格用走的就上得去）
+LEVEL_WELL     = 5       # 差這麼多以上才蓋井；2~4 m 兩端的通道會在門口互相切到，不接
+GRID_M         = 4       # 井的候選位置網格
+MAX_TRIES      = 1500    # 最多完整評估幾個候選位置（粗篩掉的不算）
+MAX_PAIRS      = 40      # 同一層直接接時，最多試幾對接點
+
+
+def paid_range(samples, ys, idx, kind, side):
+    """轉乘通道可以在哪一段側牆開洞：回傳取樣索引清單（每 3 m 一個）。
+
+    只挑軌面高度跟出入口開洞處（lo + HOLE_ALONG）一樣的位置：站內軌面有坡的話
+    穿堂樓板跟著階梯狀往上，轉乘通道的高度得跟這一站出入口通道同一層，
+    兩者才併得成一片地板；差一格的話就是兩片地板互相切。整段都不一樣高才退而
+    求其次全部都收。
+    """
+    lo, hi, hole = station_frame(samples, ys, idx)
+    per_m = max(1, int(round(1.0 / STEP)))
+    a, b = lo + PAID_FROM_M * per_m, hi - PAID_END_M * per_m
+    if kind != "tunnel":                         # 兩座月台樓梯都在 hi 端
+        b = hi - STAIR_END_M * per_m
+    ks = list(range(a, b + 1, 3 * per_m))
+    same = [k for k in ks if int(ys[k]) == int(ys[hole])]
+    return same or ks
+
+
+def _box(box):
+    """把 plan_transfer 需要的東西從站體 dict 算出來。"""
+    samples, ys, grounds, idx = box["samples"], box["ys"], box["grounds"], box["idx"]
+    lo, hi, hole = station_frame(samples, ys, idx)
+    kind = station_kind(int(ys[idx]), int(grounds[idx]))
+    return dict(box, lo=lo, hi=hi, hole=hole, kind=kind,
+                interior=box_cells(samples, lo, hi, BOX_HALF - 2),
+                own=box_cells(samples, lo, hi, BOX_HALF + 2))
+
+
+def _leg(bx, px, pz):
+    """從 (px, pz) 接進站體 bx：挑付費區內離它最近的開洞位置。
+
+    回傳 (k, side, level, 通道折點 [...], 洞的格子)。
+    """
+    samples, ys = bx["samples"], bx["ys"]
+    best = None
+    for side in (1, -1):
+        ks = paid_range(samples, ys, bx["idx"], bx["kind"], side)
+        if not ks:
+            continue
+        k = min(ks, key=lambda k: (samples[k][0] - px) ** 2 + (samples[k][1] - pz) ** 2)
+        _, off = local_coords(samples, k, px, pz)
+        if (off >= 0) != (side > 0):
+            continue
+        band = offset_point(samples, k, side * PASS_OFF)
+        d = math.hypot(band[0] - px, band[1] - pz)
+        if best is None or d < best[0]:
+            best = (d, k, side, band)
+    if best is None:
+        return None
+    d, k, side, band = best
+    level = int(ys[k]) + LEVEL_DY[bx["kind"]]
+    pts = [(px, pz), band, offset_point(samples, k, side * (BOX_HALF - 1))]
+    holes = hole_cells(samples, bx["lo"], bx["hi"], k, side)
+    return k, side, level, pts, holes
+
+
+def _leg_blocked(bx, cells, level, occ, used, exempt):
+    """通道 cells 在 level 這一層能不能鋪：不撞別線、不撞別的井、
+    不撞不同層的通道（同一段路線同一層的通道可以併）。"""
+    chk = (cells | outer_ring(cells)) - exempt - bx["own"]
+    if occ.any_blocked(chk, level - 1, level + 3, skip_tag=bx["tag"]):
+        return "撞到別線的結構", occ.who(chk, level - 1, level + 3, skip_tag=bx["tag"])
+    same = passage_tag(bx["tag"], level)
+    if used.any_blocked(chk, level - 1, level + 3, ignore=lambda t: t == same):
+        return "撞到別的井或通道", used.who(chk, level - 1, level + 3,
+                                        ignore=lambda t: t == same)
+    return None
+
+
+def outer_ring(cells):
+    ring = set()
+    for x, z in cells:
+        for dx in (-1, 0, 1):
+            for dz in (-1, 0, 1):
+                c = (x + dx, z + dz)
+                if c not in cells:
+                    ring.add(c)
+    return ring
+
+
+def _near_off(bx, x0, z0, dx=None, dz=None):
+    """井身每一格（含邊距）離這條線的中心線最近多少。只掃站體前後 200 m。
+    不給方向就只量井心那一格（粗篩用）。"""
+    samples = bx["samples"]
+    a, b = max(0, bx["lo"] - 400), min(len(samples) - 1, bx["hi"] + 400)
+    di, _ = nearest_index(samples, x0, z0, a, b)
+    if dx is None:
+        return abs(local_coords(samples, di, x0, z0)[1])
+    return min(abs(local_coords(samples, di, cx, cz)[1])
+               for cx, cz in shaft_cells(x0, z0, dx, dz, margin=1))
+
+
+def _pairs(A, B):
+    """兩座站體付費區側牆帶上的接點對，近的在前：[(d, ka, sa, pa, kb, sb, pb)]。"""
+    out = []
+    for sa in (1, -1):
+        for ka in paid_range(A["samples"], A["ys"], A["idx"], A["kind"], sa):
+            pa = offset_point(A["samples"], ka, sa * PASS_OFF)
+            for sb in (1, -1):
+                for kb in paid_range(B["samples"], B["ys"], B["idx"], B["kind"], sb):
+                    pb = offset_point(B["samples"], kb, sb * PASS_OFF)
+                    d = math.hypot(pa[0] - pb[0], pa[1] - pb[1])
+                    out.append((d, ka, sa, pa, kb, sb, pb))
+    out.sort(key=lambda t: t[0])
+    return out
+
+
+def plan_transfer(box_a, box_b, occ, used):
+    """替轉乘站的兩座站體規劃一條轉乘通道（付費區對付費區）。
+
+    box_* 是 dict(samples, ys, grounds, idx, tag)，tag 是該路段在 occ 裡的 tag。
+
+    兩層一樣高（差 <= LEVEL_DIRECT）就一條通道直接接；否則在兩座站體之間
+    找一個位置蓋折返梯井，兩層各一段通道接到井的門。井的門在同一面
+    （ShaftStair 的頂門與底門都開在 a=-1），兩段通道都從那扇門出來、
+    先直走四格（門廊）再各自轉向自己的站體。
+
+    井的位置：以兩座站體最近的接點對為中心撒一張網格，離兩邊接點都近的先試。
+    十字交叉的轉乘站（古亭、東門、西門……）兩座站體的接點就在交叉點旁邊，
+    網格中心附近的位置全都離兩條線太近 —— 井得退到交叉的某個象限裡去，
+    所以先用井心粗篩（離兩條線都 >= CLEAR_OFF + 5），過了才逐格細查。
+    每個候選要（1）井身每一格離兩條線的中心線都夠遠（別擋住別人的通道帶）、
+    （2）井身不撞任何結構或已蓋的井與通道、（3）兩段通道各自在自己那一層
+    不撞東西。第一個過的就用。
+
+    回傳 dict(ok, well, legs, reason)：
+      well   (x0, z0, ux, uz, top, bottom) 或 None（直接接時）
+      legs   [(box_tag, level, cells)]，各層要鋪的地板格（含洞）
+    """
+    A, B = _box(box_a), _box(box_b)
+    pairs = _pairs(A, B)
+    if not pairs:
+        return dict(ok=False, reason="站體沒有可開洞的付費區")
+    d = pairs[0][0]
+    if d > TRANSFER_MAX_M:
+        return dict(ok=False, reason=f"兩座站體相距 {d:.0f} m，太遠")
+    _, ka, sa, pa, kb, sb, pb = pairs[0]
+    la = int(A["ys"][ka]) + LEVEL_DY[A["kind"]]
+    lb = int(B["ys"][kb]) + LEVEL_DY[B["kind"]]
+
+    # ---- 同一層：一條通道直接接，最近的接點對被擋就換下一對 ----
+    if abs(la - lb) <= LEVEL_DIRECT:
+        reasons = {}
+        for _, ka, sa, pa, kb, sb, pb in pairs[:MAX_PAIRS]:
+            la = int(A["ys"][ka]) + LEVEL_DY[A["kind"]]
+            pts = [offset_point(A["samples"], ka, sa * (BOX_HALF - 1)), pa, pb,
+                   offset_point(B["samples"], kb, sb * (BOX_HALF - 1))]
+            cells = polyline_cells(pts, PASS_HALF) - A["interior"] - B["interior"]
+            cells |= hole_cells(A["samples"], A["lo"], A["hi"], ka, sa)
+            cells |= hole_cells(B["samples"], B["lo"], B["hi"], kb, sb)
+            # 檢查 A 那一頭時，B 站體周圍的格子要豁免（反之亦然）：通道本來就
+            # 要穿進兩座站體，外緣一圈也一定貼著人家的箱涵
+            why = _leg_blocked(A, cells, la, occ, used, B["own"])
+            if why is None:
+                why = _leg_blocked(B, cells, la, occ, used, A["own"])
+            if why is not None:
+                reasons["通道" + why[0]] = reasons.get("通道" + why[0], 0) + 1
+                continue
+            for c in cells:
+                used.add(c[0], c[1], la - 1, la + 3, passage_tag(A["tag"], la))
+            return dict(ok=True, well=None, legs=[(A["tag"], la, cells)], reason=None,
+                        length=len(cells))
+        why = "、".join(f"{k} {v}" for k, v in sorted(reasons.items(), key=lambda kv: -kv[1]))
+        return dict(ok=False, reason=f"試了 {min(len(pairs), MAX_PAIRS)} 對接點都接不上（{why}）")
+    if abs(la - lb) < LEVEL_WELL:
+        return dict(ok=False, reason=f"兩層只差 {abs(la - lb)} m，井的兩扇門會互相切到")
+
+    # ---- 不同層：找井的位置 ----
+    mx, mz = (pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2
+    r = int(d / 2) + 60
+    cands = []
+    for gx in range(int(mx) - r, int(mx) + r + 1, GRID_M):
+        for gz in range(int(mz) - r, int(mz) + r + 1, GRID_M):
+            est = math.hypot(gx - pa[0], gz - pa[1]) + math.hypot(gx - pb[0], gz - pb[1])
+            cands.append((est, gx, gz))
+    cands.sort()
+    y_lo, y_hi = well_span(la, lb)
+    tries = 0
+    reasons = {}
+    for est, gx, gz in cands:
+        if tries >= MAX_TRIES:
+            break
+        if _near_off(A, gx, gz) < CLEAR_OFF + 5 or _near_off(B, gx, gz) < CLEAR_OFF + 5:
+            continue                                   # 粗篩：井心就太近了
+        for dx, dz in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            tries += 1
+            if _near_off(A, gx, gz, dx, dz) < CLEAR_OFF or _near_off(B, gx, gz, dx, dz) < CLEAR_OFF:
+                reasons["井離站體太近"] = reasons.get("井離站體太近", 0) + 1
+                continue
+            cells = shaft_cells(gx, gz, dx, dz)
+            if occ.any_blocked(cells, y_lo, y_hi) or used.any_blocked(cells, y_lo, y_hi):
+                reasons["井撞到東西"] = reasons.get("井撞到東西", 0) + 1
+                continue
+            door = (gx - dx, gz - dz)
+            porch = (gx - 5 * dx, gz - 5 * dz)
+            # 井身（門那一排與井口平台除外）：通道從門廊轉向站體時，站體若在井的
+            # 側後方，直線會斜切過井身 —— 井是在通道之後蓋的，井壁一補回去通道
+            # 就斷了（板橋、頭前庄、南港展覽館的轉乘都是這樣走到井頂就沒路）
+            body = {c for c in cells
+                    if (c[0] - gx) * dx + (c[1] - gz) * dz >= 2}
+            legs, bad = [], None
+            for bx in (A, B):
+                leg = _leg(bx, porch[0], porch[1])
+                if leg is None:
+                    bad = "找不到開洞位置"; break
+                k, side, level, pts, holes = leg
+                lcells = polyline_cells([door] + pts, PASS_HALF) - bx["interior"] | holes
+                if lcells & body:
+                    bad = "通道穿過井身"; break
+                why = _leg_blocked(bx, lcells, level, occ, used, cells)
+                if why is not None:
+                    bad = "通道" + why[0]; break
+                legs.append((bx["tag"], level, lcells))
+            if bad is not None:
+                reasons[bad] = reasons.get(bad, 0) + 1
+                continue
+            # 兩段通道在門口那幾格會重疊，但一在上一在下（差 >= LEVEL_WELL），碰不到
+            for c in shaft_cells(gx, gz, dx, dz, margin=1):
+                used.add(c[0], c[1], y_lo, y_hi, ("井", "轉乘"))
+            for tag, level, lcells in legs:
+                for c in lcells:
+                    used.add(c[0], c[1], level - 1, level + 3, passage_tag(tag, level))
+            top, bottom = max(legs[0][1], legs[1][1]), min(legs[0][1], legs[1][1])
+            return dict(ok=True, well=(gx, gz, dx, dz, top, bottom), legs=legs,
+                        reason=None, tries=tries,
+                        length=sum(len(l[2]) for l in legs))
+    why = "、".join(f"{k} {v}" for k, v in sorted(reasons.items(), key=lambda kv: -kv[1]))
+    return dict(ok=False, reason=f"試了 {tries} 個位置都擺不下井（{why}）")

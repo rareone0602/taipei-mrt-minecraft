@@ -14,7 +14,8 @@ verify_concourse 的「不出地面」更嚴：出入口亭本身就在地面上
   1. 每面出口牌旁邊站得住（出入口亭真的在那裡）
   2. 從牌子出發、不踩土，走得到月台邊緣的黃色警戒帶
   3. 牌子旁邊有一格踩在地形上的立足點（門真的通到街上，不是封在牆裡）
-  4. 同一座車站的出入口互相走得到（轉乘站兩座站體沒有轉乘通道時會是兩團，照實列出）
+  4. 同一座車站的出入口互相走得到 —— 轉乘站（mc_stations.csv 裡不只一條線的站）
+     兩座站體之間有轉乘通道，所以也要是同一團；分成兩團就是轉乘通道沒接上
 
 用法:
     ./.venv/bin/python tools/verify_exits.py <存檔>                    # 存檔裡所有出口牌
@@ -41,6 +42,9 @@ TERRAIN = {"minecraft:grass_block", "minecraft:dirt", "minecraft:stone",
            "minecraft:gravel"}
 MARGIN = 60          # 讀回的範圍：出口牌與站點外擴幾公尺
 DEPTH = 60           # 從最高的牌子往下讀幾公尺（最深的穿堂在地下 45 m 多一點）
+RISE = 32            # 從最低的牌子往上讀幾公尺：高架站的月台在街面上 14 m、天橋式穿堂
+                     # 再高 8 m。原本只讀到牌子上方 6 m，高架站的月台根本不在讀回的
+                     # 範圍裡，每一座都被判成「走不到月台」—— 驗證器自己騙人的又一例
 
 
 def man_made(name):
@@ -65,6 +69,18 @@ def station_xy():
     with open(config.MC_STATIONS_CSV, encoding="utf-8") as f:
         for r in csv.DictReader(f):
             out[r["name_zh"] or r["name_en"]].append((int(r["mc_x"]), int(r["mc_z"])))
+    return out
+
+
+def station_lines():
+    """{站名: 經過的路線代號集合}，轉乘站就是不只一條線的站。"""
+    out = collections.defaultdict(set)
+    with open(config.MC_STATIONS_CSV, encoding="utf-8") as f:
+        for r in csv.DictReader(f):
+            for ref in r["ref"].split(";"):
+                m = re.match(r"[A-Z]+", ref)
+                if m:
+                    out[r["name_zh"] or r["name_en"]].add(m.group(0))
     return out
 
 
@@ -97,7 +113,7 @@ def check_station(save, name, signs, stn_pts, verbose):
     ys = [s[1] for s in signs]
     x0, z0 = min(xs) - MARGIN, min(zs) - MARGIN
     x1, z1 = max(xs) + MARGIN, max(zs) + MARGIN
-    y0, y1 = min(ys) - DEPTH, max(ys) + 6
+    y0, y1 = min(ys) - DEPTH, max(ys) + RISE
     vol = read_volume(save, x0, y0, z0, x1, y1, z1, verbose=False)
     get = vol.get
     bounds = (x0, y0, z0, x1, y1, z1)
@@ -158,6 +174,7 @@ def main():
         return 1
 
     stn = station_xy()
+    lines_of = station_lines()
     if a.bbox:
         box = tuple(a.bbox)
     elif a.stations:
@@ -188,16 +205,24 @@ def main():
         sg = by_station[name]
         r = check_station(a.save, name, sg, stn.get(name, []), a.verbose)
         tot["n"] += r["n"]; tot["plat"] += r["ok_plat"]; tot["street"] += r["ok_street"]
-        flag = "" if (r["ok_plat"] == r["n"] and r["ok_street"] == r["n"]) else "   <- 有問題"
+        transfer = len(lines_of.get(name, ())) >= 2
+        if transfer and r["comps"] > 1:
+            r["bad"].append(f"轉乘站的出入口分成 {r['comps']} 團：兩座站體之間沒有走得通的轉乘通道")
+            tot["split"] += 1
+        flag = "" if (r["ok_plat"] == r["n"] and r["ok_street"] == r["n"]
+                      and not (transfer and r["comps"] > 1)) else "   <- 有問題"
         print(f"  {name:<8} 出口 {r['n']:>2} 座  通到月台 {r['ok_plat']:>2}  "
-              f"通到街上 {r['ok_street']:>2}  分量 {r['comps']}{flag}")
+              f"通到街上 {r['ok_street']:>2}  分量 {r['comps']}"
+              f"{'  轉乘站' if transfer else ''}{flag}")
         for b in r["bad"]:
             print(f"      {b}")
         if flag:
             failed.append(name)
 
+    n_tr = sum(1 for n in by_station if len(lines_of.get(n, ())) >= 2)
     print(f"\n合計 {len(by_station)} 座車站 {tot['n']} 座出入口："
-          f"通到月台 {tot['plat']}，通到街上 {tot['street']}")
+          f"通到月台 {tot['plat']}，通到街上 {tot['street']}；"
+          f"轉乘站 {n_tr} 座，其中兩座站體不相通的 {tot['split']} 座")
     if failed:
         print(f"有問題的車站 {len(failed)} 座：{', '.join(failed)}")
         return 1
