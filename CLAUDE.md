@@ -11,6 +11,10 @@
 - **不要動 `out/`**。裡面是 1 GB 的既有存檔，重跑 `build_world` 要 20 分鐘以上。
   要測試就 `--out` 指到暫存目錄。
 - 暫存檔放 scratchpad，不要寫進專案目錄。
+- **`demo/` 只放成品**。原始螢幕錄影 `demo/raw-*.mov`（928 MB）與中間檔
+  `demo/.work/` 都在 `.gitignore` 裡。剪接點、字幕、抓圖的秒數全部寫在
+  `demo/make_demo.py`，改素材要改那支腳本再重跑
+  （`./.venv/bin/python demo/make_demo.py`），不要手工改成品。
 - 任何 HTTP 請求都不要帶個人資料（姓名、email）。
 
 ## 架構

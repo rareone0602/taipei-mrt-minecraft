@@ -35,6 +35,21 @@ data it describes is NOT distributed in this repository; see README
 「資料來源」for how to obtain it and under what terms.
 
 
+PRODUCED WORKS / 產出作品 — demo/
+----------------------------------
+
+demo/ 下的截圖、影片與全網示意圖，是從上面那些資料生成的世界裡拍出來、畫出來
+的。依 ODbL 第 4.3 條，它們是 Produced Work（不是 Derivative Database），公開
+使用時要附上來源標示：
+
+    Contains information from OpenStreetMap, which is made available
+    here under the Open Database License (ODbL).
+
+demo/network-map.png 直接畫 data/mc_lines.json 與 data/mc_stations.csv 的內容，
+所以它同時也再現了資料本身；散布修改過的版本時比照上面的 share-alike 條款。
+demo/make_demo.py 是程式碼，適用 GPL-3.0。
+
+
 ATTRIBUTION / 姓名標示
 ----------------------
 
