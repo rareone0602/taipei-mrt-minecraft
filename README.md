@@ -16,10 +16,10 @@ Minecraft Java Edition 26.2 存檔中，含真實地形、隧道／高架／平�
 
 ## 示範影片
 
-[![台北捷運 Minecraft 1:1 重建 —— 56 秒示範影片](demo/tour-thumb.jpg)](https://github.com/rareone0602/taipei-mrt-minecraft/raw/main/demo/tour.mp4)
+[![台北捷運 Minecraft 1:1 重建 —— 56 秒示範影片](demo/tour-thumb.jpg)](https://github.com/rareone0602/taipei-mrt-minecraft/blob/main/demo/tour.mp4)
 
-56 秒，從地下隧道、島式月台、站名告示牌走到穿堂層與轉乘通道。點圖片開影片
-（`demo/tour.mp4`，1280x720，無聲）。
+56 秒，從地下隧道、島式月台、站名告示牌走到穿堂層與轉乘通道。
+點圖片在 GitHub 上直接播（檔案是 `demo/tour.mp4`，1280x720、30 fps、無聲）。
 
 ## 世界裡長什麼樣
 
