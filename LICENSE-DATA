@@ -21,6 +21,7 @@ licensed under the Open Database License (ODbL) v1.0, NOT GPL-3.0:
     data/station_buildings.json  站體建物輪廓
     data/platform_levels.json    月台樓層
     data/indoor.json             地下人行動線（穿堂、地下街連通道、樓梯、電梯）
+    data/sidings.json            袋狀軌、橫渡線與機廠線（railway=subway 的 service way）
     data/mc_lines.json           以上投影到 Minecraft 座標後的結果
     data/mc_stations.csv
     data/station_coords.md

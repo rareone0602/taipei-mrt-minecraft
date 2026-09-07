@@ -22,6 +22,7 @@ MC_STATIONS_CSV = os.path.join(DATA, "mc_stations.csv")
 ENTRANCES_JSON = os.path.join(DATA, "entrances.json")
 STATION_BUILDINGS_JSON = os.path.join(DATA, "station_buildings.json")
 PLATFORM_LEVELS_JSON = os.path.join(DATA, "platform_levels.json")
+SIDINGS_JSON = os.path.join(DATA, "sidings.json")        # 袋狀軌、橫渡線、機廠線
 HEIGHTMAP_NPY = os.path.join(DATA, "heightmap.npy")
 HEIGHTMAP_JSON = os.path.join(DATA, "heightmap.json")
 
