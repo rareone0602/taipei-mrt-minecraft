@@ -1,5 +1,7 @@
 # 台北捷運 Minecraft 1:1 重建
 
+![把地表切掉之後的台北捷運：兩條隧道沿真實線形延伸，方塊是地下車站站體](demo/hero.gif)
+
 把台北捷運全網（十條營運路線 + 支線，含三鶯線）以 **1 方塊 = 1 公尺** 的比例生成到
 Minecraft Java Edition 26.2 存檔中，含真實地形、隧道／高架／平面三種結構、193 座車站
 （地下站島式月台加穿堂層，高架與平面站側式月台加橋下或月台上方的穿堂，都有驗票閘門）、
@@ -8,6 +10,54 @@ Minecraft Java Edition 26.2 存檔中，含真實地形、隧道／高架／平�
 從任何一座出入口的門口出發，不踩到一格土就能走到全網任何一座月台。
 
 全部程式化生成 —— 482 km² 的範圍不可能手工堆。
+
+> **不想自己跑生成？[直接下載已經蓋好的世界存檔](https://drive.google.com/file/d/19EMGXq1fSBxTu75KZ2nqXuztkm0jARfG/view?usp=sharing)**（Google 雲端硬碟，約 1 GB）
+> —— 安裝步驟見下面「[下載已經蓋好的存檔](#下載已經蓋好的存檔)」。
+
+## 示範影片
+
+[![台北捷運 Minecraft 1:1 重建 —— 56 秒示範影片](demo/tour-thumb.jpg)](https://github.com/rareone0602/taipei-mrt-minecraft/raw/main/demo/tour.mp4)
+
+56 秒，從地下隧道、島式月台、站名告示牌走到穿堂層與轉乘通道。點圖片開影片
+（`demo/tour.mp4`，1280x720，無聲）。
+
+## 世界裡長什麼樣
+
+| | |
+|:--:|:--:|
+| <img src="demo/platform.jpg" width="420"> | <img src="demo/sign.jpg" width="420"> |
+| **島式月台**　地下站的島式月台，月台邊鋪黃色警示帶 | **站名告示牌**　掛的是真實編號：`R10;BL12 台北車站` |
+| <img src="demo/tunnel.jpg" width="420"> | <img src="demo/concourse.jpg" width="420"> |
+| **雙線隧道**　左右兩條軌道，全網鐵軌相通 | **人行通道**　穿堂層與轉乘通道；出入口到月台不必踩到土 |
+| <img src="demo/cutaway.jpg" width="420"> | <img src="demo/sunset.jpg" width="420"> |
+| **車站剖面**　地下站體從穿堂到月台的樓梯 | **線形**　1 方塊 = 1 公尺，一路延伸到天際線 |
+
+最後一列那兩張是在旁觀者模式鑽進地層裡拍的 —— 相機在實心方塊內部時
+Minecraft 不畫地表，隧道與站體就這樣露出來，不是世界破洞。
+
+## 全網
+
+![台北捷運全網示意圖，線形與顏色取自 OpenStreetMap](demo/network-map.png)
+
+圖上的每一段線形、每一個站點都是真的拿去生成世界的那份資料
+（`data/mc_lines.json`、`data/mc_stations.csv`），不是另外畫的示意圖。
+比例尺 5 km 是世界裡的 5000 格。
+
+## 下載已經蓋好的存檔
+
+跑完整條管線要抓 OSM 與 DEM、再花二十幾分鐘生成。只想進去逛的話直接下載：
+
+**[台北捷運 Minecraft 存檔（Google 雲端硬碟）](https://drive.google.com/file/d/19EMGXq1fSBxTu75KZ2nqXuztkm0jARfG/view?usp=sharing)** —— 約 1 GB，Minecraft Java Edition 26.2。
+
+```bash
+# 解壓縮後把整個 Taipei MRT 資料夾放進 saves/
+mv "Taipei MRT" ~/Library/Application\ Support/minecraft/saves/     # macOS
+# Windows: %APPDATA%\.minecraft\saves\   ／  Linux: ~/.minecraft/saves/
+```
+
+世界座標就是公尺，投影原點 `(0, 0)` 就是台北車站（OSM `ref=R10`）。進去之後
+`/tp @s 0 67 0` 會站在台北車站正上方的地面 —— 讀回存檔確認過，那根柱子的地表是
+y=66 的草地，往下 y=64 就是大廳的照明。
 
 ## 快速開始
 
@@ -597,8 +647,9 @@ BL/G/O/R 四條線在市中心兩兩都會交會（K4 完全圖），每線一�
 
 | 範圍 | 授權 | 檔案 |
 |---|---|---|
-| 程式碼（`mrt/`, `cli/`, `tools/`, `tests/`） | GPL-3.0 | `LICENSE` |
+| 程式碼（`mrt/`, `cli/`, `tools/`, `tests/`, `demo/make_demo.py`） | GPL-3.0 | `LICENSE` |
 | 資料（`data/`） | ODbL 1.0 | `LICENSE-DATA` |
+| 截圖與影片（`demo/`） | ODbL 1.0 的 Produced Work | `LICENSE-DATA` |
 
 ```
 Copyright (C) 2026 rareone0602
