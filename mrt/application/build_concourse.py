@@ -30,6 +30,9 @@ STAIR  = "minecraft:smooth_stone"
 SLAB   = "minecraft:smooth_stone_slab[type=bottom]"
 BARS   = "minecraft:iron_bars"
 LAMP   = "minecraft:sea_lantern"
+RAIL   = "minecraft:light_gray_stained_glass_pane"   # 空橋的玻璃欄板
+EDGE   = "minecraft:light_gray_concrete"             # 空橋橋面外緣
+PIER   = "minecraft:polished_andesite"               # 空橋橋墩，與高架橋同材質
 
 HEAD = 3            # 淨空格數（站立面往上算），頂板在 y+HEAD
 TILE = 128          # 分塊邊長，讓每個物件的 bbox 夠小、分桶才有意義
@@ -83,12 +86,17 @@ class Tile:
     分桶到 region；相鄰塊的邊界不會有牆，因為外緣是對整體算的。
     """
 
-    def __init__(self, cells, ring, y, ceil_of, shopfront=True):
+    def __init__(self, cells, ring, y, ceil_of, shopfront=True, bridge=False,
+                 pier_to=None):
         self.cells = cells                  # {(x, z)} 地板
         self.ring = ring                    # {(x, z)} 外牆
         self.y = int(y)                     # 站立面
         self.ceil_of = ceil_of              # {(x, z): 頂板 y}
         self.shopfront = shopfront
+        # bridge：這一塊是空橋（高架站與平面站的出入口通道），外緣改成玻璃欄板
+        # 而不是店面隔牆。pier_to = {(x, z): 地面 y}：從那些格子往下架橋墩到地面。
+        self.bridge = bool(bridge)
+        self.pier_to = dict(pier_to) if pier_to else {}
 
     def bbox(self):
         xs = [c[0] for c in self.cells] + [c[0] for c in self.ring]
@@ -111,12 +119,21 @@ class Tile:
                 cy = max((self.ceil_of.get((x + dx, z + dz), y + HEAD)
                           for dx in (-1, 0, 1) for dz in (-1, 0, 1)),
                          default=y + HEAD)
+            if self.bridge:
+                w.set(x, y - 1, z, EDGE)
+                for yy in range(y, cy):
+                    w.set(x, yy, z, RAIL if yy <= y + 2 else EDGE)
+                w.set(x, cy, z, CEIL)
+                continue
             w.set(x, y - 1, z, STRUCT)
             for yy in range(y, cy + 1):
                 # 店面：每 7 m 開一段 2 m 的櫥窗，讓它看起來像地下街而不是坑道
                 win = (self.shopfront and yy in (y + 1, y + 2)
                        and ((x + z) % 7) < 2)
                 w.set(x, yy, z, SHOP if win else WALL)
+        for (x, z), g in self.pier_to.items():
+            for yy in range(int(g) - 2, y - 1):         # 地面下 2 格到橋面板下一格
+                w.set(x, yy, z, PIER)
 
 
 # ---------- 垂直連接 ----------
@@ -260,7 +277,7 @@ class ShaftStair:
                  slab="minecraft:smooth_stone_slab",
                  rail="minecraft:iron_bars",
                  lamp="minecraft:sea_lantern",
-                 sign=None):
+                 sign=None, sign_bottom=None, apron=None):
         self.x0, self.z0 = int(x0), int(z0)
         self.ux, self.uz = int(round(ux)), int(round(uz))
         self.g0, self.y_to = int(g0), int(y_to)
@@ -268,6 +285,10 @@ class ShaftStair:
         self.wall, self.step, self.slab = wall, step, slab
         self.rail, self.lamp = rail, lamp
         self.sign = list(sign) if sign else None    # 井口門邊的告示牌（最多四行）
+        # 井底門邊的告示牌：從街上往上爬到高架穿堂的井，街上那扇門在井底，
+        # 出口編號牌得立在那裡
+        self.sign_bottom = list(sign_bottom) if sign_bottom else None
+        self.apron = apron          # 街上那扇門前的前庭地坪方塊（None 不鋪）
 
     # 井內座標 (a 沿 u, b 沿 v) -> 世界座標
     def _w(self, a, b):
@@ -377,12 +398,29 @@ class ShaftStair:
                 # 地下街走過去會直接掉下去，掉得下去爬不上來，等於不連通。
                 for y in range(self.y_to, min(self.y_to + 3, self.g0)):
                     w.set(x, y, z, AIR)
+        # 街上那扇門前鋪一小塊前庭（草皮地坪、兩格淨空）：井蓋在山坡上時
+        # 門檻兩側的地形可能高低差兩三格，門口一步就是土坡或懸崖 ——
+        # 木柵、淡江大學、鶯歌車站的出入口就是這樣「門口沒有接到街面」。
+        # 前庭只鋪在門正前方 a=-2..-4，不碰井身，也在通道那一層之下
+        # （空橋的樓板最低在街面上兩格，淨空只清到街面上一格）。
+        if self.apron:
+            street = self.y_to if self.sign_bottom else self.g0 + 1
+            for a in (-2, -3, -4):
+                for b in range(-2, 3):
+                    x, z = self._w(a, b)
+                    w.set(x, street - 1, z, self.apron)
+                    for y in range(street, street + 2):
+                        w.set(x, y, z, AIR)
         # 出口編號牌立在門外側，牌面朝著走過來的人。底下墊一塊，免得
         # 地形在那格剛好低一點，告示牌浮在半空中。
         if self.sign and hasattr(w, "sign"):
             x, z = self._w(-2, 2)
             w.set(x, self.g0, z, self.step)
             w.sign(x, self.g0 + 1, z, self.sign[:4], facing=(-self.ux, -self.uz))
+        if self.sign_bottom and hasattr(w, "sign"):
+            x, z = self._w(-2, 2)
+            w.set(x, self.y_to - 1, z, self.step)
+            w.sign(x, self.y_to, z, self.sign_bottom[:4], facing=(-self.ux, -self.uz))
 
 
 

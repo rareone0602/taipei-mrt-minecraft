@@ -146,6 +146,39 @@ def half_width(toff):
 
 # ---------- 結構型態 ----------
 
+# 非地下站的穿堂層放哪裡。高架站軌面高出地面夠多時穿堂放在橋下（真實的
+# 文湖線、淡水線高架站都是這樣），否則跨在月台上方（淡水線平面站的天橋式穿堂）。
+CONC_UNDER_MIN = 9     # 軌面高出地面至少這麼多，橋下才塞得下一層穿堂（樓板在地面上 2 格）
+ELEV_UNDER_DY  = 6     # 橋下穿堂：站立面 = 軌面 - 6（樓板 -7，頂板就是 -1 的橋面板）
+ELEV_OVER_DY   = 8     # 月台上方穿堂：站立面 = 軌面 + 8（樓板 +7 疊在 +6 的站屋屋頂上）
+
+
+# 各型態的穿堂站立面相對軌面的高差。站內軌面若有坡，穿堂樓板跟著軌面走，
+# 所以「某個取樣點的穿堂站立面」= int(ys[i]) + LEVEL_DY[型態]。
+LEVEL_DY = {"tunnel": MEZZ_DY + 1, "under": -ELEV_UNDER_DY, "over": ELEV_OVER_DY}
+
+
+def station_kind(y, ground):
+    """車站穿堂層的型態：
+    "tunnel"  地下島式站，穿堂在軌面 +7（MEZZ_DY + 1）
+    "under"   高架站，穿堂在橋下、月台正下方（軌面 -6）
+    "over"    平面站與矮高架，穿堂是跨在兩座側式月台上方的天橋（軌面 +8）
+    整座車站只用中心取樣點判斷一次，各處的高度再用 LEVEL_DY 算。
+    """
+    if structure_for_ground(y, ground) == "tunnel":
+        return "tunnel"
+    if y - ground >= CONC_UNDER_MIN:
+        return "under"
+    return "over"
+
+
+def station_levels(y, ground):
+    """(型態, 穿堂站立面 y)。出入口井、轉乘通道、月台樓梯都以這個為準，
+    所以只能有這一個定義。"""
+    k = station_kind(y, ground)
+    return k, y + LEVEL_DY[k]
+
+
 def structure_for_ground(y, ground):
     """蓋哪種結構要看軌面與「當地地面」的高差，不是看 OSM 標籤。
 

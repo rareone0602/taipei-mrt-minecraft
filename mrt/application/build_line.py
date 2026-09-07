@@ -11,7 +11,8 @@ import math
 
 from mrt.domain.alignment import (
     GROUND, STEP, PIER_EVERY, PLATFORM_LEN, BOX_HALF, PLAT_HALF,
-    TUN_TRACK_OFF, MEZZ_DY, BOX_TOP_DY, structure_for_ground,
+    TUN_TRACK_OFF, MEZZ_DY, BOX_TOP_DY, LEVEL_DY, structure_for_ground,
+    station_kind,
 )
 
 # ---- 方塊配色 ----
@@ -119,16 +120,20 @@ def build_alignment(w, samples, ys):
 # ---------- 樓梯 ----------
 
 def _stair_run(w, samples, ys, s0, d, per_m, y_from, y_to, off_lo, off_hi,
-               head=4, clear_dy=None, wall_offs=(), wall_ground=None):
+               head=4, clear_dy=None, wall_offs=(), wall_ground=None,
+               clear_max_dy=None):
     """鋪一段直梯，每公尺升降 0.5 m（整塊與半磚交替）。
 
     y_from / y_to 是「可站立的表面高度」，也就是方塊上緣。
     交替順序一定要跟行進方向對上：下坡先放整塊再放半磚，
     反過來的話每兩公尺會出現 1.5 m 落差 —— 走得下去卻爬不上來。
+
+    頭部淨空預設挖到踏面上方 head 格；clear_dy 改成挖到「軌面 + clear_dy」，
+    clear_max_dy 則是上限 —— 梯頂緊貼著頂板時，最後幾階的淨空會把頂板挖穿。
     """
     n = int(round(abs(y_to - y_from) * 2))
     sgn = 1.0 if y_to > y_from else -1.0
-    out = []
+    out, treads = [], []
     for t in range(1, n + 1):
         si = s0 + d * t * per_m
         if not (0 <= si < len(samples)):
@@ -136,12 +141,57 @@ def _stair_run(w, samples, ys, s0, d, per_m, y_from, y_to, off_lo, off_hi,
         surf = y_from + sgn * 0.5 * t
         half = abs(surf - math.floor(surf)) > 0.25
         yb = int(math.floor(surf)) if half else int(round(surf)) - 1
-        blk = SLAB if half else STAIR
+        treads.append((si, yb, SLAB if half else STAIR))
+        out.append((si, yb))
+
+    def cells_at(si):
+        x, z, ux, uz, _ = samples[si]
+        nx, nz = -uz, ux
+        return [(round(x + nx * off), round(z + nz * off)) for off in range(off_lo, off_hi + 1)]
+
+    # 線形斜 45 度時，相鄰兩階的格子只有斜角相接：取樣點每公尺走 (0.7, 0.7)，
+    # 四捨五入後兩階的格子集合可能沒有任何一對四鄰相接（六張犁、淡水的
+    # 兩格寬月台樓梯就是這樣，從剖面看每一階都在，走起來卻在半路斷掉）。
+    # 補法：每一階順便鋪「上一階與這一階之間那個半公尺取樣點」的格子，只補
+    # 沒被任何一階用到的格子，原本的踏面一格都不動。
+    main = set()
+    for si, yb, blk in treads:
+        main.update(cells_at(si))
+    filled = set()
+    per_tread = []
+    for si, yb, blk in treads:
+        cells = cells_at(si)
+        sh = si - d * (per_m // 2)
+        if per_m >= 2 and 0 <= sh < len(samples):
+            for c in cells_at(sh):
+                if c not in main and c not in filled:
+                    filled.add(c)
+                    cells.append(c)
+        per_tread.append(cells)
+    # 半公尺取樣點的格子也可能剛好落在原本的踏面上（線形接近 45 度時常常如此），
+    # 那就沒補到。再逐階檢查一次：相鄰兩階仍然沒有任何一對四鄰相接的話，
+    # 在斜角相接的那一對之間補一格（跟下一階同高），保證整段樓梯四鄰連通。
+    for t in range(len(per_tread) - 1):
+        a, b = per_tread[t], set(per_tread[t + 1])
+        if any((ax + ddx, az + ddz) in b for ax, az in a
+               for ddx, ddz in ((1, 0), (-1, 0), (0, 1), (0, -1))):
+            continue
+        for ax, az in a:
+            hit = next(((bx, bz) for bx, bz in b if abs(bx - ax) == 1 and abs(bz - az) == 1), None)
+            if hit is not None:
+                bx, bz = hit
+                cand = [(ax, bz), (bx, az)]
+                c = next((q for q in cand if q not in main and q not in filled), cand[0])
+                filled.add(c)
+                per_tread[t].append(c)
+                break
+    for (si, yb, blk), cells in zip(treads, per_tread):
         x, z, ux, uz, _ = samples[si]
         nx, nz = -uz, ux
         top = (int(ys[si]) + clear_dy) if clear_dy is not None else yb + head
-        for off in range(off_lo, off_hi + 1):
-            bx, bz = round(x + nx * off), round(z + nz * off)
+        if clear_max_dy is not None:
+            top = min(top, int(ys[si]) + clear_max_dy)
+        for bx, bz in cells:
             w.set(bx, yb, bz, blk)
             for yy in range(yb + 1, top + 1):
                 w.set(bx, yy, bz, AIR)
@@ -150,7 +200,6 @@ def _stair_run(w, samples, ys, s0, d, per_m, y_from, y_to, off_lo, off_hi,
             for yy in range(yb, yb + 1 + head):
                 w.set(bx, yy, bz,
                       WALL if wall_ground is None or yy < wall_ground else BARS)
-        out.append((si, yb))
     return out
 
 
@@ -158,16 +207,16 @@ def _stair_run(w, samples, ys, s0, d, per_m, y_from, y_to, off_lo, off_hi,
 
 def build_station(w, samples, ys, idx, underground, label=None, grounds=None,
                   access=True):
-    """access=False 時地下站不蓋樣板的出入口樓梯 —— 有真實出入口
+    """access=False 時不蓋樣板的出入口樓梯 —— 有真實出入口
     （application/build_exits.py）的車站用那些，樣板的那座只會多出一個
-    誰也不會走的洞。"""
+    誰也不會走的洞。地下站與側式月台站都適用。"""
     n = len(samples)
     half = int(PLATFORM_LEN / 2 / STEP)
     lo, hi = max(0, idx - half), min(n - 1, idx + half)
     if underground:
         _station_island(w, samples, ys, grounds, lo, hi, label, access=access)
     else:
-        _station_side(w, samples, ys, grounds, lo, hi, label)
+        _station_side(w, samples, ys, grounds, lo, hi, label, access=access)
 
 
 # ===== 地下站：島式月台 + 穿堂層 =====
@@ -241,11 +290,14 @@ def _station_island(w, samples, ys, grounds, lo, hi, label, access=True):
         _plat_signs(w, samples, ys, lo, hi, label)
 
 
-def _gates(w, samples, ys, s0, per_m):
+def _gates(w, samples, ys, s0, per_m, floor_dy=MEZZ_DY, half=BOX_HALF - 2):
     """驗票閘門：橫跨整個穿堂層，把付費區與非付費區隔開。
 
     出入口在 lo+6 一端、月台樓梯在另一端，閘門橫在中間才擋得住 ——
     只擺一小段的話旁邊就繞過去了。
+
+    floor_dy 是穿堂樓板相對軌面的高差（預設是地下站的 MEZZ_DY），
+    half 是閘門列的半寬；側式月台站的穿堂層用同一組閘門，只是樓板高度不同。
     """
     for t in range(2 * per_m):
         si = s0 + t
@@ -253,8 +305,8 @@ def _gates(w, samples, ys, s0, per_m):
             continue
         x, z, ux, uz, _ = samples[si]
         nx, nz = -uz, ux
-        ym = int(ys[si]) + MEZZ_DY
-        for off in range(-(BOX_HALF - 2), BOX_HALF - 1):
+        ym = int(ys[si]) + floor_dy
+        for off in range(-half, half + 1):
             bx, bz = round(x + nx * off), round(z + nz * off)
             if off % 3 == 0:                            # 通行閘道
                 w.set(bx, ym, bz, LANE)
@@ -395,8 +447,13 @@ def _plat_signs(w, samples, ys, lo, hi, label):
 
 # ===== 高架／平面站：側式月台 =====
 
-def _station_side(w, samples, ys, grounds, lo, hi, label):
-    """側式月台車站：軌道走行面與區間同高，月台面再高 1 m。"""
+def _station_side(w, samples, ys, grounds, lo, hi, label, access=True):
+    """側式月台車站：軌道走行面與區間同高，月台面再高 1 m。
+
+    兩座月台各自封閉，靠一層穿堂（_side_concourse）串起來：閘門在穿堂層，
+    每座月台一座樓梯。真實出入口也接到穿堂層；access=False 時不蓋樣板的
+    地面樓梯（它只通到 + 側月台，有真實出入口的站用不到）。
+    """
     roof_h = 6
     for i in range(lo, hi + 1):                         # 第一趟：清出站體
         x, z, ux, uz, _ = samples[i]
@@ -440,9 +497,134 @@ def _station_side(w, samples, ys, grounds, lo, hi, label):
             for off in (-8, 0, 8):
                 w.set(round(x + nx * off), y + roof_h - 1, round(z + nz * off), LAMP)
 
+    _side_concourse(w, samples, ys, grounds, lo, hi)
     if label:
         place_signs(w, samples, ys, lo, hi, label)
-    build_entrance(w, samples, ys, lo, hi, grounds, label)
+    if access:
+        build_entrance(w, samples, ys, lo, hi, grounds, label)
+
+
+def _side_concourse(w, samples, ys, grounds, lo, hi):
+    """側式月台車站的穿堂層：閘門與往兩座月台的樓梯都在這一層，真實出入口
+    （application/build_exits.py）也接到這裡。
+
+    放哪一層由 domain/alignment.py 的 station_kind 決定 —— 整站只看中心
+    取樣點判斷一次，各處的高度再以「int(ys[i]) + LEVEL_DY[型態]」逐點算，
+    站內軌面有坡時樓板跟著走（與地下站的穿堂層同一套規則）：
+      "under"  橋下穿堂：樓板在軌面 -7，橋面板（-1）就是它的頂板；
+               淨空 5 格，側牆玻璃，橋墩穿過大廳
+      "over"   天橋式穿堂：樓板在軌面 +7，疊在站屋屋頂（+6）上，
+               頂板在 +11，側牆玻璃
+
+    閘門在 lo+14 m（與地下站相同，出入口的側牆開洞在 lo+7）。兩座月台樓梯
+    都擺在 hi 端、月台最外側兩排（|off| 8..9），梯底落在付費區：
+      · 擺在 lo 端的話，"over" 的樓梯會在穿堂樓板上開一條 lo+1..lo+11 的洞，
+        正好貼著出入口在 lo+5..lo+9 開的門 —— 出門一步就是三格深的梯井；
+      · "under" 的樓梯 16 m 長，從 lo 端起算梯底會踩進 lo+14 的閘門列。
+    月台最外側兩排給了樓梯，警戒帶（|off| 6）與內側一排仍走得通。
+    """
+    per_m = max(1, int(round(1.0 / STEP)))
+    mid = (lo + hi) // 2
+    g_mid = int(grounds[mid]) if grounds is not None else GROUND
+    kind = station_kind(int(ys[mid]), g_mid)
+    if kind == "tunnel":                                # 地下站不會走到這裡
+        return
+    dy = LEVEL_DY[kind]                                 # 站立面相對軌面
+    under = kind == "under"
+
+    def levels(y):
+        """(樓板方塊, 頂板方塊)"""
+        return y + dy - 1, (y - 1 if under else y + dy + 3)
+
+    # ---- 樓板、淨空、側牆、端牆、照明 ----
+    for i in range(lo, hi + 1):
+        x, z, ux, uz, _ = samples[i]
+        nx, nz = -uz, ux
+        y = int(ys[i])
+        fl, ceil = levels(y)
+        end = i in (lo, hi)
+        for off in range(-11, 12):
+            bx, bz = round(x + nx * off), round(z + nz * off)
+            side = abs(off) == 11
+            w.set(bx, fl, bz, CONC)
+            w.set(bx, ceil, bz, CONC)                   # "under" 的 |off|<=10 就是橋面板
+            for yy in range(fl + 1, ceil):
+                w.set(bx, yy, bz, CONC if end else (GLASS if side else AIR))
+        if not end and (((i - lo) * STEP) % 8.0) < STEP:  # 端牆不嵌燈
+            for off in (-7, 0, 7):
+                w.set(round(x + nx * off), ceil - 1, round(z + nz * off), LAMP)
+
+    _gates(w, samples, ys, lo + 14 * per_m, per_m, floor_dy=dy - 1)
+
+    # ---- 橋墩 ----
+    # 區間的 sec_bridge 在車站之前就蓋了，上面的掏空會把大廳裡那一截切掉；
+    # 照 sec_bridge 的位置（同一個取樣條件、同樣以中心點取整的 3x3）補回來，
+    # 橋面板在大廳裡才有東西撐著。樓板那一格維持 CONC，柱子像是穿樓板而過。
+    if under:
+        for i in range(lo, hi + 1):
+            if abs((i * STEP) % PIER_EVERY) >= STEP / 2:
+                continue
+            x, z, _, _, _ = samples[i]
+            y = int(ys[i])
+            g = int(grounds[i]) if grounds is not None else GROUND
+            if y - 2 <= g:
+                continue
+            fl, _ = levels(y)
+            cx, cz = round(x), round(z)
+            for ddx in (-1, 0, 1):
+                for ddz in (-1, 0, 1):
+                    for yy in range(fl + 1, y - 1):
+                        w.set(cx + ddx, yy, cz + ddz, PIER)
+
+    # ---- 月台樓梯 ----
+    # 每座月台一座，2 格寬，從 hi 端往回退 run+1 m 起算；"under" 從穿堂往上爬
+    # 到月台，"over" 從穿堂往下走。y_from / y_to 都是站立面：梯底那一階半磚
+    # 與樓板齊平、梯頂整塊與月台面（y+1）齊平，兩端才不會差一格。
+    run = 2 * abs(dy - 2)
+    s0 = hi - (run + 1) * per_m
+    if s0 <= lo:
+        return
+    y0 = int(ys[s0])
+    for off_lo, off_hi in ((8, 9), (-9, -8)):
+        _side_stair(w, samples, ys, s0, per_m, y0 + dy, y0 + 2, off_lo, off_hi,
+                    under, levels)
+
+
+def _side_stair(w, samples, ys, s0, per_m, y_from, y_to, off_lo, off_hi,
+                under, levels):
+    """一座月台樓梯，連同它在月台面或穿堂樓板上開的洞周圍的欄杆。
+
+    頭部淨空（4 格）會自動把橋面板與月台面（"under"）或站屋屋頂與穿堂樓板
+    （"over"）挖開；clear_max_dy 擋住它，免得挖穿站屋屋頂或穿堂頂板。
+    """
+    head = 4
+    steps = _stair_run(w, samples, ys, s0, 1, per_m, y_from, y_to, off_lo, off_hi,
+                       head=head, clear_max_dy=(5 if under else (y_from - y_to) + 2))
+    if not steps:
+        return
+    sgn = 1.0 if y_to > y_from else -1.0
+    sd = 1 if off_lo > 0 else -1
+    # 每一階：踏面站立高度、是否把「走的那一層」的樓板挖開了
+    info = []
+    for k, (si, yb) in enumerate(steps):
+        y = int(ys[si])
+        fl, _ = levels(y)
+        walk_blk = (y + 1) if under else fl               # 月台面 / 穿堂樓板
+        foot = int(math.floor(y_from + sgn * 0.5 * (k + 1)))
+        info.append((si, yb + head >= walk_blk, walk_blk + 1, foot))
+    for k, (si, opened, stand, foot) in enumerate(info):
+        x, z, ux, uz, _ = samples[si]
+        nx, nz = -uz, ux
+        if opened and stand - foot >= 2:
+            # 洞口兩側：月台側只圍內側那一排（外側是站屋玻璃牆）；穿堂層
+            # 兩側都圍，靠牆那一排太窄，別讓人從那裡掉下去
+            for off in ((7,) if under else (7, 10)):
+                w.set(round(x + nx * sd * off), stand, round(z + nz * sd * off), BARS)
+        nb = [info[j][1] for j in (k - 1, k + 1) if 0 <= j < len(info)]
+        if not opened and any(nb):
+            # 洞的盡頭：這一格樓板還在、隔壁已經是洞，橫著圍一排
+            for off in range(off_lo, off_hi + 1):
+                w.set(round(x + nx * off), stand, round(z + nz * off), BARS)
 
 
 def place_signs(w, samples, ys, lo, hi, label):
