@@ -30,6 +30,8 @@ BAND0    = 15      # 第 0 帶的埋深（公尺）
 BAND_DY  = 15      # 帶距。站體斷面 dy -2..10 共 13 格，15 m 才咬不到
 LOOK_M   = 1500    # 換帶時往前看多遠，挑撐得最久的帶
 MAXBAND  = 8
+RAMP_M   = BAND_DY / AL.MAX_GRADE   # 換一帶要走的斜坡長度：15 m / 4% = 375 m
+PRE_EVERY = 20     # 每幾個取樣點往前探一次要不要提前換帶（10 m 一次就夠）
 
 
 def band_depth(band):
@@ -47,8 +49,17 @@ def assign_bands(raw, cell=CELL_M, look_m=LOOK_M, pins=()):
     貪婪演算法只知道「不能撞在一起」，不知道現實中誰在上面 —— 例如台北車站
     的板南線在 B3、淡水信義線在 B4，演算法卻可能給出相反的結果。
     釘樁會先把該範圍內的帶預留給指定路線，其他線只能繞開。
+
+    **換帶要提前一段斜坡的距離。** 帶號只是目標深度，真正的高程由縱斷面的
+    4% 坡度包絡線決定，換一帶要走 375 m 的斜坡。原本走到「目前的帶被占用」
+    那一格才換，斜坡從衝突點才開始下潛，衝突點本身還在半路上 ——
+    松江南京的松山新店線就這樣停在地下 27 m，與地下 30 m 的中和新蘆線站體
+    上下只差 3 m，兩座箱涵直接交疊。所以往前探一段斜坡：目前的帶在前方
+    375 m 內會被占用，就現在換；換掉的舊帶在斜坡走完之前也繼續算占用，
+    免得別條線鑽進斜坡底下。
     """
     look = int(look_m / AL.STEP)
+    ramp = int(RAMP_M / AL.STEP)
     occ = {}                       # cell -> {band: ref}
 
     pin_by_ref = {}
@@ -79,12 +90,21 @@ def assign_bands(raw, cell=CELL_M, look_m=LOOK_M, pins=()):
         for i, s in enumerate(samples):
             if s[4] == "tunnel":
                 cks[i] = (int(math.floor(s[0] / cell)), int(math.floor(s[1] / cell)))
+        def taken_within(i0, band, span):
+            """band 在 i0..i0+span 之間有沒有被別條線占用（每 20 點看一次）"""
+            for j in range(i0, min(n, i0 + span + 1), PRE_EVERY):
+                if cks[j] is not None and band in taken_at(cks[j], ref):
+                    return True
+            return False
+
         cur = None
+        hold = {}                               # 舊帶 -> 斜坡走完的取樣索引
         for i in range(n):
             s = samples[i]
             ck = cks[i]
             if ck is None:                      # 出洞了，下次進洞重新挑
                 cur = None
+                hold = {}
                 continue
             t = taken_at(ck, ref)
             forced = None
@@ -92,9 +112,11 @@ def assign_bands(raw, cell=CELL_M, look_m=LOOK_M, pins=()):
                 if (s[0] - px) ** 2 + (s[1] - pz) ** 2 <= r2:
                     forced = pb
                     break
+            prev = cur
             if forced is not None:
                 cur = forced
-            elif cur is None or cur in t:
+            elif cur is None or cur in t or (
+                    i % PRE_EVERY == 0 and taken_within(i, cur, ramp)):
                 # 前瞻：每個候選帶能撐到哪裡，挑最遠的（平手取最淺）
                 best, best_d = 0, -1
                 for b in range(MAXBAND):
@@ -110,16 +132,30 @@ def assign_bands(raw, cell=CELL_M, look_m=LOOK_M, pins=()):
                     if d >= look:
                         break
                 cur = best
+            if prev is not None and prev != cur:
+                hold[prev] = i + ramp * abs(cur - prev)
             arr[i] = cur
             occ.setdefault(ck, {})[cur] = ref
+            for b in list(hold):                # 斜坡還沒走完，舊帶也占著
+                if i <= hold[b]:
+                    occ.setdefault(ck, {})[b] = ref
+                else:
+                    del hold[b]
         out[idx] = arr
     return out
 
 
 # ---------- 以下只是分析報告 ----------
 
-def station_pins(min_margin=15.0, ratio=2.0, radius=120.0, verbose=False):
+PIN_RADIUS = AL.PLATFORM_LEN / 2 + RAMP_M     # 35 + 375 = 410 m
+
+
+def station_pins(min_margin=15.0, ratio=2.0, radius=PIN_RADIUS, verbose=False):
     """從 OSM 月台的 level 標籤推出真實的上下關係，轉成釘樁。
+
+    釘樁半徑要涵蓋半個站體再加一段斜坡：帶號一離開釘樁範圍就可以換，
+    換帶的斜坡有 375 m，半徑只給 120 m 的話斜坡會伸進站體，把釘在 B2 的
+    站體拉到地下 21 m（中山站的淡水信義線實測正是如此）。
 
     只處理「同一座車站有兩條以上路線、而且 level 不同」的轉乘站 ——
     那正是貪婪演算法可能猜反、而現實有明確答案的地方。月台屬於哪條線
