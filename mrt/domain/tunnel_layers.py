@@ -161,18 +161,32 @@ def assign_bands(raw, cell=CELL_M, look_m=LOOK_M, pins=(), shared=()):
     return out
 
 
-def check_clearance(segs, shared=(), cell=16, every=4, shared_r=300.0):
+# 箱涵上下緣各有幾排是襯砌／底板，不是走得到的空間。兩座箱涵交疊到這個深度
+# 以內，磚頭疊出來就是一道共用的牆 —— 西門北側板南線與松山新店線實地切過剖面：
+# 兩座箱涵水平只差 11 m、垂直疊了 2 格，板南線的底板與正在下潛的松山新店線的
+# 頂板咬在同一排上，各自的淨空都是完整的，兩邊的空氣沒有連通。
+LINING_DY = 2
+
+
+def check_clearance(segs, shared=(), cell=16, every=4, shared_r=None):
     """實際幾何的跨線淨距檢查：任兩條不同路線的地下結構不准在空間裡交疊。
 
     帶號的驗算只知道「帶號不同」；疊式站的雙層箱涵比一帶還高、釘平的縱斷面
     又可能離開帶的深度，所以另外拿每一點真正的箱涵範圍（半寬與上下緣）算一次。
     segs 是 cli 規劃完的路段（samples / ys / ground / stn / hw，可有 frames /
     stacked / y_side）。shared 是 [(x, z, ref_a, ref_b)]：共用一座站體的兩條線
-    在 shared_r 內本來就疊在一起，不算衝突。
+    在 shared_r 內本來就疊在一起，不算衝突；預設就是雙層箱涵加上分層過渡段的
+    長度（半座站體 + SPLIT_M）—— 只豁免真的是同一座結構的那一段，出了這個
+    範圍兩條線就是兩條各自的隧道，撞到要看得見。深度帶的同盟半徑
+    （stacked.ALLY_M）比這個大一點，那是因為它還要留空間雜湊的餘裕。
 
-    回傳 [(ref_a, ref_b, x, z, ya0, ya1, yb0, yb1), ...]，每個格子每對路線最多一筆。
+    回傳 [(ref_a, ref_b, x, z, ya0, ya1, yb0, yb1, 交疊格數), ...]，
+    每個格子每對路線最多一筆。交疊格數 <= LINING_DY 的只咬到襯砌，呼叫端
+    可以當成「貼著過」；再深就是真的撞進對方的空間了。
     """
-    from mrt.domain.stacked import BOX_BOTTOM_DY
+    from mrt.domain.stacked import BOX_BOTTOM_DY, SPLIT_M
+    if shared_r is None:
+        shared_r = AL.PLATFORM_LEN / 2 + SPLIT_M
     half = int(AL.PLATFORM_LEN / 2 / AL.STEP)
     grid = {}
     for sg in segs:
@@ -219,7 +233,8 @@ def check_clearance(segs, shared=(), cell=16, every=4, shared_r=300.0):
                 if math.hypot(xa - xb, za - zb) < rra + rrb and a0 < b1 and b0 < a1 \
                         and not exempt(ra, rb, xa, za):
                     seen.add((ra, rb, cx, cz))
-                    bad.append((ra, rb, xa, za, a0, a1, b0, b1))
+                    bad.append((ra, rb, xa, za, a0, a1, b0, b1,
+                                min(a1, b1) - max(a0, b0)))
     return bad
 
 

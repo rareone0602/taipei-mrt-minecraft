@@ -9,7 +9,7 @@
   2. 斜軌上方那一格真的高一格、另一端同高
   3. 鐵軌底下是實心方塊（懸空的軌道礦車會掉下去）
 
-用法: ./.venv/bin/python tools/verify_rails.py [存檔路徑]
+用法: ./.venv/bin/python tools/verify_rails.py [存檔路徑] [--show=20]
 """
 import io, os, re, sys, glob, zlib, collections
 import numpy as np, nbtlib
@@ -120,7 +120,10 @@ def scan(rdir):
 
 
 def main():
-    save = sys.argv[1] if len(sys.argv) > 1 else SAVE
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    show = next((int(a.split("=")[1]) for a in sys.argv[1:]
+                 if a.startswith("--show=")), 4)
+    save = args[0] if args else SAVE
     rdir = os.path.join(save, "dimensions/minecraft/overworld/region")
     rails, solid = scan(rdir)
     bad = collections.Counter()
@@ -175,8 +178,10 @@ def main():
     if not bad:
         print("  全部通過")
     for k in bad:
-        for t in sample[k][:4]:
+        for t in sample[k][:show]:
             print(f"    · {k} {t}")
+        if len(sample[k]) > show:
+            print(f"    …（{k} 還有 {len(sample[k]) - show} 筆，--show 可以多印）")
     print(f"\n註：「接不到下一根」含各路線的正常端點（每個端點算 1）。"
           f"目前 {ends} 個，路線／支線端點本來就會有幾十個。")
     return 1 if (bad - collections.Counter({"接不到下一根": ends})) else 0

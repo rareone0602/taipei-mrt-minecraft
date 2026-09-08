@@ -154,17 +154,20 @@ def plan_segments(refs=None, terr=None, verbose=True):
     if dropped:
         say(f"（跨支線重複的車站略過 {dropped} 座，避免站體重疊）")
 
+    # 去重之後、任何人動 stn 之前的快照：共用站體會把 partner 的車站從 stn 拿掉
+    # （西門的 G、中正紀念堂的 G），可是後面還要問「G 線上的中正紀念堂在哪一格」
+    # 才知道古亭的上層往哪邊開。查鄰站一律看快照，不看還剩下什麼
+    stn0 = [{nm: bi for bi, (_, nm, _) in sg["stn"].items()} for sg in segs]
+    li_of = {id(sg): li for li, sg in enumerate(segs)}
+
     def idx_on(sg, name):
         """這一段路線上某站的取樣索引（沒有就 None）。"""
-        for bi, (_, nm, _) in sg["stn"].items():
-            if nm == name:
-                return bi
-        return None
+        return stn0[li_of[id(sg)]].get(name)
 
     def find(ref, name):
         for li, sg in enumerate(segs):
-            if sg["ref"] == ref and idx_on(sg, name) is not None:
-                return li, idx_on(sg, name)
+            if sg["ref"] == ref and stn0[li].get(name) is not None:
+                return li, stn0[li][name]
         return None
 
     # ---- 疊式車站（domain/stacked.py）：府中的兩股道分到上下兩層；西門由板南線
@@ -204,7 +207,12 @@ def plan_segments(refs=None, terr=None, verbose=True):
         if pj_to is None:
             say(f"疊式車站 {name}（{pref}）：同一段路線上找不到 {pspec['upper_toward']}，略過")
             continue
-        lay, m, side, prng = SK.plan_shared(sg, bi, d, psg, pbi, SK.direction_sign(pbi, pj_to))
+        r = SK.plan_shared(sg, bi, d, psg, pbi, SK.direction_sign(pbi, pj_to))
+        if r is None:
+            say(f"疊式車站 {name}（{ref}+{pref}）：兩線中線距離不在 "
+                f"{SK.SEP_MIN}～{SK.SEP_MAX} m 之間，蓋不成共用站體，略過")
+            continue
+        lay, m, side, prng = r
         x, z = sg["samples"][bi][:2]
         shared_at.append((x, z, ref, pref))
         # 出入口通道沿站體外側走會擦到 partner 的分層過渡段，那不算撞到別線
@@ -282,12 +290,18 @@ def plan_segments(refs=None, terr=None, verbose=True):
         say(f"支線與幹線共用的路廊只蓋一次：略過 {nmask * STEP / 1000:.1f} km 的重複斷面")
 
     # 帶號沒衝突不代表箱涵沒交疊：疊式站的雙層箱涵比一帶還高、釘平的縱斷面會離開
-    # 帶的深度。拿每一點真正的箱涵範圍再算一次，有交疊就大聲說
+    # 帶的深度。拿每一點真正的箱涵範圍再算一次。疊得比襯砌還深才是撞進去，
+    # 要大聲說；只咬到襯砌的照講但不必掛警示 —— 一直亮的警示等於沒有警示
     bad = TL.check_clearance(segs, shared_at)
-    if bad:
-        say(f"⚠ 跨線淨距：{len(bad)} 處不同路線的地下結構在空間裡交疊 —— "
-            + "；".join(f"{a}×{b} ({x:.0f},{z:.0f}) y{a0}..{a1} / y{b0}..{b1}"
-                        for a, b, x, z, a0, a1, b0, b1 in bad[:6]))
+    deep = [b for b in bad if b[8] > TL.LINING_DY]
+    graze = len(bad) - len(deep)
+    if deep:
+        say(f"⚠ 跨線淨距：{len(deep)} 處不同路線的地下結構在空間裡交疊 —— "
+            + "；".join(f"{a}×{b} ({x:.0f},{z:.0f}) y{a0}..{a1} / y{b0}..{b1} 疊 {d} 格"
+                        for a, b, x, z, a0, a1, b0, b1, d in deep[:6]))
+    elif graze:
+        say(f"跨線淨距：沒有箱涵撞進別條線裡；{graze} 處上下貼著走、"
+            f"共用一兩排襯砌（{'；'.join(f'{a}×{b} ({x:.0f},{z:.0f}) 疊 {d} 格' for a, b, x, z, *_, d in bad[:4])}）")
     else:
         say("跨線淨距：不同路線的地下結構沒有交疊")
     return segs, stations, terr

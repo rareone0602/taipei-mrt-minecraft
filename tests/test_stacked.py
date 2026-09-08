@@ -290,5 +290,68 @@ for k, blocks in strands:
         cells.setdefault((b[0], b[2]), set()).add(k)
 chk("三股道沒有搶同一格", all(len(v) == 1 for v in cells.values()))
 
+print()
+print("共用站體的中線距離護欄")
+for sep, why in ((40.0, "太遠"), (6.0, "太近")):
+    A, (ia,) = make_seg("A", [(-700.0, 0.0), (700.0, 0.0)], [0])
+    B, (ib,) = make_seg("B", [(-700.0, sep), (700.0, sep)], [0])
+    before = (int(A["ys"][ia]), dict(B["stn"]))
+    chk(f"兩線相距 {sep:.0f} m（{why}）不蓋共用站體",
+        SK.plan_shared(A, ia, +1, B, ib, +1) is None)
+    chk(f"相距 {sep:.0f} m 時 plan_shared 什麼都沒改",
+        (int(A["ys"][ia]), dict(B["stn"])) == before
+        and "frames" not in A and "nobuild" not in B)
+
+print()
+print("真實資料表（STACKED / POCKETS）")
+import json
+import math
+from mrt import config
+
+for (name, ref), spec in SK.STACKED.items():
+    if spec["kind"] != "shared":
+        continue
+    if "partner" in spec:
+        chk(f"{name} {ref} 的 partner {spec['partner']} 也登記了",
+            (name, spec["partner"]) in SK.STACKED)
+    else:
+        chk(f"{name} {ref} 是某一筆的 partner",
+            any(k[0] == name and v.get("partner") == ref
+                for k, v in SK.STACKED.items()))
+chk("每座共用站體只有一條線當 primary",
+    all(sum(1 for k, v in SK.STACKED.items()
+            if k[0] == n and "partner" in v) == 1
+        for n in {k[0] for k, v in SK.STACKED.items() if v["kind"] == "shared"}))
+
+if os.path.exists(config.SIDINGS_JSON) and os.path.exists(config.MC_LINES_JSON):
+    ways = {w["id"]: w for w in
+            json.load(open(config.SIDINGS_JSON, encoding="utf-8"))["items"]}
+    lines = json.load(open(config.MC_LINES_JSON, encoding="utf-8"))
+
+    def d_seg(pt, a, b):
+        dx, dz = b[0] - a[0], b[1] - a[1]
+        L = dx * dx + dz * dz
+        t = 0.0 if L == 0 else max(0.0, min(1.0,
+            ((pt[0] - a[0]) * dx + (pt[1] - a[1]) * dz) / L))
+        return math.hypot(pt[0] - (a[0] + t * dx), pt[1] - (a[1] + t * dz))
+
+    for pk in SK.POCKETS:
+        way = ways.get(pk["osm"])
+        chk(f"{pk['a']}—{pk['b']} 的 way {pk['osm']} 在 data/sidings.json 裡",
+            way is not None)
+        if way is None:
+            continue
+        tags = way["tags"]
+        chk(f"{pk['a']}—{pk['b']} 是地下的（sec_multi 只挖隧道斷面）",
+            tags.get("tunnel") == "yes" or str(tags.get("layer", "0")).startswith("-"))
+        # 儲車軌要貼著自己那條線跑（夾在正線之間，離中心線不到一股道）。
+        # 比對 OSM 的全部變體，不只生成器選的那幾份：上下行是兩個 relation、
+        # 相距可到 19 m，儲車軌是貼著其中一份畫的（大安就是貼另一份）
+        segs = [(p[i], p[i + 1]) for v in lines[pk["ref"]]
+                for p in [v["points"]] for i in range(len(p) - 1)]
+        ds = [min(d_seg(q, a, b) for a, b in segs) for q in way["mc"]]
+        chk(f"{pk['a']}—{pk['b']} 的 way 沿著 {pk['ref']} 線跑"
+            f"（垂距 {min(ds):.0f}～{max(ds):.0f} m）", max(ds) <= 12.0)
+
 print("\n" + ("全部通過" if ok else "有測試失敗"))
 sys.exit(0 if ok else 1)

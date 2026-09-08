@@ -11,6 +11,7 @@
     ./.venv/bin/python tools/verify_tracks.py <存檔> --xz X Z --dir UX UZ [--span 200] [--half 14]
     ./.venv/bin/python tools/verify_tracks.py <存檔> --station 府中 [--span 150]
     ./.venv/bin/python tools/verify_tracks.py <存檔> --station 西門 --expect 4 --levels 2
+    ./.venv/bin/python tools/verify_tracks.py <存檔> --pocket 大安 信義安和 --expect 3
 """
 import argparse
 import csv
@@ -22,7 +23,19 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from mrt import config
+from mrt.domain import alignment as AL
 from mrt.infrastructure.savereader import read_volume
+
+
+def variants_of(ref):
+    """生成器實際會蓋的那幾份幾何。
+
+    OSM 的同一條線常有上下行兩個 relation，幾何相差十幾二十公尺
+    （淡水信義線在大安一帶就差 19 m）。工具若自己挑「最近的一份」，
+    很容易挑到生成器沒蓋的那一份，切下去只看得到一股道 —— 驗證器自己騙人。
+    """
+    lines = json.load(open(config.MC_LINES_JSON, encoding="utf-8"))
+    return AL.select_variants(lines.get(ref, []))
 
 
 def station_frame(name):
@@ -32,11 +45,10 @@ def station_frame(name):
     if st is None:
         raise SystemExit(f"mc_stations.csv 裡沒有 {name}")
     sx, sz = int(st["mc_x"]), int(st["mc_z"])
-    lines = json.load(open(config.MC_LINES_JSON, encoding="utf-8"))
     best = None
     for ref in st["ref"].split(";"):
         code = "".join(c for c in ref if c.isalpha())
-        for v in lines.get(code, []):
+        for v in variants_of(code):
             p = v["points"]
             for i in range(len(p) - 1):
                 (ax, az), (bx, bz) = p[i], p[i + 1]
@@ -49,6 +61,55 @@ def station_frame(name):
                 if best is None or d < best[0]:
                     best = (d, vx / L, vz / L)
     return sx, sz, best[1], best[2]
+
+
+def pocket_frame(a, b):
+    """袋狀軌的中點與走向：照 domain/stacked.POCKETS 登記的 OSM way 幾何。"""
+    from mrt.domain import stacked as SK
+    pk = next((k for k in SK.POCKETS if {k["a"], k["b"]} == {a, b}), None)
+    if pk is None:
+        raise SystemExit(f"stacked.POCKETS 裡沒有 {a}—{b}")
+    items = json.load(open(config.SIDINGS_JSON, encoding="utf-8"))["items"]
+    way = next((w for w in items if w["id"] == pk["osm"]), None)
+    if way is None:
+        raise SystemExit(f"data/sidings.json 裡沒有 way {pk['osm']}")
+    # 儲車軌畫在正線旁邊 6 m 左右，切刀要以線形為中心才對稱 —— 照 way 自己的
+    # 中點切，第三股道會落在窗子邊緣甚至外面（大安、台北車站兩處都是這樣）
+    pts = way["mc"]
+    seg = [math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(pts, pts[1:])]
+    want, acc = sum(seg) / 2, 0.0
+    mid = pts[0]
+    for (a, b), L in zip(zip(pts, pts[1:]), seg):
+        if acc + L >= want:
+            t = (want - acc) / L if L else 0.0
+            mid = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+            break
+        acc += L
+    # 方向用儲車軌自己的弦：它一定是直的、而且與正線平行；mc_lines 逐段的
+    # 走向會抖，拿來當切刀方向，走個幾十公尺就滑出隧道了
+    (ax, az), (bx, bz) = pts[0], pts[-1]
+    L = math.hypot(bx - ax, bz - az)
+    px, pz, _, _ = project(pk["ref"], mid[0], mid[1])
+    return px, pz, (bx - ax) / L, (bz - az) / L
+
+
+def project(ref, x, z):
+    """把一點投影到某條路線的中心線上，回傳 (投影點, 該處的走向)。"""
+    best = None
+    for v in variants_of(ref):
+        p = v["points"]
+        for i in range(len(p) - 1):
+            (ax, az), (bx, bz) = p[i], p[i + 1]
+            vx, vz = bx - ax, bz - az
+            L = math.hypot(vx, vz)
+            if L < 1e-9:
+                continue
+            t = max(0.0, min(1.0, ((x - ax) * vx + (z - az) * vz) / (L * L)))
+            qx, qz = ax + t * vx, az + t * vz
+            d = math.hypot(x - qx, z - qz)
+            if best is None or d < best[0]:
+                best = (d, qx, qz, vx / L, vz / L)
+    return best[1], best[2], best[3], best[4]
 
 
 def census(save, x, z, ux, uz, span, half, depth=40, rise=20):
@@ -74,8 +135,29 @@ def census(save, x, z, ux, uz, span, half, depth=40, rise=20):
             bx, bz = int(round(cx + nx * o)), int(round(cz + nz * o))
             for ry in rails.get((bx, bz), ()):
                 hits.add((o, ry))
-        out.append((t, sorted(hits)))
+        out.append((t, merge_strands(hits)))
     return out
+
+
+def merge_strands(hits):
+    """同一個高度上相鄰的離線位算同一股。
+
+    線形斜著走的時候，一股鐵軌是階梯狀的：連續兩格往前一格、往旁一格，
+    切下去的那一刀就同時打到 -8 與 -9 兩格。古亭與中正紀念堂的線形是 56 度，
+    四股道因此被數成六股、八股 —— 鐵軌沒問題，是這支工具數錯了。
+    """
+    out = []
+    for y in sorted({ry for _, ry in hits}):
+        offs = sorted(o for o, ry in hits if ry == y)
+        run = []
+        for o in offs:
+            if run and o - run[-1] > 1:
+                out.append((run[len(run) // 2], y))
+                run = []
+            run.append(o)
+        if run:
+            out.append((run[len(run) // 2], y))
+    return sorted(out)
 
 
 def main():
@@ -84,13 +166,19 @@ def main():
     ap.add_argument("--xz", nargs=2, type=float)
     ap.add_argument("--dir", nargs=2, type=float)
     ap.add_argument("--station")
+    ap.add_argument("--pocket", nargs=2, metavar=("甲站", "乙站"),
+                    help="照 stacked.POCKETS 的 OSM way 切袋狀軌那一段")
     ap.add_argument("--span", type=int, default=200)
     ap.add_argument("--half", type=int, default=14)
     ap.add_argument("--every", type=int, default=5, help="每幾公尺印一行")
     ap.add_argument("--expect", type=int, help="站體中心那一刀應該有幾股鐵軌")
     ap.add_argument("--levels", type=int, help="站體中心那一刀鐵軌應該分布在幾個高度")
     a = ap.parse_args()
-    if a.station:
+    if a.pocket:
+        x, z, ux, uz = pocket_frame(*a.pocket)
+        print(f"袋狀軌 {a.pocket[0]}—{a.pocket[1]} 中點 ({x:.0f},{z:.0f})  "
+              f"方向 ({ux:.2f},{uz:.2f})")
+    elif a.station:
         x, z, ux, uz = station_frame(a.station)
         print(f"{a.station} ({x},{z})  方向 ({ux:.2f},{uz:.2f})")
     else:

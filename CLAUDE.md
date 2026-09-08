@@ -91,8 +91,10 @@ tests/              不需要產生世界就能跑的測試
 ./.venv/bin/python tools/verify_rails.py [存檔]           # 讀回驗證鐵軌連通性
 ./.venv/bin/python tools/verify_exits.py <存檔>           # 讀回每座出入口，從街上走到月台
 ./.venv/bin/python tools/verify_concourse.py <存檔> --stations 台北車站 北門 中山 雙連
-./.venv/bin/python tools/verify_exits.py <存檔> --levels 府中 西門   # 疊式站要走得到兩層月台
+./.venv/bin/python tools/verify_exits.py <存檔> \
+    --levels 府中 西門 中正紀念堂 古亭 東門                 # 疊式站要走得到兩層月台
 ./.venv/bin/python tools/verify_tracks.py <存檔> --station 西門 --expect 4 --levels 2
+./.venv/bin/python tools/verify_tracks.py <存檔> --pocket 大安 信義安和 --expect 3
                                                           # 讀回每一刀有幾股鐵軌、各在哪個高度
 ./.venv/bin/python tools/slice_world.py 忠孝復興          # ASCII 剖面
 ```
@@ -105,13 +107,21 @@ tests/              不需要產生世界就能跑的測試
 **穿堂層的高度只有一個定義**：`alignment.station_kind` / `LEVEL_DY`
 （地下 +7、橋下 −6、月台上方 +8）。蓋車站的、擺出入口井的、接轉乘通道的、
 驗證的都從那裡拿，別在別處再算一次 —— 差一格就是一整站走不通。
-疊式車站（`domain/stacked.py`：府中、西門）也守這一條：上層就是原本的島式站，
-下層整層複製到 `LEVEL_H` 格底下，穿堂仍在 +7。要改層距只能改 `LEVEL_H`。
+疊式車站（`domain/stacked.py`：府中、西門、中正紀念堂、古亭、東門）也守這一條：
+上層就是原本的島式站，下層整層複製到 `LEVEL_H` 格底下，穿堂仍在 +7。
+要改層距只能改 `LEVEL_H`。
 
 **共用站體的兩條線在 `assign_bands` 裡是自己人**（`shared=`），而且規劃完
 一定要看 `check_clearance` 的那一行：帶號沒衝突不代表箱涵沒交疊。
 西門的釘樁曾經把板南線嚇到帶 2，台北車站的板南線因此撞進淡水信義線的站體，
-帶號驗算完全沒發現。
+帶號驗算完全沒發現。**「是自己人」的半徑（`stacked.ALLY_M`）只能貼著
+「真的是同一座結構」的長度**（半座站體 + `SPLIT_M`，約 350 m）：原本設 500 m，
+古亭以南並行 500 m、中線只差 7～13 m 的松山新店線與中和新蘆線就被判成不必
+分層，兩座箱涵在同一個深度上重疊了 400 m。
+
+**工具挑線形幾何一律過 `alignment.select_variants`。** OSM 同一條線常有上下行
+兩個 relation，淡水信義線在大安一帶差 19 m；工具自己挑最近的一份就會挑到
+生成器沒蓋的那一份，然後回報一個不存在的問題。
 
 ## 授權
 
