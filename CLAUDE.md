@@ -26,12 +26,15 @@ mrt/
   config.py         專案路徑與世界垂直範圍。所有層都可以引用
   domain/           純規則，零 I/O：線形、鐵軌形狀、建築幾何、隧道分層、高程取樣、
                     地下街動線 (concourse)、真實出入口與轉乘通道的擺放與避讓 (exits)、
-                    疊式車站與袋狀軌 (stacked)、行走可達性 (walk)
-  ports/            內層對外層開的介面：BlockSink（逐格）、ChunkSink（整段批次）
-  application/      用例：把 domain 算出來的東西寫進 BlockSink
+                    疊式車站與袋狀軌 (stacked)、行走可達性 (walk)、
+                    搭乘系統的路網與上車位置 (network)
+  ports/            內層對外層開的介面：BlockSink（逐格）、ChunkSink（整段批次）、
+                    SignSink（告示牌：文字元件、發光、點擊指令、開對話框）
+  application/      用例：把 domain 算出來的東西寫進 BlockSink；站內標誌 (signage)、
+                    資料包規格 (ride_plan)、出生點 (spawn)
   adapters/         外部資料進來：OSM (osm/)、DEM (dem/)、投影 (projection.py)
   infrastructure/   外部技術細節：Anvil 存檔寫入 (mcworld)、讀回 (savereader)、
-                    Overpass HTTP (overpass)
+                    Overpass HTTP (overpass)、高度圖 (heightmap)、資料包 (datapack)
 
 cli/                組合根。唯一看得到全部實作的地方，決定要把方塊寫進哪個 World。
                     `cli.build_world.plan_segments()` 只規劃不蓋，工具與試算腳本
@@ -97,6 +100,8 @@ tests/              不需要產生世界就能跑的測試
 ./.venv/bin/python tools/verify_tracks.py <存檔> --pocket 大安 信義安和 --expect 3
                                                           # 讀回每一刀有幾股鐵軌、各在哪個高度
 ./.venv/bin/python tools/verify_spawn.py <存檔> [--all]   # 讀回出生點與區塊高度圖，照遊戲的邏輯找一次出生點
+./.venv/bin/python tools/verify_rides.py <存檔>           # 讀回每面搭車告示牌與資料包的傳送目的地
+./.venv/bin/python tools/check_datapack.py <存檔>         # 資料包交給真的 26.2（無頭 GameTest 伺服器）載入執行
 ./.venv/bin/python tools/slice_world.py 忠孝復興          # ASCII 剖面
 ```
 
@@ -123,6 +128,23 @@ tests/              不需要產生世界就能跑的測試
 **工具挑線形幾何一律過 `alignment.select_variants`。** OSM 同一條線常有上下行
 兩個 relation，淡水信義線在大安一帶差 19 m；工具自己挑最近的一份就會挑到
 生成器沒蓋的那一份，然後回報一個不存在的問題。
+
+**上車位置只有一個定義**：`network.plan_berths`（`cli.build_world` 算一次）。月台上的
+搭車告示牌（`signage`）與資料包的傳送目的地（`ride_plan`）都吃同一份 `berths`，
+函式 id 只從 `network.ride_fn / turn_fn / go_fn / MENU_DIALOG` 來、命名空間只從
+`config.DATAPACK_NS` 來 —— 牌子寫的指令跟資料包的檔名是同一份約定的兩端。
+每個 ride/turn/go 函式恰好一行 `tp @s x y z yaw pitch`，`verify_rides` 靠它讀回。
+
+**告示牌的兩條地雷**：`verify_exits` 靠「第一行以『出口』開頭、第二行是站名」認出入口亭，
+別的牌子第一行不准以「出口」開頭；黃色混凝土是月台警示帶（兩支驗證器都靠它認月台），
+路線色帶不准用它。點擊動作只放第一行 —— 遊戲對每一行的 click_event 都會執行一次。
+
+**遊戲本身可以當驗證器。** 裝好的 26.2 client jar 附一個無頭 GameTest 伺服器
+（`net.minecraft.gametest.Main`，用 launcher 附的 java），在沙盒裡跑得起來（一般伺服器要
+開 port，跑不了）：`check_datapack` 用它載入資料包、執行每個傳送函式再讀回落點；
+`heightmap.py` 的打包與方塊分類也是拿它存出來的區塊逐位元比過的（告示牌、旗幟、壓力板
+在高度圖上算「擋」，跟直覺相反）。它沒有玩家：右鍵點牌、對話框畫面要進遊戲才驗得到。
+格式問題別憑記憶：`net.minecraft.data.Main --reports` 會吐出完整的指令樹與登錄表。
 
 ## 授權
 
@@ -154,6 +176,11 @@ y 上限，車站多加兩座、地面低 3 m，整條地下街就被判成地�
 井底那扇門的上限夾在井口平台之下，站立面落差不到 3 格門洞就矮到鑽不過去
 （淡江大學就是這樣壞的）。街面與穿堂差 0～2 m 的出入口走 `exits.place_gate`
 （平面出入口），別把 `MIN_RISE` 調回 2。
+
+**井與通道要避開別條線，不只避開自己這一區的東西。** 地下街的連絡梯井從 y61 挖到
+深層那條線的穿堂，中途一定經過淺層那幾條線的深度 —— 台北車站往淡水信義線的那座井
+曾經把板南線月台挖掉十幾公尺，`out/` 的舊存檔裡還是那樣。`build_concourse.plan` 現在
+收 `exits.index_segments` 的占用表；新增任何會垂直穿越的東西都要查它。
 
 **改了生成器，要對照舊版存檔。** `git worktree add <暫存目錄> HEAD` 加一個
 `data/heightmap.npy` 的 symlink 就能用舊程式蓋同一塊地，再逐格 diff
