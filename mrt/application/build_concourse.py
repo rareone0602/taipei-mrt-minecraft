@@ -439,7 +439,7 @@ class ShaftStair:
 
 def plan(ways, entrances, ground_at, y_stand, links=(), half_w=3,
          snap_tol=3.0, snap_radius=60.0, near=(0.0, 0.0), tile=TILE,
-         no_wall=(), bridge=25.0, merge_m=12.0):
+         no_wall=(), bridge=25.0, merge_m=12.0, occ=None, own_tags=None):
     """把 OSM 通道與出入口變成一串可以 build() 的物件。
 
     ways        [{"nodes": [...], "points": [[x, z], ...]}]，已投影成 MC 座標
@@ -448,6 +448,9 @@ def plan(ways, entrances, ground_at, y_stand, links=(), half_w=3,
     y_stand     地下街站立面 y
     links       [(x, z, 穿堂站立面 y, 名稱, ux, uz)]，往各線穿堂層的連絡梯
     no_wall     這些格子上不砌牆（例如 B1 大廳，本來就是開放空間）
+    occ         exits.Occupancy：所有路線的隧道與站體各占哪一段高度。連絡梯的井
+                從地下街一路挖到深層那條線的穿堂，中途會經過淺層那幾條線的深度
+    own_tags    f(連絡梯名稱) -> 那條線自己的路段 tag（井底本來就在自己的站體裡）
     回傳 (objects, report)
     """
     pos, adj, edges = CC.build_graph(ways, tol=snap_tol)
@@ -531,10 +534,23 @@ def plan(ways, entrances, ground_at, y_stand, links=(), half_w=3,
         # 門沿站體往前挪 7 m：穿堂層往月台的兩座樓梯在樓板上開了洞，
         # 分別在站體中心的 -8..-1 m 與 +16..+23 m，門正對中心的話一出門
         # 就是往下五公尺的洞（中山站的松山新店線就是這樣從地下街走不到月台）。
+        # 井身不能穿過別條線的站體或隧道：台北車站淡水信義線（穿堂 y44）的連絡梯
+        # 從地下街（y61）挖下來，正好經過板南線站體的深度（y49..61）。原本只看
+        # 地下街自己的東西，井就擺在板南線站體北緣，把 17 m 的北側軌道與月台邊
+        # 挖成井身、砌上井壁 —— 從存檔切剖面才看到。沿站體挪幾個位置挑一個不穿過
+        # 別人的：門要落在樓板上沒有洞的地方 —— 兩座月台樓梯的洞之間（站體中心
+        # 0..15 m）、閘門與第一座樓梯之間（−19..−12）、第二座樓梯之後（24..33）。
+        mine = own_tags(name) if own_tags is not None else None
+
+        def hits_other(fp):
+            if occ is None:
+                return 0
+            return sum(1 for x, z in fp if occ.blocked(x, z, ly - 1, y_stand - 2, skip_tag=mine))
+
         best = None
-        for shift in (0, 8, -8, 9, -9):
-            cx_ = lx + ux * 7 + px * shift
-            cz_ = lz + uz * 7 + pz * shift
+        for along, shift in [(a, s_) for a in (7, 11, 3, 13, -15, -14, 27, 30) for s_ in (0, 8, -8, 9, -9)]:
+            cx_ = lx + ux * along + px * shift
+            cz_ = lz + uz * along + pz * shift
             for dx, dz in cands:
                 x0, z0 = int(round(cx_)) + dx, int(round(cz_)) + dz
                 fp = shaft_cells(x0, z0, dx, dz, margin=1)
@@ -550,12 +566,14 @@ def plan(ways, entrances, ground_at, y_stand, links=(), half_w=3,
                       | stroke(porch, pos[near_n], max(2, half_w - 1)))
                 bad = (10 * (len(fp & taken_fp) + len(st & taken_fp) + len(fp & taken_st)
                              + len(fp & stair_fp))
-                       + len(fp & corridor) + abs(shift))
+                       + 50 * hits_other(fp)
+                       + len(fp & corridor) + abs(shift) + abs(along - 7))
                 if best is None or bad < best[0]:
                     best = (bad, dx, dz, x0, z0, door, near_n, fp, st)
         _, dx, dz, x0, z0, door, near_n, fp, st = best
         well = ShaftStair(x0, z0, dx, dz, y_stand - 1, ly, bottom_door=True)
         well.label = name
+        well.clash = hits_other(fp)             # 還是穿過別人的格數（報表用，應為 0）
         link_objs.append(well)
         taken_fp |= fp
         taken_st |= st
@@ -606,7 +624,7 @@ def plan(ways, entrances, ground_at, y_stand, links=(), half_w=3,
     report = dict(nodes=len(pos), group=len(group), lines=len(lines),
                   bridged=len(bridged), length=round(CC.total_length(lines)),
                   cells=len(cells), ring=len(ring), tiles=len(buckets),
-                  links=[(o.label, o.x0, o.z0, o.y_to, o.g0)
+                  links=[(o.label, o.x0, o.z0, o.y_to, o.g0, getattr(o, "clash", 0))
                          for o in link_objs],
                   # ref 在不同車站會重複（台北車站與北門都有 1、2、3 號
                   # 出入口），所以報表一律帶座標，否則會把別站的出入口

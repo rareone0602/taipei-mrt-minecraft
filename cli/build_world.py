@@ -31,6 +31,7 @@ from mrt.application import landmarks as LM
 from mrt.application import ride_plan as RP
 from mrt.application import spawn as SP
 from mrt.domain import alignment as AL
+from mrt.domain import exits as EX
 from mrt.domain import network as NW
 from mrt.domain import rails
 from mrt.domain import stacked as SK
@@ -70,6 +71,11 @@ def landmark_blocker(marks):
         if hasattr(m, "cells") and hasattr(m, "clear") and hasattr(m, "y"):
             lo = m.y - getattr(m, "thick", 1)
             vols.append((set(m.cells), lo, m.y + m.clear + 1))
+        elif hasattr(m, "g0") and hasattr(m, "y_to") and hasattr(m, "x0"):
+            # 折返梯井：地下街的連絡梯原本就曾把板南線月台挖掉一段（現在規劃時
+            # 會避開別條線，這裡再擋一次，萬一又撞上也不會把牌子立進井裡）
+            lo, hi = min(m.g0, m.y_to) - 1, max(m.g0, m.y_to) + 4
+            vols.append((EX.shaft_cells(m.x0, m.z0, m.ux, m.uz), lo, hi))
 
     def blocked(x, y, z):
         return any(lo <= y <= hi and (x, z) in cells for cells, lo, hi in vols)

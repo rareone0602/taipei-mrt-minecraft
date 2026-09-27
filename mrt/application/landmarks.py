@@ -17,6 +17,7 @@ from mrt import config
 from mrt.application import build_concourse as BCC
 from mrt.application import build_exits as BX
 from mrt.application.build_concourse import ShaftStair
+from mrt.domain import exits as EX
 from mrt.domain import geometry as shapes
 
 AIR = "minecraft:air"
@@ -520,18 +521,27 @@ def taipei_main(segs, stations, terr):
         links.append((cx, cz, rail_hall_y, "台鐵", 1.0, 0.0))
 
     hall_cells = shapes.poly_cells(shapes.rect(cx, cz, 150, 120))
+    # 連絡梯的井要避開別條線的站體與隧道（占用表的 tag 是路段索引；井底落在
+    # 自己那條線的站體裡是應該的）
+    occ = EX.index_segments(segs)
+
+    def own_tags(tag):
+        ref = tag.split("@")[0]
+        return {li for li, sg in enumerate(segs) if sg["ref"] == ref}
+
     objs, rep = BCC.plan(ways, picked, lambda x, z: int(terr.y_at(x, z)),
                          b1 + 1, links=links, near=(cx, cz),
-                         no_wall=hall_cells)
+                         no_wall=hall_cells, occ=occ, own_tags=own_tags)
     for o in objs:
         o.underground = True        # 地下街不必觸發地形生成，見 cli/build_world
     out += objs
     print(f"  台北車站地下街：通道 {rep['length']:,} m、"
           f"地板 {rep['cells']:,} 格、出入口 {len(rep['exits'])} 座樓梯"
           + (f"、接不上的 {len(rep['orphan'])} 個" if rep["orphan"] else ""))
-    for nm, sx0, sz0, yto, yg0 in rep["links"]:
+    for nm, sx0, sz0, yto, yg0, clash in rep["links"]:
         print(f"    連絡梯樓梯井 {nm:<8} ({sx0},{sz0})  "
-              f"地下街 y{yg0 + 1} -> 穿堂 y{yto}")
+              f"地下街 y{yg0 + 1} -> 穿堂 y{yto}"
+              + (f"  ⚠ 井身仍穿過別條線的結構 {clash} 格" if clash else ""))
 
     # 接不上地下街的出入口（OSM 沒畫那一帶的通道）退回舊做法：
     # 一座樓梯井下到 B1 大廳。大廳本身有被地下街接到，所以還是連通的。
