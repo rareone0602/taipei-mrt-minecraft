@@ -35,6 +35,12 @@ Y_MIN, Y_MAX = -64, 319                       # 含端點
 SEC_MIN, SEC_MAX = Y_MIN >> 4, Y_MAX >> 4     # -4 .. 19
 N_SEC = SEC_MAX - SEC_MIN + 1                 # 24
 
+# --- 資料包（datapack）---
+# 告示牌上的點擊指令（application 層立的）與資料包裡的函式（infrastructure 層寫的）
+# 是同一份約定的兩端：命名空間只能在這裡定義一次，兩邊都從這裡拿。
+DATAPACK_NAME = "taipei_mrt"                  # <存檔>/datapacks/ 底下的資料夾名稱
+DATAPACK_NS = "mrt"                           # 函式、對話框、記分板的命名空間
+
 WORLD_NAME = "Taipei MRT"
 DEFAULT_SAVE = os.path.join(OUT, WORLD_NAME)
 MC_SAVES = os.path.expanduser("~/Library/Application Support/minecraft/saves")

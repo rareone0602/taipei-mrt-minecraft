@@ -29,6 +29,7 @@ from mrt.application import build_line as BL
 from mrt.application import build_world as BW
 from mrt.application import landmarks as LM
 from mrt.domain import alignment as AL
+from mrt.domain import network as NW
 from mrt.domain import rails
 from mrt.domain import stacked as SK
 from mrt.domain import tunnel_layers as TL
@@ -55,6 +56,21 @@ def load_stations():
             stations.append((r["ref"].split(";"), r["name_zh"] or r["name_en"],
                              int(r["mc_x"]), int(r["mc_z"]), r["name_en"], r["ref"]))
     return stations
+
+
+def landmark_blocker(marks):
+    """(x, y, z) -> bool：這一格落在某個地下大廳（臺鐵／高鐵月台層、地下大廳樓板）
+    的箱體裡。搭車告示牌與站位要避開 —— 台北車站的臺鐵／高鐵月台層跟板南線站體
+    在同一個深度，西端北側那一段月台門被它吃掉了。"""
+    vols = []
+    for m in marks:
+        if hasattr(m, "cells") and hasattr(m, "clear") and hasattr(m, "y"):
+            lo = m.y - getattr(m, "thick", 1)
+            vols.append((set(m.cells), lo, m.y + m.clear + 1))
+
+    def blocked(x, y, z):
+        return any(lo <= y <= hi and (x, z) in cells for cells, lo, hi in vols)
+    return blocked
 
 
 def plan_segments(refs=None, terr=None, verbose=True):
@@ -134,8 +150,10 @@ def plan_segments(refs=None, terr=None, verbose=True):
             bi = int(np.argmin(d))
             if math.sqrt(d[bi]) <= 200:
                 stn[bi] = (full, name, en)
+        # stn_seq 是去重之前的快照：搭乘系統要從每個變體自己的車站序列排出
+        # 「下一站」（小碧潭支線從七張出發，七張在支線這一段馬上就會被去重砍掉）
         segs.append(dict(ref=ref, samples=samples, ys=ys, ground=ground,
-                         stn=stn, band=band))
+                         stn=stn, stn_seq=dict(stn), band=band))
 
     # 同一座車站可能同時落在幹線與支線上（如北投、七張），中和新蘆線的共用
     # 幹線更是整段重複。兩處若差了十幾公尺，會疊出兩座歪掉的站體。
@@ -413,6 +431,13 @@ def main():
                         for rz in range((z - outer) >> 9, ((z + outer) >> 9) + 1):
                             terr_pts.setdefault((rx, rz), []).append((x, z))
         print(f"地標 {len(marks)} 座，涵蓋 {len(mark_b)} 個 region")
+
+    # ---- 搭乘系統：每座站體每條線每個行車方向的上車位置（domain/network.py）----
+    # 月台上的搭車告示牌與資料包的傳送目的地都從這一份來，只算一次
+    net, berths = NW.plan_berths(segs, blocked=landmark_blocker(marks))
+    n_slot = sum(len(b.slots) for b in berths)
+    print(f"搭乘系統：{sum(1 for s in net.values() if s.box is not None)} 站、"
+          f"{len(berths)} 個月台邊、{n_slot} 面搭車告示牌、{len(NW.rides(net, berths))} 段車程")
 
     regions = sorted(set(struct_b) | set(terr_pts) | set(mark_b))
     if a.bbox:

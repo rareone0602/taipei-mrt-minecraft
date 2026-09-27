@@ -64,6 +64,41 @@ def parse_block(s):
     return c
 
 
+def _component(item, click=None):
+    """一行告示牌文字 -> 文字元件 compound（26.2 的原生 NBT 格式）。
+
+    鍵名照 26.2 的 Style 編碼：color、bold、italic、click_event（底線式，
+    1.21.5 起不再是 clickEvent）；run_command 的欄位是 command、
+    show_dialog 的是 dialog —— 都是從遊戲 jar 的類別常數池讀出來核對過的。
+    """
+    if isinstance(item, dict):
+        c = Compound({"text": String(str(item.get("text", "")))})
+        if item.get("color"):
+            c["color"] = String(str(item["color"]))
+        for k in ("bold", "italic"):
+            if item.get(k):
+                c[k] = Byte(1)
+    else:
+        c = Compound({"text": String(str(item))})
+    if click is not None:
+        c["click_event"] = click
+    return c
+
+
+def _sign_text(lines, color, glow, click):
+    """front_text / back_text。四行純字串就寫字串清單，否則全部寫 compound。"""
+    items = list(lines)[:4]
+    items += [""] * (4 - len(items))                     # 一定要剛好四行
+    rich = click is not None or any(isinstance(t, dict) for t in items)
+    if rich:
+        msgs = List[Compound]([_component(t, click if k == 0 else None)
+                               for k, t in enumerate(items)])
+    else:
+        msgs = List[String]([String(str(t)) for t in items])
+    return Compound({"messages": msgs, "color": String(color),
+                     "has_glowing_text": Byte(1 if glow else 0)})
+
+
 def _pack(indices, bits):
     """1.16+ 的 bit-packing: 每個 long 塞 64//bits 筆，不跨 long。"""
     per = 64 // bits
@@ -194,34 +229,52 @@ class World:
 
 
     # ---- 告示牌 ----
-    def sign(self, x, y, z, lines, facing=(0, 1), wood="oak"):
-        """立一面告示牌。lines 為最多 4 行文字，facing 是牌面朝向的 (dx, dz)。
+    def sign(self, x, y, z, lines, facing=(0, 1), wood="oak", kind="standing",
+             glow=False, color="black", command=None, dialog=None, back=None):
+        """立一面告示牌（介面見 ports.block_sink.SignSink）。
 
         26.2 (DataVersion 4903) 的文字元件是原生 NBT，不再是 JSON 字串
-        （1.21.5 起改制）；且 NBT 清單必須同型別，所以四行一律用純字串，
-        不能混入 compound。
+        （1.21.5 起改制）；且 NBT 清單必須同型別 —— 四行要嘛全是純字串，
+        要嘛全是 compound，不能混。只有純文字的牌照舊寫字串（跟改版前逐位元組
+        相同），有顏色、粗體或點擊動作的才整面寫成 compound。
+
+        點擊動作放在第一行的 click_event 上。遊戲對整面牌的每一行都會執行一次
+        click_event，所以只能放一行，否則點一下會搭兩次車。牌子一律上蠟：
+        上蠟的牌右鍵不會打開編輯畫面，才會執行點擊動作。
         """
+        x, y, z = int(x), int(y), int(z)
         fx, fz = facing
         yaw = math.degrees(math.atan2(-fx, fz))          # MC: 0=南, 90=西, 180=北, 270=東
         rot = int(round(yaw / 22.5)) % 16
-        msgs = [str(t) for t in list(lines)[:4]]
-        msgs += [""] * (4 - len(msgs))                   # 一定要剛好四行
-        blank = List[String]([String("") for _ in range(4)])
-        self.set(x, y, z, f"minecraft:{wood}_sign[rotation={rot},waterlogged=false]")
+        if kind == "wall":
+            card = "south" if abs(fz) >= abs(fx) and fz > 0 else \
+                   "north" if abs(fz) >= abs(fx) else ("east" if fx > 0 else "west")
+            self.set(x, y, z, f"minecraft:{wood}_wall_sign[facing={card},waterlogged=false]")
+            be_id = "minecraft:sign"
+        elif kind == "hanging":
+            # 吊牌掛在天花板下：attached=false 是兩條垂直的鏈子，只接受正交四向
+            rot = (int(round(rot / 4.0)) * 4) % 16
+            self.set(x, y, z, f"minecraft:{wood}_hanging_sign"
+                              f"[attached=false,rotation={rot},waterlogged=false]")
+            be_id = "minecraft:hanging_sign"
+        else:
+            self.set(x, y, z, f"minecraft:{wood}_sign[rotation={rot},waterlogged=false]")
+            be_id = "minecraft:sign"
         c = self.chunks.get((x >> 4, z >> 4))
         if c is None:
             return          # 被 region 過濾掉了，該 region 處理到時會自己寫
+        click = None
+        if command:
+            click = Compound({"action": String("run_command"), "command": String(command)})
+        elif dialog:
+            click = Compound({"action": String("show_dialog"), "dialog": String(dialog)})
         c.bes[(x, y, z)] = Compound({
-            "id": String("minecraft:sign"),
+            "id": String(be_id),
             "x": Int(x), "y": Int(y), "z": Int(z),
             "keepPacked": Byte(0),
             "is_waxed": Byte(1),                         # 上蠟，避免被玩家改字
-            "front_text": Compound({
-                "messages": List[String]([String(m) for m in msgs]),
-                "color": String("black"), "has_glowing_text": Byte(0)}),
-            "back_text": Compound({
-                "messages": blank,
-                "color": String("black"), "has_glowing_text": Byte(0)}),
+            "front_text": _sign_text(lines, color, glow, click),
+            "back_text": _sign_text(back or [], color, glow, None),
         })
 
     def fill(self, x0, y0, z0, x1, y1, z1, block):

@@ -46,6 +46,35 @@ class ChunkSink(Protocol):
         names 是索引對應的方塊名稱清單。"""
 
 
+@runtime_checkable
+class SignSink(Protocol):
+    """能立告示牌的 BlockSink。
+
+    一行文字可以是純字串，或是 dict(text=..., color=..., bold=..., italic=...)
+    —— color 是 "#rrggbb" 或 Minecraft 的顏色名。整面牌只要有一行是 dict，
+    或帶了點擊動作，實作就得把四行都寫成文字元件（NBT 清單必須同型別）。
+    """
+
+    def sign(self, x, y, z, lines, facing=(0, 1), wood="oak", kind="standing",
+             glow=False, color="black", command=None, dialog=None, back=None):
+        """立一面告示牌。
+
+        facing   牌面朝向 (dx, dz)：看牌的人站在牌子的這一側
+        kind     "standing" 立牌（有柱）、"wall" 壁掛、"hanging" 吊牌
+        glow     發光墨水：暗處也看得清楚
+        command  右鍵點牌子時以牌子的權限執行的指令（不帶斜線）
+        dialog   右鍵點牌子時開啟的對話框 id（如 "mrt:network"）
+        back     背面的四行（格式同 lines）；None 就留白
+        """
+
+
+def plain_text(item):
+    """一行告示牌文字的純文字：dict 取 text，其餘轉成字串。"""
+    if isinstance(item, dict):
+        return str(item.get("text", ""))
+    return str(item)
+
+
 class DictSink:
     """把方塊收進 dict 的 BlockSink，給測試與幾何驗算用。
 
@@ -54,7 +83,8 @@ class DictSink:
 
     def __init__(self):
         self.blocks = {}
-        self.signs = {}                     # (x, y, z) -> 四行文字
+        self.signs = {}                     # (x, y, z) -> 四行純文字
+        self.sign_meta = {}                 # (x, y, z) -> 其餘參數（朝向、點擊動作……）
 
     def set(self, x, y, z, block):
         self.blocks[(int(x), int(y), int(z))] = block
@@ -62,14 +92,21 @@ class DictSink:
     def get(self, x, y, z, default="minecraft:air"):
         return self.blocks.get((int(x), int(y), int(z)), default)
 
-    def sign(self, x, y, z, lines, facing=(0, 1), wood="oak"):
+    def sign(self, x, y, z, lines, facing=(0, 1), wood="oak", kind="standing",
+             glow=False, color="black", command=None, dialog=None, back=None):
         """告示牌：方塊照放，文字另外記在 signs 裡，測試可以查牌上寫什麼。
 
         infrastructure 的 World 也有同名方法（那邊才真的寫 NBT）；生成器
-        放站名牌時呼叫的是這個介面，測試的 sink 不能少了它。
+        放站名牌時呼叫的是這個介面（SignSink），測試的 sink 不能少了它。
         """
-        self.set(x, y, z, "minecraft:%s_sign" % wood)
-        self.signs[(int(x), int(y), int(z))] = [str(t) for t in list(lines)[:4]]
+        suffix = {"wall": "wall_sign", "hanging": "hanging_sign"}.get(kind, "sign")
+        key = (int(x), int(y), int(z))
+        self.set(x, y, z, "minecraft:%s_%s" % (wood, suffix))
+        self.signs[key] = [plain_text(t) for t in list(lines)[:4]]
+        self.sign_meta[key] = dict(
+            facing=tuple(facing), wood=wood, kind=kind, glow=glow, color=color,
+            command=command, dialog=dialog, lines=list(lines)[:4],
+            back=[plain_text(t) for t in list(back)[:4]] if back else None)
 
     def __len__(self):
         return len(self.blocks)

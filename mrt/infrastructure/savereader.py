@@ -124,26 +124,62 @@ def iter_chunks(rdir, x0, z0, x1, z1):
             yield cx, cz, root
 
 
-def read_signs(save, x0, z0, x1, z1, region_dir=None):
-    """讀回範圍內所有告示牌：[(x, y, z, [四行文字])]。
+def component_text(m):
+    """文字元件 -> 純文字。純字串原樣回傳；compound 取 text 再接上 extra。"""
+    if isinstance(m, dict):
+        s = str(m.get("text", ""))
+        for e in m.get("extra", ()):
+            s += component_text(e)
+        return s
+    return str(m)
 
-    文字在 block_entities 的 front_text.messages 裡（1.21.5 起是原生 NBT
-    字串清單，不是 JSON）。驗證出入口用它找出入口亭 —— 牌子是生成器
-    立的沒錯，但「牌子旁邊有沒有一座走得通的樓梯」是從方塊讀回來驗的。
+
+def _click_of(messages):
+    """四行裡第一個 click_event（沒有就 None）：{"action": ..., "command"/"dialog": ...}"""
+    for m in messages:
+        if isinstance(m, dict) and "click_event" in m:
+            return {str(k): str(v) for k, v in m["click_event"].items()}
+    return None
+
+
+def read_sign_entities(save, x0, z0, x1, z1, region_dir=None, ids=("minecraft:sign",
+                                                                    "minecraft:hanging_sign")):
+    """讀回範圍內所有告示牌的完整內容：[dict(x, y, z, id, front, back, click, glow)]。
+
+    front / back 是四行純文字，click 是正面第一個點擊動作。驗證搭車告示牌用它：
+    牌上說點了會去哪裡，要跟資料包裡的函式、跟那一站真的站得住的月台對得上。
     """
     rdir = _region_dir(save, region_dir)
     out = []
     for cx, cz, root in iter_chunks(rdir, x0, z0, x1, z1):
         for be in root.get("block_entities", ()):
-            if str(be.get("id", "")) != "minecraft:sign":
+            bid = str(be.get("id", ""))
+            if bid not in ids:
                 continue
             x, y, z = int(be["x"]), int(be["y"]), int(be["z"])
             if not (x0 <= x <= x1 and z0 <= z <= z1):
                 continue
-            ft = be.get("front_text", {})
-            msgs = [str(m) for m in ft.get("messages", [])]
-            out.append((x, y, z, msgs))
+            ft, bt = be.get("front_text", {}), be.get("back_text", {})
+            fm = list(ft.get("messages", []))
+            out.append(dict(x=x, y=y, z=z, id=bid,
+                            front=[component_text(m) for m in fm],
+                            back=[component_text(m) for m in bt.get("messages", [])],
+                            click=_click_of(fm),
+                            glow=bool(int(ft.get("has_glowing_text", 0)))))
     return out
+
+
+def read_signs(save, x0, z0, x1, z1, region_dir=None):
+    """讀回範圍內所有告示牌：[(x, y, z, [四行文字])]。
+
+    文字在 block_entities 的 front_text.messages 裡（1.21.5 起是原生 NBT，
+    不是 JSON）：純文字的牌是字串清單，有顏色或點擊動作的是 compound 清單，
+    這裡一律攤平成純文字。驗證出入口用它找出入口亭 —— 牌子是生成器
+    立的沒錯，但「牌子旁邊有沒有一座走得通的樓梯」是從方塊讀回來驗的。
+    """
+    return [(s["x"], s["y"], s["z"], s["front"])
+            for s in read_sign_entities(save, x0, z0, x1, z1, region_dir,
+                                        ids=("minecraft:sign",))]
 
 
 def read_volume(save, x0, y0, z0, x1, y1, z1, region_dir=None, verbose=True):
