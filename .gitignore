@@ -14,7 +14,7 @@
 /data/*.blend
 /data/*.blend1
 
-# 示範素材的原始螢幕錄影（928 MB）與中間檔。demo/ 下進版控的只有成品，
+# 示範素材的原始螢幕錄影（三段 2.9 GB）與中間檔。demo/ 下進版控的只有成品，
 # 要重做成品跑 demo/make_demo.py
 /demo/raw-*.mov
 /demo/.work/

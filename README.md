@@ -14,20 +14,32 @@ Minecraft Java Edition 26.2 存檔中，含真實地形、隧道／高架／平�
 
 全部程式化生成 —— 482 km² 的範圍不可能手工堆。
 
-> **不想自己跑生成？[直接下載已經蓋好的世界存檔](https://drive.google.com/file/d/19EMGXq1fSBxTu75KZ2nqXuztkm0jARfG/view?usp=sharing)**（Google 雲端硬碟，約 1 GB）
+> **不想自己跑生成？[直接下載已經蓋好的世界存檔](https://drive.google.com/file/d/19EMGXq1fSBxTu75KZ2nqXuztkm0jARfG/view?usp=sharing)**（Google 雲端硬碟，壓縮檔 198 MB，含搭乘系統與 14 處景點）
 > —— 安裝步驟見下面「[下載已經蓋好的存檔](#下載已經蓋好的存檔)」。
 
 ## 示範影片
 
+[![台北101 與觀光景點 —— 72 秒示範影片](demo/sights-thumb.jpg)](https://github.com/rareone0602/taipei-mrt-minecraft/blob/main/demo/sights.mp4)
+
+72 秒：從路線圖的「★ 觀光景點」傳送到台北101，貼著塔身飛上 508 m 的塔尖、再從塔尖往下看；
+接著用路線圖坐到公館，從月台爬樓梯走出 2 號出口，最後再傳送到西門
+（`demo/sights.mp4`，1280x720、30 fps、無聲）。
+
 [![台北捷運 Minecraft 1:1 重建 —— 56 秒示範影片](demo/tour-thumb.jpg)](https://github.com/rareone0602/taipei-mrt-minecraft/blob/main/demo/tour.mp4)
 
-56 秒，從地下隧道、島式月台、站名告示牌走到穿堂層與轉乘通道。
-點圖片在 GitHub 上直接播（檔案是 `demo/tour.mp4`，1280x720、30 fps、無聲）。
+56 秒，從地下隧道、島式月台、站名告示牌走到穿堂層與轉乘通道（`demo/tour.mp4`，搭乘系統與景點做好之前錄的）。
+點圖片在 GitHub 上直接播。
 
 ## 世界裡長什麼樣
 
 | | |
 |:--:|:--:|
+| <img src="demo/taipei101.jpg" width="420"> | <img src="demo/taipei101-down.jpg" width="420"> |
+| **台北101**　傳送過來的觀景點；OSM 的 `building:part` 疊出斗狀基座、八節花斗與塔尖 | **從塔尖往下看**　508 m 高，世界為此加高到 y639；底下是購物中心的屋頂 |
+| <img src="demo/sights-menu.jpg" width="420"> | <img src="demo/route-map.jpg" width="420"> |
+| **★ 觀光景點**　路線圖最下面那顆，14 處景點，提示寫著落成年份與最近的捷運站 | **路線圖**　點路線、點站名就傳送過去；提示寫著轉乘與附近景點 |
+| <img src="demo/arrival.jpg" width="420"> | <img src="demo/exit.jpg" width="420"> |
+| **到站**　大標題站名用路線色，副標題站號與路線、動作列下一站 | **出入口**　從月台爬上來，牌子掛真實編號：公館 2 號出口 |
 | <img src="demo/platform.jpg" width="420"> | <img src="demo/sign.jpg" width="420"> |
 | **島式月台**　地下站的島式月台，月台邊鋪黃色警示帶 | **站名告示牌**　掛的是真實編號：`R10;BL12 台北車站`（搭乘系統之前的截圖；現在這個位置是搭車告示牌，見「站內標誌」） |
 | <img src="demo/tunnel.jpg" width="420"> | <img src="demo/concourse.jpg" width="420"> |
@@ -50,7 +62,8 @@ Minecraft 不畫地表，隧道與站體就這樣露出來，不是世界破洞�
 
 跑完整條管線要抓 OSM 與 DEM、再花二十幾分鐘生成。只想進去逛的話直接下載：
 
-**[台北捷運 Minecraft 存檔（Google 雲端硬碟）](https://drive.google.com/file/d/19EMGXq1fSBxTu75KZ2nqXuztkm0jARfG/view?usp=sharing)** —— 約 1 GB，Minecraft Java Edition 26.2。
+**[台北捷運 Minecraft 存檔（Google 雲端硬碟）](https://drive.google.com/file/d/19EMGXq1fSBxTu75KZ2nqXuztkm0jARfG/view?usp=sharing)** —— 壓縮檔 198 MB，
+解壓縮後 1.27 GB，Minecraft Java Edition 26.2。2026-09-27 更新：含搭乘系統、14 處觀光景點與加高到 y639 的世界。
 
 ```bash
 # 解壓縮後把整個 Taipei MRT 資料夾放進 saves/
