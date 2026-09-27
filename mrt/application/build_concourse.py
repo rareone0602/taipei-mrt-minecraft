@@ -223,14 +223,25 @@ class Stair:
         if self.headhouse:
             self._head(w)
 
+    HEAD_LEN = 7        # 出入口亭沿梯段方向的長度：a = run .. run+6，門開在最遠那面牆
+
+    def door_front(self):
+        """出入口亭門外、正對門口中央的那一格：(x, z, 站立面 y, 朝門的方向 (dx, dz))。
+
+        門開在 a = run + HEAD_LEN - 1 那面牆的 b = -1..1、高三格，地坪與亭內
+        一樣是 y_hi（亭的樓板在 y_hi - 1）。站在門外一格面向 -u 就是正對著門。
+        """
+        x, z = self._w(self.run() + self.HEAD_LEN, 0)
+        return x, z, self.y_hi, (-self.dx, -self.dz)
+
     def _head(self, w):
         """地面出入口亭：頂蓋 + 一面開門，否則梯頂是街上一個沒有蓋子的洞。"""
         H = self.half_w
         g = self.y_hi
-        for a in range(self.run(), self.run() + 7):
+        for a in range(self.run(), self.run() + self.HEAD_LEN):
             for b in range(-H - 1, H + 2):
                 x, z = self._w(a, b)
-                far = a == self.run() + 6
+                far = a == self.run() + self.HEAD_LEN - 1
                 side = abs(b) == H + 1 or far
                 for yy in range(g, g + 4):
                     door = far and abs(b) <= 1 and yy <= g + 2

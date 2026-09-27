@@ -94,6 +94,7 @@ tests/              不需要產生世界就能跑的測試
 ./.venv/bin/python tools/verify_exits.py <存檔> --levels 府中 西門   # 疊式站要走得到兩層月台
 ./.venv/bin/python tools/verify_tracks.py <存檔> --station 西門 --expect 4 --levels 2
                                                           # 讀回每一刀有幾股鐵軌、各在哪個高度
+./.venv/bin/python tools/verify_spawn.py <存檔> [--all]   # 讀回出生點與區塊高度圖，照遊戲的邏輯找一次出生點
 ./.venv/bin/python tools/slice_world.py 忠孝復興          # ASCII 剖面
 ```
 
