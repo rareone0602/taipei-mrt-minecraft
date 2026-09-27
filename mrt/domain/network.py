@@ -74,6 +74,14 @@ def fn_code(code):
     return "".join(ch for ch in code.lower() if ch.isalnum() or ch == "_")
 
 
+# 路線圖對話框（售票機的告示牌、快捷鍵、暫停選單都打開這一個）與各線的站表
+MENU_DIALOG = "network"
+
+
+def line_dialog(ref):
+    return "line/%s" % fn_code(ref)
+
+
 def ride_fn(code_from, code_to):
     return "ride/%s_%s" % (fn_code(code_from), fn_code(code_to))
 
