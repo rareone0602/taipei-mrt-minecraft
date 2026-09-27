@@ -6,7 +6,7 @@
 
 用法: ./.venv/bin/python tools/verify_render.py <save_dir> <out.png> [--scale M]
 """
-import os, io, glob, zlib, argparse, re
+import os, io, glob, sys, zlib, argparse, re
 import numpy as np, nbtlib
 from PIL import Image
 
@@ -56,11 +56,36 @@ PALETTE = [
     ("minecraft:white_terracotta",             (210, 178, 161)),   # 安坑、淡海輕軌
 ]
 NAME2C = {n: i for i, (n, _) in enumerate(PALETTE)}
-UNKNOWN = len(PALETTE)
-COLORS = np.array([c for _, c in PALETTE] + [(255, 0, 255)], dtype=np.uint8)
+NC = 4096                        # 顏色索引的容量（鍵值 = (y+YOFF)*NC + 索引）
+UNKNOWN = NC - 1                 # 洋紅：手填配色沒有、遊戲材質也算不出來的方塊
+COLOR_LIST = [c for _, c in PALETTE]
 BG = (18, 20, 26)
-NC = len(COLORS)
 YOFF = 100                       # 讓 y 恆為正，才能打包進鍵值
+
+# 手填配色以外的方塊（景點建築一次用上上百種）：從裝好的遊戲材質算平均色
+# （tools/blockcolors.py）。算不出來的才畫洋紅 —— 洋紅仍然代表「這個方塊沒有顏色」，
+# 不是「沒列進手填表」
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_BC = None
+AUTO = set()                     # 靠遊戲材質上色的方塊
+
+
+def color_index(name):
+    global _BC
+    i = NAME2C.get(name)
+    if i is not None:
+        return i
+    if _BC is None:
+        from blockcolors import BlockColors
+        _BC = BlockColors()
+    rgb = _BC.rgb(name, "top") if _BC.available or _BC.table else None
+    if rgb is None or len(COLOR_LIST) >= NC - 1:
+        NAME2C[name] = UNKNOWN
+        return UNKNOWN
+    COLOR_LIST.append(tuple(int(v) for v in rgb))
+    NAME2C[name] = len(COLOR_LIST) - 1
+    AUTO.add(name)
+    return NAME2C[name]
 
 
 def unpack(data, bits, n=4096):
@@ -158,7 +183,7 @@ def main():
                 base = int(sec["Y"]) * 16
                 idx = (unpack(bs["data"], max(4, (len(pal) - 1).bit_length()))
                        if "data" in bs else np.zeros(4096, dtype=np.int64))
-                cmap = np.array([NAME2C.get(n, UNKNOWN) for n in pal], dtype=np.int64)
+                cmap = np.array([color_index(n) for n in pal], dtype=np.int64)
                 for n in pal:
                     if n != "minecraft:air":
                         seen[n] = seen.get(n, 0) + 1
@@ -197,13 +222,24 @@ def main():
     ys = key[hit] // NC - YOFF
     cs = key[hit] % NC
     shade = (0.55 + 0.45 * np.clip((ys - 55) / 120.0, 0, 1))[:, None]
-    img[hit] = (COLORS[cs] * shade).astype(np.uint8)
+    colors = np.zeros((NC, 3), dtype=np.uint8)
+    colors[:len(COLOR_LIST)] = COLOR_LIST
+    colors[UNKNOWN] = (255, 0, 255)
+    img[hit] = (colors[cs] * shade).astype(np.uint8)
     Image.fromarray(img.reshape(H, W, 3)).save(a.out)
 
     print(f"\n讀入 {nch:,} 區塊，出現的方塊種類：")
     for n, c in sorted(seen.items(), key=lambda kv: -kv[1])[:20]:
-        mark = "" if n in NAME2C else "   <-- 未列入配色"
+        mark = ("   <-- 沒有顏色（洋紅）" if NAME2C.get(n) == UNKNOWN
+                else "   （遊戲材質配色）" if n in AUTO else "")
         print(f"  {n:<45} {c:>8} 個 section{mark}")
+    none = sorted(n for n in seen if NAME2C.get(n) == UNKNOWN)
+    if AUTO:
+        print(f"另有 {len(AUTO)} 種方塊不在手填配色裡，照遊戲材質上色")
+    if none:
+        print(f"⚠ {len(none)} 種方塊算不出顏色、畫成洋紅：" + "、".join(none))
+    if _BC is not None:
+        _BC.save()
     print(f"已輸出 {a.out}")
 
 
