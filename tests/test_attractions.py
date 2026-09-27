@@ -141,6 +141,15 @@ chk("景點清單的按鈕是 trigger mrt.go set n",
     [a_["action"]["command"] for a_ in spec["dialogs"]["sights"]["actions"]] == ["trigger mrt.go set 1", "trigger mrt.go set 2"])
 chk("sys/go_dispatch 有景點的分派", any("sight/taipei101" in ln for ln in fns["sys/go_dispatch"]))
 
+e = entries[0]
+sl = SG.sight_lines(e)
+chk("穿堂景點牌：★ 開頭、每行放得下、不以「出口」開頭（%s）" % [t if isinstance(t, str) else t["text"] for t in sl],
+    all(SG.line_width(t) <= SG.SIGN_W for t in sl) and sl[0]["text"].startswith("★")
+    and not str(sl[0]["text"]).startswith("出口"))
+chk("穿堂景點牌點了執行 function mrt:sight/beimen", SG.sight_command(e) == "function mrt:sight/beimen")
+dlg = RP.build_spec({}, [], {}, sights=entries)["dialogs"]
+chk("沒有車站時站表對話框不受影響（只有主選單與景點清單）", sorted(dlg) == ["network", "sights"])
+
 print("\n登錄表")
 reg = AT.registry()
 items = AT.load_items()

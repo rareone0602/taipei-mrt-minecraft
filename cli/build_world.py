@@ -682,7 +682,13 @@ def main():
     # 跟告示牌用同一份 net／berths（id 由 domain/network.py 的 ride_fn 等產生）。
     # 要在清掉舊存檔之後寫；level.dat 的 DataPacks 已經把它列為啟用
     colours = NW.line_colours(json.load(open(config.MC_LINES_JSON, encoding="utf-8")))
-    spec = RP.build_spec(net, berths, colours, sights=AT.datapack_entries(sights))
+    sight_entries = AT.datapack_entries(sights)
+    spec = RP.build_spec(net, berths, colours, sights=sight_entries)
+    # 每一站走得到的景點（近的在前）：穿堂的售票機旁邊立景點牌
+    near_sights = collections.defaultdict(list)
+    for e in sorted(sight_entries, key=lambda e: e["station"][2] if e["station"] else 1e9):
+        if e["station"]:
+            near_sights[e["station"][0]].append(e)
     info = DP.write_datapack(a.out, spec)
     print(f"資料包 {config.DATAPACK_NAME}：{info['functions']} 個函式、{info['dialogs']} 個對話框、"
           f"{len(spec['triggers'])} 個路線圖按鈕、{len(spec['areas'])} 個進站提示範圍")
@@ -752,7 +758,8 @@ def main():
                     # 搭車告示牌、路線色帶、穿堂指引：要在站體蓋好之後（牌子取代
                     # 月台門那一格玻璃）。站體跨兩個 region 時兩邊各立一次
                     SG.station_signage(w, berths_of.get((li, i), ()), net, colours,
-                                       grounds=gnd, blocked=blocked)
+                                       grounds=gnd, blocked=blocked,
+                                       sights=near_sights.get(stn[i][1], ()))
 
         # 地標蓋在沿線結構之後：站體箱涵先挖好，大廳才好接進去
         for m in mark_b.get((rx, rz), ()):

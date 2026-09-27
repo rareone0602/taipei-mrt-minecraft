@@ -281,7 +281,7 @@ def hud_text(name, en, codes, colours):
 
 # ---------- 對話框 ----------
 
-def _line_dialog(ref, stations, trig, codes_by_name, colours):
+def _line_dialog(ref, stations, trig, codes_by_name, colours, near_sights=None):
     c = colours.get(ref, "#FFFFFF")
     lz, le = line_name(ref)
     actions = []
@@ -293,6 +293,10 @@ def _line_dialog(ref, stations, trig, codes_by_name, colours):
             for k, (r, code) in enumerate(xfer):
                 tip.append({"text": ("、" if k else "") + code + " " + line_name(r)[0],
                             "color": colours.get(r, "#FFFFFF")})
+        near = (near_sights or {}).get(st.name)
+        if near:
+            tip.append({"text": "\n★ 附近景點 Nearby: ", "color": SIGHT_COLOR})
+            tip.append({"text": "、".join(near), "color": "white"})
         actions.append({
             "label": [{"text": st.code + " ", "color": c, "bold": True},
                       {"text": st.name, "color": "white"}],
@@ -583,11 +587,17 @@ def build_spec(net, berths, colours, sights=None):
         sight_trig[e["id"]] = n
         triggers[n] = sight_fn(e["id"])
 
+    near_sights = {}                 # 站名 -> [走得到的景點中文名]（站表按鈕的提示）
+    for e in sights:
+        st = e.get("station")
+        if st:
+            near_sights.setdefault(st[0], []).append(e["name_zh"])
     dialogs = {NW.MENU_DIALOG: _menu_dialog(refs, by_line, colours, n_sights=len(sights))}
     if sights:
         dialogs[SIGHTS_DIALOG] = _sight_dialog(sights, sight_trig)
     for ref in refs:
-        dialogs[NW.line_dialog(ref)] = _line_dialog(ref, by_line[ref], trig, codes_by_name, colours)
+        dialogs[NW.line_dialog(ref)] = _line_dialog(ref, by_line[ref], trig, codes_by_name, colours,
+                                                    near_sights)
 
     # 首次進入的落腳處
     home = net.get(HOME)

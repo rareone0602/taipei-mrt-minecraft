@@ -163,7 +163,7 @@ def datapack_entries(sights):
             continue
         st = getattr(a, "station", None)
         out.append(dict(id=a.id, name_zh=a.name_zh, name_en=a.name_en,
-                        station=(st[0], st[1], int(st[2]), st[3]) if st else None,
+                        station=(st[0], st[1], int(st[2]), st[3]) if st and st[2] <= WALKABLE_M else None,
                         facts=[str(t) for t in a.plaque()[2:3] if t],
                         spots=[s._asdict() for s in sp]))
     return out

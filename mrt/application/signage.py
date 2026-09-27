@@ -38,6 +38,7 @@ from mrt.domain.alignment import (
 )
 from mrt.ports.block_sink import DictSink
 from mrt.application import build_line as BL
+from mrt.application.attractions.kit import sight_fn
 
 # ---------- 牌子的樣式 ----------
 
@@ -628,6 +629,51 @@ def map_lines():
             "& Tickets", fit(["▶ 右鍵開啟 Open", "▶ 右鍵開啟"])]
 
 
+SIGHT_INK = "#6B4A00"          # 景點牌第一行的字色（深金，跟說明牌同一色）
+SIGHTS_PER_STATION = 2         # 穿堂裡最多立幾面景點牌（售票機旁邊另外兩座機台）
+
+
+# 景點英文名的慣用縮寫（放不下原名時先試這些）
+_SIGHT_SHORT = {"Chiang Kai-shek Memorial Hall": ["CKS Memorial Hall"],
+                "Sun Yat-sen Memorial Hall": ["SYS Memorial Hall"],
+                "National Taiwan Museum": ["Natl. Taiwan Museum", "Taiwan Museum"],
+                "Presidential Office Building": ["Presidential Office", "Presidential Ofc.",
+                                                 "President's Office"],
+                "Shin Kong Life Tower": ["Shin Kong Tower"]}
+
+
+def sight_en_forms(name):
+    """景點英文名由長到短：原名、去掉括號、慣用縮寫、從中間拿掉字（保留頭尾），
+    最後才退回站名那一套（從尾巴砍）。「Shin Kong Life Tower」要變「Shin Kong Tower」，
+    不是「Shin Kong Life」。"""
+    base = name.split(" (")[0].strip()
+    out = [name, base]
+    short = _SIGHT_SHORT.get(base, [])
+    out += short
+    if short:
+        return out + en_forms(short[-1])     # 有慣用縮寫就不要再從中間拿掉字（National Museum 會誤導）
+    words = base.split(" ")
+    while len(words) > 2:
+        words = words[:-2] + words[-1:]
+        out.append(" ".join(words))
+    return out + en_forms(base)
+
+
+def sight_lines(e):
+    """穿堂裡的景點牌：點了傳送到景點的觀景點（資料包的 sight/<id>）。
+    e 是 attractions.datapack_entries() 的一筆。第一行不以「出口」開頭。"""
+    st = e.get("station")
+    far = ""
+    if st:
+        far = fit(["出站約 %d m" % (int(round(st[2] / 10.0)) * 10), "%d m" % st[2]])
+    return [styled(["★ " + e["name_zh"], e["name_zh"]], SIGHT_INK),
+            fit(sight_en_forms(e["name_en"])), far, fit(["▶ 右鍵前往 Go", "▶ 右鍵前往"])]
+
+
+def sight_command(e):
+    return "function %s:%s" % (DATAPACK_NS, sight_fn(e["id"]))
+
+
 def _gate_machines(box, kind):
     """閘門第一排（面向非付費區）確定是機箱的格子：{離線位: (x, 機箱 y, z)}。
 
@@ -669,8 +715,11 @@ class _Guarded:
             self.w.sign(x, y, z, *args, **kw)
 
 
-def concourse_signs(w, box, berths, net, colours, grounds=None, blocked=None):
-    """閘門的雙面牌、路線圖售票機、側式站的月台樓梯口。回傳立了幾面。"""
+def concourse_signs(w, box, berths, net, colours, grounds=None, blocked=None, sights=()):
+    """閘門的雙面牌、路線圖售票機、附近景點、側式站的月台樓梯口。回傳立了幾面。
+
+    sights：這一站走得到的觀光景點（attractions.datapack_entries() 的幾筆，近的在前）。
+    售票機旁邊的另外兩個機台位置各立一面，點了傳送到景點前面。"""
     if blocked is not None:
         w = _Guarded(w, blocked)
     per_m = max(1, int(round(1.0 / STEP)))
@@ -704,16 +753,22 @@ def concourse_signs(w, box, berths, net, colours, grounds=None, blocked=None):
     si = lo + MAP_ALONG * per_m
     if lo < si < hi:
         piers = _pier_cells(box, grounds) if kind == "under" else set()
-        for off in (0, GATE_SIGN_OFF, -GATE_SIGN_OFF):
-            x, z = box.cell(si, off)
-            if (x, z) not in piers:
-                ys_ = int(ys[si]) + LEVEL_DY[kind]
-                mx, mz = samples[si][2:4]
+        free = [off for off in (0, GATE_SIGN_OFF, -GATE_SIGN_OFF) if box.cell(si, off) not in piers]
+        ys_ = int(ys[si]) + LEVEL_DY[kind]
+        mx, mz = samples[si][2:4]
+        if free:
+            x, z = box.cell(si, free[0])
+            w.set(x, ys_, z, BL.GATE)
+            w.sign(x, ys_ + 1, z, map_lines(), facing=(-mx, -mz),
+                   dialog="%s:%s" % (DATAPACK_NS, NW.MENU_DIALOG), **SIGN_STYLE)
+            n += 1
+            # 附近景點：售票機旁邊剩下的機台位置
+            for off, e in zip(free[1:], list(sights)[:SIGHTS_PER_STATION]):
+                x, z = box.cell(si, off)
                 w.set(x, ys_, z, BL.GATE)
-                w.sign(x, ys_ + 1, z, map_lines(), facing=(-mx, -mz),
-                       dialog="%s:%s" % (DATAPACK_NS, NW.MENU_DIALOG), **SIGN_STYLE)
+                w.sign(x, ys_ + 1, z, sight_lines(e), facing=(-mx, -mz),
+                       command=sight_command(e), **SIGN_STYLE)
                 n += 1
-                break
     # ---- 側式站：兩座月台各往一個方向，樓梯口各立一面 ----
     if box.kind == "side":
         n += _side_stair_signs(w, box, berths, net, colours, kind)
@@ -859,14 +914,14 @@ def transfer_sign_lines(lines, colour):
 
 # ---------- 一座站體 ----------
 
-def station_signage(w, berths, net, colours, grounds=None, blocked=None):
+def station_signage(w, berths, net, colours, grounds=None, blocked=None, sights=()):
     """一座站體的全部告示牌與色帶（berths 是這座站體的所有 Berth）。
 
     要在 build_line.build_station 之後呼叫：牌子取代月台門那一格玻璃、色帶取代
     外牆與門楣那一排。回傳 dict(ride, concourse, band) 各放了多少。
 
     blocked 是 network.plan_berths 用的同一個「這一格被別的結構占走了」：搭車告示牌
-    的位置已經避開了，穿堂的牌子也照它避開。
+    的位置已經避開了，穿堂的牌子也照它避開。sights 是這一站走得到的觀光景點。
     """
     berths = list(berths)
     if not berths:
@@ -874,5 +929,5 @@ def station_signage(w, berths, net, colours, grounds=None, blocked=None):
     box = berths[0].box
     band = line_bands(w, box, colours)
     ride = ride_signs(w, berths, net, colours)
-    conc = concourse_signs(w, box, berths, net, colours, grounds, blocked)
+    conc = concourse_signs(w, box, berths, net, colours, grounds, blocked, sights)
     return dict(ride=ride, concourse=conc, band=band)

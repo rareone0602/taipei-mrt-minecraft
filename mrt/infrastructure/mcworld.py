@@ -47,6 +47,14 @@ _BG_FLAGS = {sy: np.array([HM.flags(background_block(sy * 16 + j)) for j in rang
 
 _BS_RE = re.compile(r"^([a-z0-9_.:]+)(?:\[(.*)\])?$")
 
+# 背景整段是空氣的 section（y64 以上）：沒寫過的話內容一模一樣，預先做好共用
+_AIR_SECTIONS = {
+    sy: Compound({"Y": Byte(sy),
+                  "block_states": Compound({"palette": List[Compound]([Compound({"Name": String("minecraft:air")})])}),
+                  "biomes": Compound({"palette": List[String]([String("minecraft:plains")])})})
+    for sy in range(SEC_MIN, SEC_MAX + 1)
+    if all(background_block(sy * 16 + j) == "minecraft:air" for j in range(16))}
+
 
 def yaw_of(fx, fz):
     """朝向 (dx, dz) -> Minecraft 的 yaw（度，-180～180）：0 = 南 (+z)、90 = 西、
@@ -194,6 +202,11 @@ class Chunk:
         secs = List[Compound]()
         for sy in range(SEC_MIN, SEC_MAX + 1):
             arr = self.sections.get(sy)
+            if arr is None and sy in _AIR_SECTIONS:
+                # 沒寫過、背景整段是空氣：世界加高到 y639 之後每個區塊多了二十段這種，
+                # 共用一份現成的 Compound，不必每次重建 palette
+                secs.append(_AIR_SECTIONS[sy])
+                continue
             ybase = sy * 16
             local, lidx = [], {}
 
