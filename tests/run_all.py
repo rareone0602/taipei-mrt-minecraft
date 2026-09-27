@@ -15,7 +15,7 @@ TESTS = ["test_architecture.py", "test_geometry.py", "test_alignment.py",
          "test_concourse.py", "test_exits.py", "test_tunnel_layers.py",
          "test_side_station.py", "test_transfer.py", "test_elevated_exits.py",
          "test_ground_gate.py", "test_stacked.py", "test_network.py",
-         "test_heightmap.py", "test_spawn.py"]
+         "test_heightmap.py", "test_spawn.py", "test_datapack.py"]
 
 
 def main():

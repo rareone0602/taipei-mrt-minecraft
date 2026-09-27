@@ -18,7 +18,7 @@ import nbtlib
 from nbtlib.tag import (Compound, List, String, Int, Byte, Long, LongArray,
                         IntArray, Float)
 
-from mrt.config import Y_MIN, Y_MAX, SEC_MIN, SEC_MAX, N_SEC
+from mrt.config import Y_MIN, Y_MAX, SEC_MIN, SEC_MAX, N_SEC, DATAPACK_NAME
 from mrt.infrastructure import heightmap as HM
 
 DATA_VERSION = 4903          # MC 26.2 —— 這個是存檔格式的細節，留在這一層
@@ -344,7 +344,10 @@ class World:
             "difficulty_settings": Compound({"difficulty": String("normal"),
                                              "hardcore": Byte(0), "locked": Byte(0)}),
             "singleplayer_uuid": IntArray([_u32(), _u32(), _u32(), _u32()]),
-            "DataPacks": Compound({"Enabled": List[String]([String("vanilla")]),
+            # 搭乘系統的資料包（infrastructure/datapack.py 寫進 datapacks/）明列為啟用。
+            # 遊戲看到清單外的新資料包也會自動載入，明列是不靠那條行為
+            "DataPacks": Compound({"Enabled": List[String]([String("vanilla"),
+                                                            String("file/" + DATAPACK_NAME)]),
                                    "Disabled": List[String]([])}),
             "ServerBrands": List[String]([String("vanilla")]),
         })

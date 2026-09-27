@@ -28,6 +28,7 @@ from mrt import config
 from mrt.application import build_line as BL
 from mrt.application import build_world as BW
 from mrt.application import landmarks as LM
+from mrt.application import ride_plan as RP
 from mrt.application import spawn as SP
 from mrt.domain import alignment as AL
 from mrt.domain import network as NW
@@ -35,6 +36,7 @@ from mrt.domain import rails
 from mrt.domain import stacked as SK
 from mrt.domain import tunnel_layers as TL
 from mrt.domain.terrain import Terrain
+from mrt.infrastructure import datapack as DP
 from mrt.infrastructure.mcworld import Chunk, World
 
 # main() 沿用原本的模組層常數
@@ -476,6 +478,18 @@ def main():
     print(f"要產生 {len(regions)} 個 region（{len(terr_pts)} 個含地形）")
 
     shutil.rmtree(a.out, ignore_errors=True)
+
+    # ---- 搭乘系統的資料包：告示牌點了執行的函式、路線圖對話框、首次進入、進站提示 ----
+    # 跟告示牌用同一份 net／berths（id 由 domain/network.py 的 ride_fn 等產生）。
+    # 要在清掉舊存檔之後寫；level.dat 的 DataPacks 已經把它列為啟用
+    colours = NW.line_colours(json.load(open(config.MC_LINES_JSON, encoding="utf-8")))
+    spec = RP.build_spec(net, berths, colours)
+    info = DP.write_datapack(a.out, spec)
+    print(f"資料包 {config.DATAPACK_NAME}：{info['functions']} 個函式、{info['dialogs']} 個對話框、"
+          f"{len(spec['triggers'])} 個路線圖按鈕、{len(spec['areas'])} 個進站提示範圍")
+    for msg in spec["warnings"]:
+        print("  ⚠ " + msg)
+
     t0 = time.time(); nch = 0; nsign = 0; nbytes = 0
     for n, (rx, rz) in enumerate(regions, 1):
         w = World(a.out, name=config.WORLD_NAME)

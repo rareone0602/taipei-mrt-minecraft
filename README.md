@@ -101,6 +101,7 @@ mrt/
     concourse.py      地下街：level 標籤解析、通道併點與連通、出入口接駁
     exits.py          真實出入口與轉乘通道：井與通道的擺放、與所有結構的避讓
     walk.py           行走可達性：給一個「這格能不能站」就洪水填滿
+    network.py        搭乘系統：下一站、終點、月台上每面搭車告示牌與站位
   ports/            內層對外層開的介面
     block_sink.py     BlockSink（逐格）、ChunkSink（整段批次）、DictSink（測試用）
   application/      用例：把 domain 算出來的東西寫進 BlockSink
@@ -110,6 +111,7 @@ mrt/
     build_concourse.py 地下街：通道地板、店面、出入口樓梯、層間樓梯井
     build_exits.py    真實出入口與轉乘通道：把 exits.py 的計畫變成樓梯井、接駁通道與空橋
     build_br.py       文湖線專用（第一條線的垂直切片，留著當對照）
+    ride_plan.py      搭乘系統的資料包規格：傳送函式、路線圖對話框、首次進入、進站提示
   adapters/         外部資料進來
     osm/              Overpass 查詢與解析
     dem/              DEM 重新取樣
@@ -118,6 +120,7 @@ mrt/
     mcworld.py        Anvil 區域檔寫入（實作 BlockSink / ChunkSink）
     savereader.py     Anvil 讀回：把一塊立體範圍讀成可查詢的方塊陣列，讀告示牌
     overpass.py       Overpass HTTP：鏡像輪替、重試、快取
+    datapack.py       把資料包規格寫成 26.2 的資料包（pack.mcmeta、函式、對話框、標籤）
 
 cli/                組合根。唯一看得到全部實作的地方
 tools/              驗證與檢視：獨立讀回存檔，不信生成器的自述
@@ -249,6 +252,12 @@ relation 的成員順序不保證、方向可能相反，直接串接會產生�
   高度圖卻算它們擋（forceSolidOn），雪片、梯子、鷹架反過來不算。出生點改成台北車站
   捷運出口 M4 的出入口亭門外、面朝門口（`mrt/application/spawn.py`）。遊戲預設的
   respawn_radius 是 10，半徑內有亭子與樓梯的屋頂，約 16% 的機會被放到屋頂上
+- `tools/check_datapack.py` — 讀回搭乘系統的資料包，再交給**真的 Minecraft 26.2**
+  載入執行一遍（遊戲 jar 附的無頭 GameTest 伺服器，另外產生一個一次性的測試資料包）：
+  載入時零錯誤零警告、開服時世界初始設定真的套上、每一個 ride/turn/go 函式都在遊戲裡
+  跑一次再讀回落點與朝向、路線圖每顆按鈕經 trigger 分派落到按鈕上那一站、進站提示的
+  範圍掃描判得到每個落點、告示牌的 click_event 在遊戲載入之後還在。反向對照（故意寫壞
+  的函式、指向不存在對話框的牌、沒傳送的 marker……）一定要被抓到，不然工具自己算失敗
 - `tests/` — 幾何、線形、鐵軌、地標各自帶單元測試（多邊形填充面積、外圈、內縮、
   屋頂收斂、折返梯的踏面與淨空），不必產生世界就能跑
 - `mrt/domain/tunnel_layers.py` — 分帶後自己驗算：任兩條異線的地下格若相鄰，帶號必須不同
@@ -692,6 +701,35 @@ OSM 的月台 way 是**封閉的外框**而不是中心線。一開始沿線刷�
 
 再往前一版是台北車站與北門 58 個出入口一個分量、四層月台；
 再往前是 14 個互不相通的碎塊，32 個出入口在地下根本沒有東西。
+
+## 搭乘系統
+
+253 km 走不完，所以月台上立了搭車告示牌：**右鍵點一下就坐到下一站**，落在下一站
+同一個行車方向的月台上、正對著繼續往前的那面牌（準星就在牌上），連點就是連坐好幾站。
+穿堂的「售票機」告示牌打開路線圖，點路線、點站名就傳送過去。規則在
+`mrt/domain/network.py`，指令與對話框由 `mrt/application/ride_plan.py` 產生，
+`cli.build_world` 最後把資料包寫進 `<存檔>/datapacks/taipei_mrt/`（level.dat 已列為啟用）：
+
+- `mrt:ride/<起站>_<迄站>`（366 個）：傳送、到站鈴、大標題站名（線色）、副標題站號與路線、
+  動作列「下一站」；`mrt:turn/*`（24 個）是終點站到站側的牌，換到對面月台；
+  `mrt:go/<站號>`（193 個）是路線圖的目的地。每個都恰好一行 `tp @s x y z yaw pitch`
+  （絕對座標），讀回驗證靠這一行
+- 路線圖 `mrt:network`：每條線一顆線色按鈕，打開各線站表 `mrt:line/<路線>`。站名按鈕送
+  `/trigger mrt.go set <n>`，非 OP 玩家也按得動。掛在 `#minecraft:quick_actions`
+  （「快速動作」鍵，預設 G）與 `#minecraft:pause_screen_additions`（暫停選單），
+  也可以輸入 `/trigger mrt.menu`
+- 第一次進入世界傳到 R10 台北車站的月台、聊天欄一段中英歡迎（含路線圖按鈕與
+  「© OpenStreetMap contributors」）；走進車站範圍動作列亮一次站名與各線站號
+- 世界第一次載入時設定一次（`#setup` 記版本，`/reload` 不會蓋掉之後的調整）：不生成敵對
+  生物、夜魅、巡邏隊、流浪商人，時間停在中午、天氣晴，死亡不掉落，生物不破壞方塊，
+  重生不隨機偏移。改了哪些、怎麼還原會印在聊天欄（指令點一下就填進去）
+
+26.2 的 pack.mcmeta 用 `min_format` / `max_format`（這裡是 `[107, 1]` ～ `107`，遊戲 jar 的
+version.json 寫 data 107.1），規則 id 是 snake_case（`spawn_monsters`、`advance_time`）。
+這些不是照 wiki 抄的，都讓 `tools/check_datapack.py` 抓過：只寫舊式 `pack_format`，遊戲會
+警告「missing mandatory fields min_format and max_format」；規則 id 打錯，整個函式載入失敗。
+但**範圍寫錯（例如 max 106）遊戲照樣載入、一聲不吭** —— 所以工具另外拿範圍去比 jar 裡的
+version.json，不靠遊戲的沉默。
 
 ## 鐵軌
 
