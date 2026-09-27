@@ -43,6 +43,8 @@ GLYPH = [
     ("bricks",              "T"),   # 必須排在 deepslate_bricks 之後
     ("white_concrete",      "w"),
     ("black_concrete",      "k"),
+    ("terracotta",          "t"),   # 路線色帶（signage.band_block），排在最後
+    ("concrete",            "c"),
 ]
 
 def glyph(name):

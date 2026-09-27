@@ -42,6 +42,18 @@ PALETTE = [
     ("minecraft:black_concrete",               ( 30,  30,  34)),   # 大廳黑白棋盤
     ("minecraft:deepslate_tiles",              ( 62,  62,  68)),   # 宮殿式屋頂
     ("minecraft:polished_deepslate",           ( 78,  78,  84)),   # 屋脊
+    # 告示牌（application/signage.py）：搭車告示牌、穿堂指引、出口牌都是淡色木頭
+    ("minecraft:pale_oak_sign",                (226, 216, 212)),
+    # 路線色帶（月台門門楣、軌道外側牆）：signage.band_block 挑的混凝土與陶瓦
+    ("minecraft:red_concrete",                 (142,  33,  33)),   # 淡水信義線
+    ("minecraft:orange_concrete",              (224,  97,   1)),   # 中和新蘆線
+    ("minecraft:light_blue_concrete",          ( 36, 137, 199)),   # 板南線
+    ("minecraft:green_concrete",               ( 73,  91,  36)),   # 松山新店線
+    ("minecraft:purple_concrete",              (100,  32, 156)),   # 機場捷運
+    ("minecraft:cyan_concrete",                ( 21, 119, 136)),   # 三鶯線
+    ("minecraft:orange_terracotta",            (162,  84,  38)),   # 文湖線
+    ("minecraft:yellow_terracotta",            (186, 133,  35)),   # 環狀線
+    ("minecraft:white_terracotta",             (210, 178, 161)),   # 安坑、淡海輕軌
 ]
 NAME2C = {n: i for i, (n, _) in enumerate(PALETTE)}
 UNKNOWN = len(PALETTE)

@@ -12,6 +12,7 @@
     ./.venv/bin/python -m cli.build_world --rails      # 順便鋪鐵軌
 """
 import argparse
+import collections
 import csv
 import json
 import math
@@ -30,8 +31,8 @@ from mrt.application import build_world as BW
 from mrt.application import landmarks as LM
 from mrt.application import ride_plan as RP
 from mrt.application import spawn as SP
+from mrt.application import signage as SG
 from mrt.domain import alignment as AL
-from mrt.domain import exits as EX
 from mrt.domain import network as NW
 from mrt.domain import rails
 from mrt.domain import stacked as SK
@@ -64,18 +65,23 @@ def load_stations():
 
 def landmark_blocker(marks):
     """(x, y, z) -> bool：這一格落在某個地下大廳（臺鐵／高鐵月台層、地下大廳樓板）
-    的箱體裡。搭車告示牌與站位要避開 —— 台北車站的臺鐵／高鐵月台層跟板南線站體
-    在同一個深度，西端北側那一段月台門被它吃掉了。"""
+    的箱體裡，或某座折返梯井的井身裡。搭車告示牌與站位要避開 —— 台北車站的
+    臺鐵／高鐵月台層跟板南線站體在同一個深度，西端北側那一段月台門被它吃掉了；
+    地下街往淡水信義線穿堂的連絡梯井（y62 一路下到 y44）從板南線月台正中間穿過去，
+    井是在車站之後蓋的，那一段月台面、月台門跟牌子全變成井裡的空氣
+    （tools/verify_rides.py 讀回來才看到：牌子的方塊實體還在，方塊是空氣）。"""
     vols = []
     for m in marks:
         if hasattr(m, "cells") and hasattr(m, "clear") and hasattr(m, "y"):
             lo = m.y - getattr(m, "thick", 1)
             vols.append((set(m.cells), lo, m.y + m.clear + 1))
-        elif hasattr(m, "g0") and hasattr(m, "y_to") and hasattr(m, "x0"):
-            # 折返梯井：地下街的連絡梯原本就曾把板南線月台挖掉一段（現在規劃時
-            # 會避開別條線，這裡再擋一次，萬一又撞上也不會把牌子立進井裡）
-            lo, hi = min(m.g0, m.y_to) - 1, max(m.g0, m.y_to) + 4
-            vols.append((EX.shaft_cells(m.x0, m.z0, m.ux, m.uz), lo, hi))
+        elif hasattr(m, "g0") and hasattr(m, "y_to") and hasattr(m, "bbox"):
+            # 折返梯井（build_concourse.ShaftStair）：井口平台到井底，含頂蓋與底板。
+            # 地下街的連絡梯曾經把板南線月台挖掉一段；規劃時現在會避開別條線，這裡
+            # 再擋一次，而且用含邊距的 bbox —— 穿堂告示牌也不該立在井底的門前
+            x0, z0, x1, z1 = (int(v) for v in m.bbox())
+            cells = {(x, z) for x in range(x0, x1 + 1) for z in range(z0, z1 + 1)}
+            vols.append((cells, min(m.g0, m.y_to) - 2, max(m.g0, m.y_to) + 6))
 
     def blocked(x, y, z):
         return any(lo <= y <= hi and (x, z) in cells for cells, lo, hi in vols)
@@ -416,8 +422,12 @@ def main():
                     for rz in range((z - outer) >> 9, ((z + outer) >> 9) + 1):
                         terr_pts.setdefault((rx, rz), []).append((x, z))
 
+    # 路線色（OSM 的 colour，跟 README 的全網圖同一份）：出口牌、搭車告示牌、
+    # 站體裡的色帶都從這裡拿
+    colours = NW.line_colours(json.load(open(config.MC_LINES_JSON, encoding="utf-8")))
+
     # ---- 地標：不是沿線掃出來的東西（車站大樓、地下大廳、實際位置的出入口）----
-    marks, real_exits = LM.for_world(segs, stations, terr)
+    marks, real_exits = LM.for_world(segs, stations, terr, colours=colours)
     mark_b = {}
     for m in marks:
         mx0, mz0, mx1, mz1 = m.bbox()
@@ -443,10 +453,16 @@ def main():
 
     # ---- 搭乘系統：每座站體每條線每個行車方向的上車位置（domain/network.py）----
     # 月台上的搭車告示牌與資料包的傳送目的地都從這一份來，只算一次
-    net, berths = NW.plan_berths(segs, blocked=landmark_blocker(marks))
+    blocked = landmark_blocker(marks)
+    net, berths = NW.plan_berths(segs, blocked=blocked)
     n_slot = sum(len(b.slots) for b in berths)
     print(f"搭乘系統：{sum(1 for s in net.values() if s.box is not None)} 站、"
           f"{len(berths)} 個月台邊、{n_slot} 面搭車告示牌、{len(NW.rides(net, berths))} 段車程")
+    # 告示牌以站體為單位立（application/signage.py）：box.key 就是 build_station 蓋的
+    # 那座站體的 (路段索引, 取樣索引)，共用疊式站兩條線的月台邊都在 primary 的站體裡
+    berths_of = collections.defaultdict(list)
+    for b in berths:
+        berths_of[b.box.key].append(b)
 
     # ---- 出生點：台北車站捷運出入口亭的門外（規則見 application/spawn.py）----
     # 門口那一格的地面高度要跟真的蓋出來的一樣：走廊外會漸變回平地，所以照
@@ -555,6 +571,10 @@ def main():
                                      label=stn[i], grounds=gnd,
                                      access=(li, i) not in real_exits,
                                      stacked=sg.get("stacked", {}).get(i))
+                    # 搭車告示牌、路線色帶、穿堂指引：要在站體蓋好之後（牌子取代
+                    # 月台門那一格玻璃）。站體跨兩個 region 時兩邊各立一次
+                    SG.station_signage(w, berths_of.get((li, i), ()), net, colours,
+                                       grounds=gnd, blocked=blocked)
 
         # 地標蓋在沿線結構之後：站體箱涵先挖好，大廳才好接進去
         for m in mark_b.get((rx, rz), ()):
