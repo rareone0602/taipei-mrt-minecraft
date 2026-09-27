@@ -52,19 +52,30 @@ def fn_code(code):
 
 
 def load_stations():
-    """{小寫站號: dict(code, zh, en, x, z)}（轉乘站每條線的站號各一筆）。"""
+    """{小寫站號: dict(code, zh, en, x, z)}（轉乘站每條線的站號各一筆）。
+
+    只收路線站號（字母開頭、後面接數字：BL12、G03A、A14a）：mc_stations.csv 裡還有
+    機場航廈電車（ref 是 "Skytrain"）與沒有 ref 的節點，它們不是捷運車站，原本被當成
+    「一面搭車告示牌都沒有」的車站。英文名欄位偶爾是中文（環狀線 Y07 大坪林寫的是
+    「大坪林」），跟生成器（network.build_network）一樣向同名車站的別條線借英文名，
+    不然牌上正確的「Next: Dapinglin」會被判成對不上。
+    """
+    rows = list(csv.DictReader(open(config.MC_STATIONS_CSV, encoding="utf-8")))
+    en_of = {}
+    for r in rows:
+        if any("a" <= ch.lower() <= "z" for ch in r["name_en"]):
+            en_of.setdefault(r["name_zh"] or r["name_en"], r["name_en"])
     out = {}
-    with open(config.MC_STATIONS_CSV, encoding="utf-8") as f:
-        for r in csv.DictReader(f):
-            zh = r["name_zh"] or r["name_en"]
-            en = r["name_en"]
-            if "(" in en:
-                en = en[:en.index("(")].rstrip()
-            for code in r["ref"].split(";"):
-                code = code.strip()
-                if code:
-                    out[fn_code(code)] = dict(code=code, zh=zh, en=en,
-                                              x=int(r["mc_x"]), z=int(r["mc_z"]))
+    for r in rows:
+        zh = r["name_zh"] or r["name_en"]
+        en = en_of.get(zh, r["name_en"])
+        if "(" in en:
+            en = en[:en.index("(")].rstrip()
+        for code in r["ref"].split(";"):
+            code = code.strip()
+            if re.match(r"^[A-Z]+[0-9]", code):
+                out[fn_code(code)] = dict(code=code, zh=zh, en=en,
+                                          x=int(r["mc_x"]), z=int(r["mc_z"]))
     return out
 
 

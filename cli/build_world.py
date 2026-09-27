@@ -83,8 +83,64 @@ def landmark_blocker(marks):
             cells = {(x, z) for x in range(x0, x1 + 1) for z in range(z0, z1 + 1)}
             vols.append((cells, min(m.g0, m.y_to) - 2, max(m.g0, m.y_to) + 6))
 
-    def blocked(x, y, z):
+    def blocked(x, y, z, box=None):
         return any(lo <= y <= hi and (x, z) in cells for cells, lo, hi in vols)
+    return blocked
+
+
+def later_section_blocker(segs, reach=48.0):
+    """(x, y, z, box) -> bool：這一格在站體蓋好之後，會被別的路段的斷面蓋掉。
+
+    region 迴圈照路段順序一段一段蓋，每一段先掃斷面、再蓋自己的車站 —— 所以
+    後面路段（li 比站體的大）的隧道或高架橋只要穿過站體，就會把月台挖掉。
+    七張南端被小碧潭支線的隧道穿過、北投一側月台被新北投支線的高架橋壓過，
+    都是這樣；搭車告示牌立在那裡不是懸空就是被牆吃掉。這裡照 sec_tunnel /
+    sec_multi / sec_bridge / sec_ground 各自刷的範圍，只算站體附近真的會蓋的
+    取樣點（build 遮罩），記下哪幾格在什麼高度會被後面的路段蓋掉。
+    """
+    boxes = {}
+    for li, sg in enumerate(segs):
+        for bi in sg["stn"]:
+            x, z = SK.station_samples(sg, bi)[bi][:2]
+            boxes[(li, bi)] = (x, z)
+    hit = {}                                     # (站體路段 li, x, z) -> [(y0, y1)]
+    for lj, sj in enumerate(segs):
+        near = [(li, bx, bz) for (li, bi), (bx, bz) in boxes.items() if li < lj]
+        if not near:
+            continue
+        samples, ys, gnd, build = sj["samples"], sj["ys"], sj["ground"], sj["build"]
+        multi = sj.get("multi")
+        for i in range(0, len(samples)):
+            if not build[i]:
+                continue
+            x, z, ux, uz, _ = samples[i]
+            owners = [li for li, bx, bz in near if abs(bx - x) <= reach and abs(bz - z) <= reach]
+            if not owners:
+                continue
+            nx, nz = -uz, ux
+            y, g = int(ys[i]), int(gnd[i])
+            hw = sj["hw"][i]
+            st = AL.structure_for_ground(y, g)
+            if st == "tunnel" and multi is not None and multi[i]:
+                trs = SK.tracks_at(sj, i)
+                o0 = int(min(o for o, _ in trs)) - 4
+                o1 = int(max(o for o, _ in trs)) + 4
+                y0, y1 = min(t for _, t in trs) - 3, max(t for _, t in trs) + 8
+            elif st == "tunnel":
+                o0, o1, y0, y1 = -(hw + 2), hw + 2, y - 2, y + 7
+            elif st == "viaduct":
+                o0, o1, y0, y1 = -hw, hw, y - 2, y + 7
+            else:
+                o0, o1, y0, y1 = -(hw + 1), hw + 1, min(y - 1, g - 1), y + 7
+            for off in range(o0, o1 + 1):
+                c = (round(x + nx * off), round(z + nz * off))
+                for li in owners:
+                    hit.setdefault((li,) + c, []).append((y0, y1))
+
+    def blocked(x, y, z, box=None):
+        if box is None:
+            return False
+        return any(a <= y <= b for a, b in hit.get((box.li, int(x), int(z)), ()))
     return blocked
 
 
@@ -182,6 +238,7 @@ def plan_segments(refs=None, terr=None, verbose=True):
             key = (sg["ref"], sg["stn"][bi][1])
             if key in claimed:
                 del sg["stn"][bi]; dropped += 1
+                sg.setdefault("junction", []).append(bi)     # 見下面 build 遮罩
             else:
                 claimed.add(key)
     if dropped:
@@ -316,6 +373,16 @@ def plan_segments(refs=None, terr=None, verbose=True):
                 build[i] = True
         for i in sg.get("nobuild", ()):      # 共用站體裡 partner 那條線不蓋斷面
             build[i] = False
+        # 支線在分歧站的那一段也不蓋：車站在幹線上蓋（上面去重），支線的幾何若在站體
+        # 範圍裡偏出幹線 8 m 以上，照「沒蓋過」的遮罩會再掃一條隧道或高架橋過去，
+        # 而它是在幹線車站之後才蓋的 —— 七張南端被小碧潭支線的隧道挖掉半邊月台、
+        # 北投東側月台被新北投支線的高架橋壓掉一半，都是這樣（搭車告示牌的站位
+        # 讀回來站不住才抓到）。支線從站體端牆外才開始；鐵軌同一段也不鋪
+        jhalf = int(AL.PLATFORM_LEN / 2 / STEP) + 4
+        for bj in sg.get("junction", ()):
+            for i in range(max(0, bj - jhalf), min(len(samples), bj + jhalf + 1)):
+                build[i] = False
+                fresh[i] = False
         sg["build"] = build
         sg["fresh"] = fresh                  # 鐵軌也照這張遮罩鋪，見 main()
         nmask += len(samples) - sum(build)
@@ -454,7 +521,9 @@ def main():
     # ---- 搭乘系統：每座站體每條線每個行車方向的上車位置（domain/network.py）----
     # 月台上的搭車告示牌與資料包的傳送目的地都從這一份來，只算一次
     blocked = landmark_blocker(marks)
-    net, berths = NW.plan_berths(segs, blocked=blocked)
+    later = later_section_blocker(segs)
+    net, berths = NW.plan_berths(
+        segs, blocked=lambda x, y, z, box=None: blocked(x, y, z) or later(x, y, z, box))
     n_slot = sum(len(b.slots) for b in berths)
     print(f"搭乘系統：{sum(1 for s in net.values() if s.box is not None)} 站、"
           f"{len(berths)} 個月台邊、{n_slot} 面搭車告示牌、{len(NW.rides(net, berths))} 段車程")

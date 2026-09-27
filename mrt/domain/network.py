@@ -53,6 +53,12 @@ _CSS = {"orange": "#FFA500", "red": "#FF0000", "green": "#008000", "blue": "#000
 # 就是原本站名牌的位置。
 SLOTS_UNDER = (40, 20, 60)
 SLOTS_SIDE = (37, 16, 51)
+# 前面三個位置被別的結構吃掉時（七張南端被小碧潭支線的隧道穿過、北投的一側月台
+# 被新北投支線的高架橋壓過）依序補位，每一側最多三面。一樣避開樓梯與門洞；
+# 疊式站 22 m 以前是上下層之間的樓梯與它的欄杆，不補那一段。
+SLOTS_UNDER_MORE = (37, 45, 65, 13, 16, 10)
+SLOTS_SIDE_MORE = (30, 23, 44, 9)
+SLOTS_PER_SIDE = 3
 DOOR_EVERY, DOOR_OPEN = 7.0, 2.0     # 與 build_line 的月台門同一個節奏
 STAND_IN = 2          # 人站在月台門往月台內側幾格
 SEQ_AHEAD_M = 40.0    # 判斷「往那一站是站體的哪個方向」時，沿路線往前看幾公尺
@@ -312,7 +318,7 @@ class Slot:
     sign    告示牌的方塊 (x, y, z)（在月台門那一排）
     face    牌面朝向 (dx, dz)：朝著站位
     stand   人的腳所在的方塊 (x, y, z)
-    yaw     站在那裡面向月台門的偏航角
+    yaw     站在那裡正對著牌子那一格的偏航角（斜的線形跟月台門的法向差幾度）
     dest    Direction（None = 這一側沒有下一站，是終點站的到站側）
     lang    "zh" / "en"：同一個方向的牌中英文輪流
     """
@@ -373,13 +379,25 @@ def _stacked_geometry(box, ref, d, upper_d):
     return dy0, psd, -1 if psd > 0 else 1
 
 
+def _stand_cell(sx, sz, wx, wz):
+    """牌子那一格往月台內側（單位向量 (wx, wz)）走 STAND_IN 格的站位。
+
+    不能拿「離線位 psd ± 2」各自取整：線形斜的時候兩個離線位可能取整到相鄰的兩格，
+    人就貼著牌子站（忠孝新生、安康、丹鳳都是這樣）。從牌子那一格出發、把步長放大到
+    主軸剛好走 STAND_IN 格，站位與牌子的切比雪夫距離一定是 STAND_IN。
+    """
+    m = max(abs(wx), abs(wz)) or 1.0
+    return sx + int(round(wx / m * STAND_IN)), sz + int(round(wz / m * STAND_IN))
+
+
 def plan_berths(segs, blocked=None):
     """整個路網的上車位置。回傳 (net, berths)：
 
     net      build_network 的結果，每個 Station 補上 box 與各方向的 d
     berths   [Berth]，每座站體每條線每個方向一個（沒有車站的方向也有：終點站的
              到站側要立一面「本站終點」的牌，點了換到對面月台）
-    blocked  (x, y, z) -> bool：這一格被別的結構占走了（組合根拿地標的範圍做）。
+    blocked  (x, y, z, box) -> bool：這一格在這座站體蓋好之後會被別的東西蓋掉
+             （組合根拿地標的範圍、之後才蓋的別的路段的斷面做）。
              台北車站的臺鐵／高鐵月台層跟板南線站體在同一個深度，西端北側那一段
              月台門被它整個吃掉 —— 牌子立在那裡是懸在大廳半空中，人也站不住
     """
@@ -406,7 +424,11 @@ def plan_berths(segs, blocked=None):
             up = st.dirs.get(spec.get("upper_toward"))
             upper_d = up.d if up is not None else 1
         per = max(1, int(round(1.0 / STEP)))
-        slots_m = SLOTS_SIDE if box.kind == "side" else SLOTS_UNDER
+        if box.kind == "side":
+            slots_m = SLOTS_SIDE + SLOTS_SIDE_MORE
+        else:
+            slots_m = SLOTS_UNDER + tuple(a for a in SLOTS_UNDER_MORE
+                                          if not (box.kind.startswith("stacked") and a < 22))
         for d in (1, -1):
             if upper_d is None:
                 dy0, psd, inward = _geometry(box, d)
@@ -418,21 +440,25 @@ def plan_berths(segs, blocked=None):
                              key=lambda dr: (-max(len(segs[li]["samples"]) for li, _, _ in dr.via),
                                              dr.next))
             k = max(1, len(b.dests))
-            for j, along in enumerate(slots_m):
+            j = 0
+            for along in slots_m:
+                if j >= SLOTS_PER_SIDE:
+                    break
                 i = box.lo + along * per
                 if not (box.lo < i < box.hi):
                     continue
                 nx, nz = box.normal(i)
                 y = int(box.ys[i]) + dy0 + 2
                 sx, sz = box.cell(i, psd)
-                tx, tz = box.cell(i, psd + inward * STAND_IN)
-                if blocked is not None and (blocked(sx, y, sz) or blocked(tx, y, tz)):
+                tx, tz = _stand_cell(sx, sz, nx * inward, nz * inward)
+                if blocked is not None and (blocked(sx, y, sz, box) or blocked(tx, y, tz, box)):
                     continue
                 face = (nx * inward, nz * inward)            # 牌面朝站位
-                yaw = yaw_of(-face[0], -face[1])             # 人面向月台門
+                yaw = yaw_of(sx - tx, sz - tz)               # 人正對著牌子那一格
                 dest = b.dests[j % k] if b.dests else None
                 lang = "zh" if (j // k) % 2 == 0 else "en"
                 b.slots.append(Slot((sx, y, sz), face, (tx, y, tz), yaw, dest, lang))
+                j += 1
             berths.append(b)
     return net, berths
 

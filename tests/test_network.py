@@ -110,6 +110,21 @@ chk("車程共 4 段（甲乙、乙甲、乙丙、丙乙）", len(NW.rides(net, 
 chk("去丙站：落在有下一站的那一側（往乙）", NW.home_slot(bidx, net[("T", "丙")]).dest.next == "乙")
 chk("函式路徑是小寫站號", NW.ride_fn("T02", "T03") == "ride/t02_t03" and NW.go_fn("G03A") == "go/g03a")
 
+# ---------------------------------------------------------------- 斜的線形
+print("\n斜的線形：15°、30°、45°、60° 的島式站")
+for deg in (15, 30, 45, 60):
+    ux, uz = math.cos(math.radians(deg)), math.sin(math.radians(deg))
+    diag = make_seg("D", [(0, 0), (3000 * ux, 3000 * uz)],
+                    [((500 * ux, 500 * uz), "D01", "子", "Zi"), ((1500 * ux, 1500 * uz), "D02", "丑", "Chou"),
+                     ((2500 * ux, 2500 * uz), "D03", "寅", "Yin")], 40)
+    net, berths = NW.plan_berths([diag])
+    far = [max(abs(s.sign[0] - s.stand[0]), abs(s.sign[2] - s.stand[2])) for b in berths for s in b.slots]
+    # 原本離線位 6 與 4 各自取整，斜的時候可能取整到相鄰兩格：人貼著牌子站
+    # （忠孝新生、安康、丹鳳在全網存檔裡讀回來就是這樣）
+    chk(f"{deg}°：牌子與站位的切比雪夫距離都是 {NW.STAND_IN}（{sorted(set(far))}）",
+        set(far) == {NW.STAND_IN})
+    check_slots(build(diag), berths, f"{deg}° 島式站")
+
 # ---------------------------------------------------------------- 支線
 print("\n支線：乙往東北分出一條到丁")
 k = 1 / math.sqrt(2)
