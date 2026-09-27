@@ -25,6 +25,7 @@
   · 各線站表的每一顆按鈕：把按鈕的 trigger 值設給 marker、跑 sys/go，
     marker 要落在「按鈕上那個站號」的 go 函式的位置 —— 按鈕、分派表、go 函式
     三者各自獨立產生，這樣才驗得到它們對得起來
+  · 世界高度：資料包的維度類型生效，config.Y_MAX（y639）放得了方塊
   · 首次進入（sys/join）：上標籤、傳到 R10 台北車站
   · 進站提示：sys/hud 的範圍掃描原樣複製、只把 @a 換成 @s，每個傳送落點都要
     判到那一站、hud_enter 要跑過；它的 schedule 迴圈在 advance_time=false 之下
@@ -573,6 +574,13 @@ def build_selftest(pack, btn, samples, out_dir, rules):
            + ok_fail("trigger_unknown_value_stays", "entity @s[x=0.5,y=100,z=0.5,distance=..0.01]")
            + ok_fail("trigger_unknown_value_reset", "score @s %s matches 0" % obj) + ["kill @s"])
         expect += ["trigger_unknown_value_stays", "trigger_unknown_value_reset"]
+    # 6c. 世界高度：資料包的 dimension_type/overworld.json 把主世界加高到 config.Y_MAX
+    #     （台北101 的塔尖在 y≈580）。沒生效的話，原版 y319 以上根本放不了方塊
+    top = config.Y_MAX
+    setup += ["setblock 0 %d 0 minecraft:gold_block" % top]
+    setup += ok_fail("world_height_y%d" % top, "block 0 %d 0 minecraft:gold_block" % top)
+    setup += ["setblock 0 %d 0 minecraft:air" % top]
+    expect.append("world_height_y%d" % top)
     # 7. 首次進入
     home = None
     for ln in pack.functions.get("sys/join", ()):
