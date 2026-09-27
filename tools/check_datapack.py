@@ -5,7 +5,7 @@
 
 一、從磁碟讀回（不需要遊戲）
   · pack.mcmeta 讀得懂、level.dat 的 DataPacks.Enabled 有列這個資料包
-  · 每個 ride/*、turn/*、go/* 恰好一行 ``tp @s x y z yaw pitch``（約定，見
+  · 每個 ride/*、turn/*、go/*、sight/* 恰好一行 ``tp @s x y z yaw pitch``（約定，見
     application/ride_plan.py），座標是數字
   · 函式裡提到的每個 ``function mrt:…``、對話框裡的每個 ``show_dialog``、
     兩個標籤裡的每個 id 都真的有檔案
@@ -20,7 +20,7 @@
   · 伺服器載入兩個資料包時沒有任何函式／標籤／對話框的載入錯誤
   · 開服時 #minecraft:load 真的跑了：世界初始設定的九條規則、時間定在中午；
     再跑一次 sys/load（等於 /reload）不會蓋掉之後改過的規則
-  · 每一個 ride/turn/go 函式都在遊戲裡執行一次（召喚一個 marker 當 @s），
+  · 每一個 ride/turn/go/sight 函式都在遊戲裡執行一次（召喚一個 marker 當 @s），
     執行完讀它的 Pos 與 Rotation，要跟函式檔裡那行 tp 一致
   · 各線站表的每一顆按鈕：把按鈕的 trigger 值設給 marker、跑 sys/go，
     marker 要落在「按鈕上那個站號」的 go 函式的位置 —— 按鈕、分派表、go 函式
@@ -118,6 +118,31 @@ def line_buttons(pack):
     return out
 
 
+SIGHT_NAME_RE = re.compile(r"^# 景點 (\S+)")
+TP_KINDS = ("ride", "turn", "go", "sight")
+
+
+def sight_buttons(pack):
+    """景點清單的按鈕：[(景點中文名, trigger 物件, trigger 值, 對應的 sight 函式)]。
+
+    按鈕上只有名字；函式靠 sight/<id> 檔頭那行「# 景點 <中文名> ...」對回來 ——
+    對話框與函式是 ride_plan 各自產生的，對得起來才代表按鈕會送人到那座景點。"""
+    by_name = {}
+    for path, lines in pack.functions.items():
+        if path.startswith("sight/") and lines:
+            m = SIGHT_NAME_RE.match(lines[0])
+            if m and "：" not in lines[0]:
+                by_name[m.group(1)] = path
+    out = []
+    d = pack.dialogs.get("sights")
+    for a in (d or {}).get("actions", ()):
+        lab = a.get("label")
+        name = (lab[-1]["text"] if isinstance(lab, list) else lab.get("text", "")).strip()
+        m = TRIG_RE.match(a.get("action", {}).get("command", ""))
+        out.append((name, m.group(1) if m else None, int(m.group(2)) if m else None, by_name.get(name)))
+    return out
+
+
 def fn_code(code):
     return "".join(ch for ch in code.lower() if ch.isalnum() or ch == "_")
 
@@ -170,7 +195,7 @@ def static_checks(save, pack, problems, say, game_version=None):
     if want not in enabled:
         problems.append(f"level.dat 的 DataPacks.Enabled 沒有 {want}")
 
-    kinds = {"ride": 0, "turn": 0, "go": 0}
+    kinds = {k: 0 for k in TP_KINDS}
     for path in sorted(pack.functions):
         top = path.split("/")[0]
         if top in kinds:
@@ -178,8 +203,8 @@ def static_checks(save, pack, problems, say, game_version=None):
             n_tp = sum(1 for ln in pack.functions[path] if ln.startswith("tp "))
             if n_tp != 1 or pack.tp(path) is None:
                 problems.append(f"{path}：tp 行應該恰好一行、絕對座標（實際 {n_tp} 行）")
-    say("函式 %d 個：ride %d、turn %d、go %d、其他 %d" % (
-        len(pack.functions), kinds["ride"], kinds["turn"], kinds["go"],
+    say("函式 %d 個：ride %d、turn %d、go %d、sight %d、其他 %d" % (
+        len(pack.functions), kinds["ride"], kinds["turn"], kinds["go"], kinds["sight"],
         len(pack.functions) - sum(kinds.values())))
 
     fn_ids = {"%s:%s" % (NS, p) for p in pack.functions}
@@ -211,12 +236,16 @@ def static_checks(save, pack, problems, say, game_version=None):
             problems.append(f"沒有 #{tag}（{kind} 標籤）")
 
     btn = line_buttons(pack)
-    vals = [n for _, _, _, n in btn]
-    say(f"對話框 {len(pack.dialogs)} 個；各線站表共 {len(btn)} 顆按鈕")
+    sbtn = sight_buttons(pack)
+    vals = [n for _, _, _, n in btn] + [n for _, _, n, _ in sbtn]
+    say(f"對話框 {len(pack.dialogs)} 個；各線站表共 {len(btn)} 顆按鈕、景點清單 {len(sbtn)} 顆")
     if any(v is None for v in vals):
-        problems.append("有站表按鈕不是 /trigger <物件> set <n>")
+        problems.append("有站表／景點按鈕不是 /trigger <物件> set <n>")
     elif sorted(vals) != list(range(1, len(vals) + 1)):
-        problems.append("站表按鈕的 trigger 值不是 1..N 連續不重複")
+        problems.append("站表與景點按鈕的 trigger 值不是 1..N 連續不重複")
+    for name, _, _, path in sbtn:
+        if path is None:
+            problems.append(f"景點清單的按鈕 {name} 沒有對應的 sight 函式")
     for path, code, _, _ in btn:
         if ("go/" + fn_code(code)) not in pack.functions:
             problems.append(f"{path} 的按鈕 {code} 沒有對應的 go 函式")
@@ -455,7 +484,7 @@ def build_selftest(pack, btn, samples, out_dir, rules):
             "environment": TEST_NS + ":env", "structure": "minecraft:empty",
             "max_ticks": 1, "setup_ticks": 100, "required": True}
 
-    probes = [p for p in sorted(pack.functions) if p.split("/")[0] in ("ride", "turn", "go")]
+    probes = [p for p in sorted(pack.functions) if p.split("/")[0] in TP_KINDS]
     setup = ["say MRTCHK begin",
              "scoreboard objectives add mrt_t dummy",
              "scoreboard players set #c3600 mrt_t 3600",
@@ -515,6 +544,18 @@ def build_selftest(pack, btn, samples, out_dir, rules):
            + ["execute unless score @s %s matches 0 run scoreboard players set #hit mrt_t 0" % obj,
               "execute unless score @s %s matches 0 run say MRTCHK FAIL trigger_not_reset_%d" % (obj, n),
               "scoreboard players operation #tok mrt_t += #hit mrt_t", "kill @s"])
+    # 6b. 景點清單的每一顆按鈕：trigger 值 -> sys/go -> 那座景點的 sight 函式的位置
+    for name, obj, n, path in sight_buttons(pack):
+        tp = pack.tp(path) if path else None
+        if tp is None or obj is None:
+            continue
+        setup.append("execute positioned 0 100 0 summon minecraft:marker run function %s:t/%d" % (TEST_NS, n))
+        fn("t/%d" % n, ["scoreboard players set @s %s %d" % (obj, n),
+                        "function %s:sys/go" % NS]
+           + pos_check("button_sight_%s" % path.split("/")[-1], tp)
+           + ["execute unless score @s %s matches 0 run scoreboard players set #hit mrt_t 0" % obj,
+              "execute unless score @s %s matches 0 run say MRTCHK FAIL trigger_not_reset_%d" % (obj, n),
+              "scoreboard players operation #tok mrt_t += #hit mrt_t", "kill @s"])
     # 反向對照：沒有執行任何傳送的 marker，不能被判成落在某個 go 函式的位置
     first_go = next((p for p in probes if p.startswith("go/")), None)
     if first_go:
@@ -527,7 +568,8 @@ def build_selftest(pack, btn, samples, out_dir, rules):
     if len(objs) == 1:
         obj = objs.pop()
         setup.append("execute positioned 0 100 0 summon minecraft:marker run function %s:neg_trig" % TEST_NS)
-        fn("neg_trig", ["scoreboard players set @s %s %d" % (obj, len(btn) + 1), "function %s:sys/go" % NS]
+        n_all = len(btn) + len(sight_buttons(pack))       # 景點按鈕排在站名按鈕後面
+        fn("neg_trig", ["scoreboard players set @s %s %d" % (obj, n_all + 1), "function %s:sys/go" % NS]
            + ok_fail("trigger_unknown_value_stays", "entity @s[x=0.5,y=100,z=0.5,distance=..0.01]")
            + ok_fail("trigger_unknown_value_reset", "score @s %s matches 0" % obj) + ["kill @s"])
         expect += ["trigger_unknown_value_stays", "trigger_unknown_value_reset"]
@@ -635,6 +677,7 @@ def build_selftest(pack, btn, samples, out_dir, rules):
         with open(p, "w", encoding="utf-8") as f:
             f.write("\n".join(lines) + "\n")
     n_btn = sum(1 for path, code, obj, n in btn if pack.tp("go/" + fn_code(code)) and obj)
+    n_btn += sum(1 for name, obj, n, path in sight_buttons(pack) if path and pack.tp(path) and obj)
     return expect, {"tp": len(probes), "trig": n_btn, "hud": len(hud_targets)}, len(files)
 
 
@@ -697,7 +740,7 @@ CTL_DIALOG = "Failed to get element ResourceKey[minecraft:dialog / %s:no_such_di
 
 
 COUNT_NAMES = {"tp": "傳送函式在遊戲裡落到約定的位置與朝向",
-               "trig": "站表按鈕經 trigger 分派落到按鈕上那一站",
+               "trig": "站表與景點按鈕經 trigger 分派落到按鈕上那一站／那座景點",
                "hud": "進站提示檢查：傳送目的地落在那一站的範圍、hud_enter 有跑"}
 
 

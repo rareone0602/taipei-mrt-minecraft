@@ -16,8 +16,9 @@ Heightmaps（遊戲自己存的 full 區塊從來不會這樣），而玩家曾�
     MOTION_BLOCKING_NO_LEAVES  同上，但樹葉不算
 
 每張表 256 筆，索引 = x + z*16（區塊內座標），值 = 那一柱最高一格「擋住」的
-方塊的 y + 1 - Y_MIN（整柱都不擋就是 0）。每筆 9 bit（ceil(log2(384+1))），
-一個 long 塞 7 筆、不跨 long，共 37 個 long —— 與 block_states 同一套打包法。
+方塊的 y + 1 - Y_MIN（整柱都不擋就是 0）。每筆 ceil(log2(世界高度+1)) bit、不跨 long
+—— 與 block_states 同一套打包法。原版 384 格高是 9 bit、一個 long 7 筆、37 個 long；
+這個世界為了台北101 加高到 704 格（config.WORLD_HEIGHT），是 10 bit、6 筆、43 個 long。
 
 **分類只有這一份**（classify / flags）。blocksMotion() 不是「有沒有碰撞箱」：
 告示牌（含壁掛、懸掛）、旗幟、壓力板雖然穿得過去，遊戲在方塊屬性上標了
@@ -34,9 +35,14 @@ from mrt.config import Y_MIN, Y_MAX, SEC_MIN, SEC_MAX
 # 存檔裡的鍵名與位元順序（flags() 的第 k 個 bit 對應 TYPES[k]）
 TYPES = ("WORLD_SURFACE", "OCEAN_FLOOR", "MOTION_BLOCKING", "MOTION_BLOCKING_NO_LEAVES")
 
-BITS = (Y_MAX - Y_MIN + 1).bit_length()        # 384 -> 9
-PER_LONG = 64 // BITS                           # 7
-N_LONGS = -(-256 // PER_LONG)                   # 37
+def layout(height):
+    """世界高度 -> (每筆幾 bit, 一個 long 幾筆, 幾個 long)。384 -> (9, 7, 37)。"""
+    bits = height.bit_length()
+    per = 64 // bits
+    return bits, per, -(-256 // per)
+
+
+BITS, PER_LONG, N_LONGS = layout(Y_MAX - Y_MIN + 1)     # 704 -> (10, 6, 43)
 
 AIR_BLOCKS = frozenset({"minecraft:air", "minecraft:cave_air", "minecraft:void_air"})
 
@@ -178,27 +184,30 @@ def heights_from_palettes(sections):
     return column_heights(section_flags).reshape(4, 256)
 
 
-def pack(values):
-    """256 筆高度 -> 37 個有號 long（與遊戲的 SimpleBitStorage 相同：
-    第 i 筆放在第 i // 7 個 long 的第 (i % 7) * 9 個 bit 起，不跨 long）。"""
+def pack(values, height=None):
+    """256 筆高度 -> N_LONGS 個有號 long（與遊戲的 SimpleBitStorage 相同：
+    第 i 筆放在第 i // PER_LONG 個 long 的第 (i % PER_LONG) * BITS 個 bit 起，不跨 long）。
+    height 預設是這個世界的高度；測試拿遊戲存的原版高度（384）區塊來比對時才指定。"""
+    bits, per, n_longs = layout(height) if height else (BITS, PER_LONG, N_LONGS)
     v = np.asarray(values, dtype=np.uint64).reshape(-1)
     if v.size != 256:
         raise ValueError(f"高度圖要剛好 256 筆，拿到 {v.size}")
-    buf = np.zeros(N_LONGS * PER_LONG, dtype=np.uint64)
+    buf = np.zeros(n_longs * per, dtype=np.uint64)
     buf[:256] = v
-    buf = buf.reshape(N_LONGS, PER_LONG)
-    shifts = (np.arange(PER_LONG, dtype=np.uint64) * np.uint64(BITS))
+    buf = buf.reshape(n_longs, per)
+    shifts = (np.arange(per, dtype=np.uint64) * np.uint64(bits))
     out = np.bitwise_or.reduce(buf << shifts, axis=1)
     return out.astype(np.int64)
 
 
-def unpack(longs):
-    """37 個 long -> 256 筆高度（int32，索引 x + z*16）。"""
+def unpack(longs, height=None):
+    """N_LONGS 個 long -> 256 筆高度（int32，索引 x + z*16）。height 同 pack()。"""
+    bits, per, n_longs = layout(height) if height else (BITS, PER_LONG, N_LONGS)
     a = np.asarray(longs, dtype=np.int64).view(np.uint64).reshape(-1)
-    if a.size != N_LONGS:
-        raise ValueError(f"高度圖要剛好 {N_LONGS} 個 long，拿到 {a.size}")
-    shifts = (np.arange(PER_LONG, dtype=np.uint64) * np.uint64(BITS))
-    vals = (a[:, None] >> shifts) & np.uint64((1 << BITS) - 1)
+    if a.size != n_longs:
+        raise ValueError(f"高度圖要剛好 {n_longs} 個 long，拿到 {a.size}")
+    shifts = (np.arange(per, dtype=np.uint64) * np.uint64(bits))
+    vals = (a[:, None] >> shifts) & np.uint64((1 << bits) - 1)
     return vals.reshape(-1)[:256].astype(np.int32)
 
 

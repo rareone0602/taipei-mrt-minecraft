@@ -26,12 +26,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 
 from mrt import config
+from mrt.application import attractions as AT
 from mrt.application import build_line as BL
 from mrt.application import build_world as BW
 from mrt.application import landmarks as LM
 from mrt.application import ride_plan as RP
 from mrt.application import spawn as SP
 from mrt.application import signage as SG
+from mrt.application.build_concourse import ShaftStair
+from mrt.application.build_exits import GroundGate
 from mrt.domain import alignment as AL
 from mrt.domain import network as NW
 from mrt.domain import rails
@@ -142,6 +145,85 @@ def later_section_blocker(segs, reach=48.0):
             return False
         return any(a <= y <= b for a, b in hit.get((box.li, int(x), int(z)), ()))
     return blocked
+
+
+def sight_keepout(marks, segs, sights, pad=2):
+    """(x, y, z) -> bool：景點不准寫的格子。景點比車站、出入口、地下街都晚蓋，
+    寫到這些格子就會把人家蓋掉 —— 新光摩天大樓的基座壓在站前地下街正上方，
+    台北車站的出入口亭就在它門口。
+
+      · 地下街與空橋（Tile）：照實際的地板與外牆格子，地板下一格到頂板上一格
+      · 出入口樓梯井、平面出入口：外擴 pad 格（門口要留走道），街面上 6 格以下
+      · 其餘地標（站體大樓、地下大廳、通道）：bbox 整根柱子或它的高度範圍
+      · 路線的斷面（地下、高架、平面）：景點附近的取樣點照半寬外擴 3 格
+
+    只收景點範圍附近的東西；景點範圍以外一律回 False。
+    """
+    boxes = [s.bbox() for s in sights]
+    if not boxes:
+        return lambda x, y, z: False
+
+    def near(x0, z0, x1, z1, m=0):
+        return any(x0 - m <= bx1 and x1 + m >= bx0 and z0 - m <= bz1 and z1 + m >= bz0
+                   for bx0, bz0, bx1, bz1 in boxes)
+
+    spans = collections.defaultdict(list)            # (x, z) -> [(y0, y1)]
+
+    def add_rect(x0, z0, x1, z1, y0, y1):
+        for x in range(int(x0), int(x1) + 1):
+            for z in range(int(z0), int(z1) + 1):
+                spans[(x, z)].append((int(y0), int(y1)))
+
+    for m in marks:
+        x0, z0, x1, z1 = m.bbox()
+        if not near(x0, z0, x1, z1, pad + 2):
+            continue
+        if hasattr(m, "cells") and hasattr(m, "ring") and hasattr(m, "ceil_of"):
+            top = max(list(m.ceil_of.values()) or [m.y + 4]) + 1
+            for x, z in set(m.cells) | set(m.ring):
+                spans[(x, z)].append((m.y - 2, top))
+        elif isinstance(m, ShaftStair):
+            add_rect(x0 - pad, z0 - pad, x1 + pad, z1 + pad,
+                     min(m.g0, m.y_to) - 2, max(m.g0, m.y_to) + 6)
+        elif isinstance(m, GroundGate):
+            add_rect(x0 - pad, z0 - pad, x1 + pad, z1 + pad, config.Y_MIN, config.Y_MAX)
+        elif hasattr(m, "y") and hasattr(m, "clear"):          # Slab、RailHall
+            add_rect(x0, z0, x1, z1, m.y - getattr(m, "thick", 1) - 1, m.y + m.clear + 2)
+        elif hasattr(m, "y") and hasattr(m, "head"):           # Passage
+            add_rect(x0, z0, x1, z1, m.y - 2, m.y + m.head + 1)
+        else:
+            add_rect(x0, z0, x1, z1, config.Y_MIN, config.Y_MAX)
+
+    for sg in segs:
+        samples, ys, gnd = sg["samples"], sg["ys"], sg["ground"]
+        build, hws = sg.get("build"), sg.get("hw")
+        for i in range(0, len(samples), 2):
+            if build is not None and not build[i]:
+                continue
+            x, z, ux, uz, _ = samples[i]
+            if not near(x, z, x, z, 40):
+                continue
+            nx, nz = -uz, ux
+            y, g = int(ys[i]), int(gnd[i])
+            hw = (hws[i] if hws is not None else 6) + 3
+            st = AL.structure_for_ground(y, g)
+            if st == "tunnel":            # 隧道與地下站體（穿堂在 +7、頂板再上去幾格），都在地面下
+                y0, y1 = y - 3, min(y + 14, g - 1)
+            elif st == "viaduct":         # 橋墩從地面起、橋面與高架站的屋頂
+                y0, y1 = g - 3, y + 9
+            else:
+                y0, y1 = min(y, g) - 3, max(y, g) + 6
+            for off in range(-hw, hw + 1):
+                for t in (0.0, 0.5):
+                    px, pz = x + ux * t + nx * off, z + uz * t + nz * off
+                    spans[(int(math.floor(px)), int(math.floor(pz)))].append((y0, y1))
+
+    spans = dict(spans)
+
+    def keep(x, y, z):
+        sp = spans.get((x, z))
+        return sp is not None and any(a <= y <= b for a, b in sp)
+    return keep
 
 
 def plan_segments(refs=None, terr=None, verbose=True):
@@ -418,6 +500,9 @@ def main():
                          "省得為了看台北車站等三十分鐘）")
     ap.add_argument("--rails", action="store_true",
                     help="順便鋪鐵軌。預設不鋪 —— 走行面留白，方便用模組自己鋪")
+    ap.add_argument("--sights", nargs="*", default=None, metavar="ID",
+                    help="只蓋這幾座觀光景點（data/attractions.json 的 id）；不給就全蓋")
+    ap.add_argument("--no-sights", action="store_true", help="不蓋觀光景點")
     a = ap.parse_args()
     outer = a.corridor + a.fade
 
@@ -518,6 +603,25 @@ def main():
                             terr_pts.setdefault((rx, rz), []).append((x, z))
         print(f"地標 {len(marks)} 座，涵蓋 {len(mark_b)} 個 region")
 
+    # ---- 觀光景點（application/attractions/）：台北101、中正紀念堂、城門……----
+    # 位置與輪廓是 OSM 的（data/attractions.json）；長相是各景點模組照公開的建築事實寫的
+    sights = [] if a.no_sights else AT.for_world(stations, only=a.sights)
+    sight_b = {}
+    for s_ in sights:
+        sx0, sz0, sx1, sz1 = s_.bbox()
+        for rx in range(sx0 >> 9, (sx1 >> 9) + 1):
+            for rz in range(sz0 >> 9, (sz1 >> 9) + 1):
+                sight_b.setdefault((rx, rz), []).append(s_)
+        # 景點四周要生成真實地形（圓山大飯店在劍潭山腰）。範圍多給 48 m，
+        # 淡出的那一圈才不會正好切在建築腳下
+        for x in range(sx0 - 48, sx1 + 49, 8):
+            for z in range(sz0 - 48, sz1 + 49, 8):
+                for rx in range((x - outer) >> 9, ((x + outer) >> 9) + 1):
+                    for rz in range((z - outer) >> 9, ((z + outer) >> 9) + 1):
+                        terr_pts.setdefault((rx, rz), []).append((x, z))
+    if sights:
+        print(f"觀光景點 {len(sights)} 座，涵蓋 {len(sight_b)} 個 region")
+
     # ---- 搭乘系統：每座站體每條線每個行車方向的上車位置（domain/network.py）----
     # 月台上的搭車告示牌與資料包的傳送目的地都從這一份來，只算一次
     blocked = landmark_blocker(marks)
@@ -553,9 +657,13 @@ def main():
         nx, nz = SP.station_node(stations) or (0, 0)
         spawn = dict(x=nx, y=built_ground(nx, nz) + 1, z=nz, facing=None,
                      why="找不到合格的出入口亭，退回捷運站點上方的地面")
+    # 景點定案（一樓樓板高度、觀景點）要用同一個「蓋出來的地面」，也要在清快取之前
+    sight_keep = sight_keepout(marks, segs, sights)
+    if sights:
+        AT.plan_all(sights, built_ground, sight_keep)
     del blend_cache
 
-    regions = sorted(set(struct_b) | set(terr_pts) | set(mark_b))
+    regions = sorted(set(struct_b) | set(terr_pts) | set(mark_b) | set(sight_b))
     if a.bbox:
         x0, z0, x1, z1 = a.bbox
         keep = [(rx, rz) for rx, rz in regions
@@ -574,7 +682,7 @@ def main():
     # 跟告示牌用同一份 net／berths（id 由 domain/network.py 的 ride_fn 等產生）。
     # 要在清掉舊存檔之後寫；level.dat 的 DataPacks 已經把它列為啟用
     colours = NW.line_colours(json.load(open(config.MC_LINES_JSON, encoding="utf-8")))
-    spec = RP.build_spec(net, berths, colours)
+    spec = RP.build_spec(net, berths, colours, sights=AT.datapack_entries(sights))
     info = DP.write_datapack(a.out, spec)
     print(f"資料包 {config.DATAPACK_NAME}：{info['functions']} 個函式、{info['dialogs']} 個對話框、"
           f"{len(spec['triggers'])} 個路線圖按鈕、{len(spec['areas'])} 個進站提示範圍")
@@ -582,6 +690,7 @@ def main():
         print("  ⚠ " + msg)
 
     t0 = time.time(); nch = 0; nsign = 0; nbytes = 0
+    sight_drop = {}
     for n, (rx, rz) in enumerate(regions, 1):
         w = World(a.out, name=config.WORLD_NAME)
         w._region_filter = (rx, rz)
@@ -649,6 +758,12 @@ def main():
         for m in mark_b.get((rx, rz), ()):
             m.build(w)
 
+        # 觀光景點在地標之後：出入口、地下街都已經在了，景點的寫入經過禁區守門
+        for s_ in sight_b.get((rx, rz), ()):
+            dropped = AT.build(s_, w, sight_keep)
+            if dropped:
+                sight_drop[s_.id] = sight_drop.get(s_.id, 0) + dropped
+
         # 鐵軌一定要最後鋪：車站的挖空與樓梯都會蓋過走行面
         rr = rail_b.get((rx, rz), ())
         cells = {(a, b, c) for a, b, c, _, _ in rr}
@@ -673,6 +788,8 @@ def main():
               spawn=(spawn["x"], spawn["y"], spawn["z"]), spawn_facing=spawn["facing"])
     w._write_level()
     print(f"\n完成：{nch:,} 區塊, {nsign:,} 面告示牌, {nbytes/1e6:.0f} MB, {time.time()-t0:.0f}s")
+    for sid, n in sorted(sight_drop.items()):
+        print(f"  景點 {sid}：禁區（出入口、地下街、路線）擋掉 {n:,} 格寫入")
     print(f"出生點 ({spawn['x']},{spawn['y']},{spawn['z']})"
           + (f" 面向 ({spawn['facing'][0]},{spawn['facing'][1]})" if spawn["facing"] else "")
           + f"：{spawn['why']}")

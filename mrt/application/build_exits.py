@@ -25,6 +25,7 @@
 """
 import collections
 
+from mrt import config
 from mrt.application import build_concourse as BCC
 from mrt.application import signage as SG
 from mrt.domain import exits as EX
@@ -60,12 +61,12 @@ def footprint(objs, used=None):
         cells = getattr(o, "cells", None)
         if cells is not None and getattr(o, "ring", None) is not None:
             for x, z in set(cells) | set(o.ring):
-                used.add(x, z, -64, 319)
+                used.add(x, z, config.Y_MIN, config.Y_MAX)
             continue
         x0, z0, x1, z1 = o.bbox()
         for x in range(int(x0), int(x1) + 1):
             for z in range(int(z0), int(z1) + 1):
-                used.add(x, z, -64, 319)
+                used.add(x, z, config.Y_MIN, config.Y_MAX)
     return used
 
 

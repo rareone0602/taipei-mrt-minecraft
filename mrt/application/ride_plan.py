@@ -10,10 +10,11 @@
            動作列提示「下一站」，再響一聲到站鈴
   turn/*   終點站到站側的牌：換到對面月台（往回開的那一側）的主位
   go/*     路線圖的站名按鈕：傳送到那一站有下一站那一側的主位
+  sight/*  景點清單的按鈕與景點裡的告示牌：傳送到景點的觀景點（或 101 的觀景台）
   sys/*    載入、每 tick、首次進入、trigger 分派、進站提示（HUD）、世界初始設定
 
 **約定**（tools/ 的讀回驗證器與 tools/check_datapack.py 靠它）：每個 ride/*、turn/*、
-go/* 函式恰好有一行 ``tp @s <x> <y> <z> <yaw> <pitch>``，座標是絕對的數字，
+go/*、sight/* 函式恰好有一行 ``tp @s <x> <y> <z> <yaw> <pitch>``，座標是絕對的數字，
 x、z 是站位方塊的中心（+0.5）、y 是腳所在的方塊。
 
 這一層只產生 dict／list／字串，不碰檔案：寫檔在 infrastructure/datapack.py，
@@ -23,6 +24,7 @@ import json
 import math
 
 from mrt import config
+from mrt.application.attractions.kit import sight_fn
 from mrt.domain import alignment as AL
 from mrt.domain import network as NW
 from mrt.domain import stacked as SK
@@ -313,7 +315,7 @@ def _line_dialog(ref, stations, trig, codes_by_name, colours):
     }
 
 
-def _menu_dialog(refs, by_line, colours):
+def _menu_dialog(refs, by_line, colours, n_sights=0):
     actions = []
     for ref in refs:
         c = colours.get(ref, "#FFFFFF")
@@ -328,6 +330,15 @@ def _menu_dialog(refs, by_line, colours):
             "width": 200,
             "action": {"type": "minecraft:show_dialog", "dialog": fid(NW.line_dialog(ref))},
         })
+    if n_sights:
+        actions.append({
+            "label": [{"text": "★ ", "color": SIGHT_COLOR}, {"text": "觀光景點 ", "color": SIGHT_COLOR, "bold": True},
+                      {"text": "Attractions", "color": "white"}],
+            "tooltip": [{"text": "%d 處景點：台北101、中正紀念堂、總統府……\n" % n_sights},
+                        {"text": "傳送到景點前的觀景點 Teleport to a viewpoint", "color": "gray"}],
+            "width": 200,
+            "action": {"type": "minecraft:show_dialog", "dialog": fid(SIGHTS_DIALOG)},
+        })
     return {
         "type": "minecraft:multi_action",
         "title": {"text": "台北捷運路線圖 Taipei Metro Route Map", "bold": True},
@@ -341,6 +352,68 @@ def _menu_dialog(refs, by_line, colours):
         "columns": 2,
         "actions": actions,
         "exit_action": {"label": {"text": "關閉 Close"}, "width": 200},
+    }
+
+
+# ---------- 觀光景點 ----------
+
+SIGHT_COLOR = "#E0B040"      # 景點按鈕與標題的顏色（金色，跟各線的線色分開）
+SIGHTS_DIALOG = "sights"     # 景點清單對話框（mrt:sights）
+
+
+def sight_tp_line(sp):
+    """景點傳送點的那一行（同 tp_line 的格式）：sp 是 attractions.Spot 的 dict。"""
+    return "tp @s %.1f %d %.1f %.1f %.1f" % (sp["x"] + 0.5, sp["y"], sp["z"] + 0.5, sp["yaw"], sp["pitch"])
+
+
+def sight_arrival_lines(e, sp):
+    """到了景點：大標題景點名（或觀景台的名字）、副標題英文名、動作列一句事實與最近的站。"""
+    main = not sp["key"]
+    title = e["name_zh"] if main else sp["zh"]
+    sub = e["name_en"] if main else sp["en"]
+    bar = [{"text": " · ".join(e["facts"]) + ("　" if e["facts"] else ""), "color": "white"}]
+    st = e.get("station")
+    if st and main:
+        bar.append({"text": "最近的捷運站 Nearest MRT: %s %s（%d m）" % (st[0], st[3], st[2]), "color": "gray"})
+    return [
+        "title @s times 5 60 20",
+        "title @s subtitle " + text({"text": sub, "color": "white"}),
+        "title @s title " + text({"text": title, "color": SIGHT_COLOR, "bold": True}),
+        "title @s actionbar " + text(bar),
+        "execute at @s run playsound minecraft:block.note_block.bell player @s ~ ~ ~ 0.7 1.0",
+    ]
+
+
+def _sight_dialog(entries, trig):
+    actions = []
+    for e in entries:
+        st = e.get("station")
+        tip = [{"text": e["name_en"]}]
+        if e["facts"]:
+            tip.append({"text": "\n" + " · ".join(e["facts"]), "color": "white"})
+        if st:
+            tip.append({"text": "\n最近的捷運站 %s（%d m）\nNearest MRT: %s" % (st[0], st[2], st[3]),
+                        "color": "gray"})
+        actions.append({
+            "label": [{"text": "★ ", "color": SIGHT_COLOR}, {"text": e["name_zh"], "color": "white"}],
+            "tooltip": tip,
+            "width": 200,
+            "action": {"type": "minecraft:run_command",
+                       "command": "trigger %s set %d" % (OBJ_GO, trig[e["id"]])},
+        })
+    return {
+        "type": "minecraft:multi_action",
+        "title": [{"text": "★ ", "color": SIGHT_COLOR},
+                  {"text": "觀光景點 Attractions", "color": SIGHT_COLOR, "bold": True}],
+        "external_title": {"text": "觀光景點 Attractions"},
+        "body": [{"type": "minecraft:plain_message", "width": 400, "contents": [
+            {"text": "點景點就傳送到它前面的觀景點。建築的位置、方位與輪廓來自 OpenStreetMap。\n",
+             "color": "white"},
+            {"text": "Click to teleport to a viewpoint in front of the attraction.", "color": "gray"}]}],
+        "columns": 2,
+        "actions": actions,
+        "exit_action": {"label": {"text": "← 返回路線圖 Back"}, "width": 200,
+                        "action": {"type": "minecraft:show_dialog", "dialog": fid(NW.MENU_DIALOG)}},
     }
 
 
@@ -419,18 +492,20 @@ def _areas(net):
     return group, areas
 
 
-def build_spec(net, berths, colours):
+def build_spec(net, berths, colours, sights=None):
     """整份資料包規格（純資料）：
 
     functions     {路徑: [指令行]}             路徑不含命名空間，如 "ride/bl12_bl13"
     dialogs       {路徑: 對話框 dict}
     tags          {"function": {標籤 id: [函式 id]}, "dialog": {標籤 id: [對話框 id]}}
     description   pack.mcmeta 的說明（文字元件）
-    triggers      {n: go 函式路徑}              路線圖按鈕的 trigger 值（1..N，連續不重複）
+    triggers      {n: go／sight 函式路徑}       路線圖與景點清單按鈕的 trigger 值（1..N，連續不重複）
     areas         [(x0, y0, z0, dx, dy, dz, 車站編號)]  進站提示的範圍
     home          首次進入呼叫的 go 函式路徑
     warnings      [str]                        id 撞名之類的問題（有就該查）
+    sights        [景點 dict]                   attractions.datapack_entries() 的結果（輸入也是它）
     """
+    sights = list(sights or [])
     bidx = NW.berth_index(berths)
     fns, warnings = {}, []
     group, areas = _areas(net)
@@ -496,7 +571,21 @@ def build_spec(net, berths, colours):
             trig[(st.ref, st.name)] = n
             triggers[n] = NW.go_fn(st.code)
 
-    dialogs = {NW.MENU_DIALOG: _menu_dialog(refs, by_line, colours)}
+    # sight/*：每座景點每個傳送點一個函式；預設觀景點排在站名按鈕之後編 trigger 值
+    sight_trig = {}
+    for e in sights:
+        for sp in e["spots"]:
+            put(sight_fn(e["id"], sp["key"]),
+                _fn_header("景點 %s %s%s" % (e["name_zh"], e["name_en"], ("：" + sp["zh"]) if sp["key"] else ""))
+                + [sight_tp_line(sp), "scoreboard players set @s %s 0" % OBJ_AREA]
+                + sight_arrival_lines(e, sp))
+        n = len(trig) + len(sight_trig) + 1
+        sight_trig[e["id"]] = n
+        triggers[n] = sight_fn(e["id"])
+
+    dialogs = {NW.MENU_DIALOG: _menu_dialog(refs, by_line, colours, n_sights=len(sights))}
+    if sights:
+        dialogs[SIGHTS_DIALOG] = _sight_dialog(sights, sight_trig)
     for ref in refs:
         dialogs[NW.line_dialog(ref)] = _line_dialog(ref, by_line[ref], trig, codes_by_name, colours)
 
@@ -589,5 +678,6 @@ def build_spec(net, berths, colours):
         "triggers": triggers,
         "areas": areas,
         "home": NW.go_fn(home.code) if home is not None else None,
+        "sights": {e["id"]: [sight_fn(e["id"], sp["key"]) for sp in e["spots"]] for e in sights},
         "warnings": warnings,
     }

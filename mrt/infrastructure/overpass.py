@@ -28,6 +28,10 @@ CURL_ENV = {k: v for k, v in os.environ.items() if k != "CURL_CA_BUNDLE"}
 
 DEFAULT_CACHE = os.environ.get("OVERPASS_CACHE")
 
+# overpass-api.de 對 curl 預設的 User-Agent 一律回 406 Not Acceptable（2026 起）。
+# 只報專案名稱 —— 不帶任何個人資料（姓名、email）
+USER_AGENT = "taipei-mrt-minecraft/1.0 (OpenStreetMap data build script)"
+
 
 def host(url):
     return url.split("/")[2]
@@ -42,7 +46,7 @@ def query(q, label="query", tries=9, timeout=300, backoff=4):
     for i in range(tries):
         url = MIRRORS[i % len(MIRRORS)]
         p = subprocess.run(
-            ["curl", "-sS", "--max-time", str(timeout), "-X", "POST",
+            ["curl", "-sS", "--max-time", str(timeout), "-A", USER_AGENT, "-X", "POST",
              "--data-urlencode", f"data={q}", url],
             capture_output=True, text=True, env=CURL_ENV)
         if p.returncode == 0 and p.stdout.strip().startswith("{"):

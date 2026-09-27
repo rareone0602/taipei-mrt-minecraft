@@ -5,6 +5,7 @@
 
 用法: ./.venv/bin/python tests/run_all.py
 """
+import glob
 import os
 import subprocess
 import sys
@@ -16,7 +17,10 @@ TESTS = ["test_architecture.py", "test_geometry.py", "test_alignment.py",
          "test_side_station.py", "test_transfer.py", "test_elevated_exits.py",
          "test_ground_gate.py", "test_stacked.py", "test_network.py",
          "test_heightmap.py", "test_spawn.py", "test_datapack.py",
-         "test_signage.py"]
+         "test_signage.py", "test_attractions.py"]
+# 各景點自己的測試（application/attractions/ 底下一個模組一支）自動收進來，
+# 新增景點不必改這份清單
+TESTS += sorted(os.path.basename(p) for p in glob.glob(os.path.join(HERE, "test_attr_*.py")))
 
 
 def main():

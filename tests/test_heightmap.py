@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 
-from mrt.config import Y_MIN
+from mrt.config import Y_MIN, Y_MAX
 from mrt.infrastructure import heightmap as HM
 from mrt.infrastructure.mcworld import Chunk
 
@@ -70,17 +70,21 @@ def dense(sparse, default=4):
 
 
 print("打包格式")
-chk(f"每筆 {HM.BITS} bit、一個 long 塞 {HM.PER_LONG} 筆、共 {HM.N_LONGS} 個 long",
-    (HM.BITS, HM.PER_LONG, HM.N_LONGS) == (9, 7, 37))
+H = Y_MAX - Y_MIN + 1
+chk("原版 384 格高：每筆 9 bit、一個 long 7 筆、37 個 long", HM.layout(384) == (9, 7, 37))
+chk(f"這個世界 {H} 格高（台北101）：每筆 {HM.BITS} bit、一個 long 塞 {HM.PER_LONG} 筆、"
+    f"共 {HM.N_LONGS} 個 long", (HM.BITS, HM.PER_LONG, HM.N_LONGS) == HM.layout(H)
+    and (H != 704 or HM.layout(H) == (10, 6, 43)))
+# 遊戲存的參考區塊是原版高度（GameTest 伺服器的世界沒有加高），打包法同一套、只差位元數
 for name, sp, longs in (("WORLD_SURFACE", GAME_WS, GAME_WS_LONGS),
                         ("MOTION_BLOCKING", GAME_MB, GAME_MB_LONGS)):
-    chk(f"{name}：同樣的高度打包出來跟遊戲存的逐位元相同",
-        [int(v) for v in HM.pack(dense(sp))] == longs)
-    chk(f"{name}：遊戲存的解開來就是那些高度", HM.unpack(longs).tolist() == dense(sp))
+    chk(f"{name}：同樣的高度照原版 9 bit 打包出來跟遊戲存的逐位元相同",
+        [int(v) for v in HM.pack(dense(sp), height=384)] == longs)
+    chk(f"{name}：遊戲存的解開來就是那些高度", HM.unpack(longs, height=384).tolist() == dense(sp))
 rnd = np.random.RandomState(0)
-vals = rnd.randint(0, 385, size=256)
-vals[0], vals[255] = 384, 384                  # 世界頂（y319）剛好是 9 bit 能放的最大值之一
-chk("0..384 的隨機高度打包再解開不變", (HM.unpack(HM.pack(vals)) == vals).all())
+vals = rnd.randint(0, H + 1, size=256)
+vals[0], vals[255] = H, H                      # 世界頂那一格
+chk(f"0..{H} 的隨機高度打包再解開不變", (HM.unpack(HM.pack(vals)) == vals).all())
 chk("打包出來是有號 long（NBT 的 long 沒有無號）", HM.pack(vals).dtype == np.int64)
 
 print("方塊分類（與遊戲的 Heightmap.Types.isOpaque 一致）")
@@ -156,16 +160,16 @@ chk("挖到岩床：柱頂 y-64（值 1）", top(c, "MOTION_BLOCKING", 8, 9) == 
 c.set(8, -64, 9, "minecraft:air")
 chk("連岩床都挖掉：四張都是 0（柱頂 = 世界底下一格）",
     all(v[8 + 9 * 16] == 0 for v in c.heightmaps()) and top(c, "WORLD_SURFACE", 8, 9) == Y_MIN - 1)
-c.set(3, 319, 5, "minecraft:stone")
-chk("世界頂 y319：值 384", c.heightmaps()[0][3 + 5 * 16] == 384)
+c.set(3, Y_MAX, 5, "minecraft:stone")
+chk(f"世界頂 y{Y_MAX}：值 {H}", c.heightmaps()[0][3 + 5 * 16] == H)
 chk("索引是 x + z*16（(3,5) 是 83 號，不是 (5,3) 的 53 號）",
-    c.heightmaps()[0][83] == 384 and c.heightmaps()[0][53] != 384)
+    c.heightmaps()[0][83] == H and c.heightmaps()[0][53] != H)
 
 print("寫進 NBT")
 root = c.to_nbt()
 hm = root["Heightmaps"]
 chk("剛好四個鍵：" + ", ".join(sorted(hm.keys())), sorted(hm.keys()) == sorted(HM.TYPES))
-chk("每張 37 個 long", all(len(hm[t]) == 37 for t in HM.TYPES))
+chk(f"每張 {HM.N_LONGS} 個 long", all(len(hm[t]) == HM.N_LONGS for t in HM.TYPES))
 chk("解開來跟 heightmaps() 一樣",
     all((HM.unpack(hm[t]) == c.heightmaps()[k]).all() for k, t in enumerate(HM.TYPES)))
 empty = Chunk(3, 4).to_nbt()["Heightmaps"]

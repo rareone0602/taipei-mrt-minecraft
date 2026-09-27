@@ -30,10 +30,16 @@ HEIGHTMAP_JSON = os.path.join(DATA, "heightmap.json")
 DEM_NLSC = os.path.join(DATA, "dem", "nlsc20")           # 國土測繪中心 20 m DTM
 DEM_COPERNICUS = os.path.join(DATA, "dem", "copernicus")  # GLO-30 DSM（補洞用）
 
-# --- 世界的垂直範圍（26.2）---
-Y_MIN, Y_MAX = -64, 319                       # 含端點
-SEC_MIN, SEC_MAX = Y_MIN >> 4, Y_MAX >> 4     # -4 .. 19
-N_SEC = SEC_MAX - SEC_MIN + 1                 # 24
+# --- 世界的垂直範圍 ---
+# 原版主世界是 y-64..319（384 格）。台北101 的塔尖在地面上 508 m（地面 y≈70），
+# 1:1 蓋要到 y≈580，所以用資料包把 minecraft:overworld 的維度類型換成 704 格高
+# （infrastructure/datapack.py 照這裡的數字寫 dimension_type/overworld.json）。
+# 區塊、高度圖的位元數、讀回工具都從這裡拿，不要在別處寫死 319 或 384。
+# 地形仍照 domain/terrain.py 的 Y_CAP 壓在 312 以下 —— 多出來的高度只給建築用。
+Y_MIN, Y_MAX = -64, 639                       # 含端點
+SEC_MIN, SEC_MAX = Y_MIN >> 4, Y_MAX >> 4     # -4 .. 39
+N_SEC = SEC_MAX - SEC_MIN + 1                 # 44
+WORLD_HEIGHT = Y_MAX - Y_MIN + 1              # 704（16 的倍數，min_y + height <= 2032）
 
 # --- 資料包（datapack）---
 # 告示牌上的點擊指令（application 層立的）與資料包裡的函式（infrastructure 層寫的）

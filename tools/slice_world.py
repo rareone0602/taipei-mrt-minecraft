@@ -200,8 +200,8 @@ def main():
     # 自動裁切會把整層地下街切掉，要看它就得每次手動給 --ylo/--yhi。
     interesting = [y for (off, y), g in grid.items() if g in set("*|#=DPYCW_SAr!wB")]
     if interesting and a.ylo is None:
-        ylo = max(-64, min(interesting) - 4)
-        yhi = min(320, max(interesting) + 6)
+        ylo = max(config.Y_MIN, min(interesting) - 4)
+        yhi = min(config.Y_MAX, max(interesting) + 6)
 
     print(f"# {'縱' if a.long else '橫'}剖面  y {ylo}..{yhi}  寬 {2*a.half+1} m")
     print("      " + "".join(str(abs(o) % 10) if o % 5 == 0 else " " for o, _, _ in cols))
