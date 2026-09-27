@@ -120,19 +120,28 @@ def blend_field(pts, rx, rz, inner, outer):
     return np.clip((outer - d) / max(1.0, outer - inner), 0.0, 1.0)
 
 
-def terrain_chunk(ch, cx, cz, terr, blend, rx, rz):
-    """用 numpy 一次組出整個 chunk 的地形。"""
-    xs = np.arange(cx * 16, cx * 16 + 16)
-    zs = np.arange(cz * 16, cz * 16 + 16)
-    ZZ, XX = np.meshgrid(zs, xs, indexing="ij")
-    H = terr.y_at(XX, ZZ).astype(np.float64)
+def surface_y(terr, blend, rx, rz, XX, ZZ):
+    """地形表面（草皮那一格）的 y：走廊內是真實地形，往外依 blend 漸變回 FLAT_Y。
 
+    terrain_chunk 蓋地形就是用這個；出生點要知道「門口那一格地面多高」也用
+    同一個式子，不必讀存檔。blend 為 None 就是不漸變的真實地形。
+    """
+    XX, ZZ = np.asarray(XX), np.asarray(ZZ)
+    H = terr.y_at(XX, ZZ).astype(np.float64)
     if blend is not None:
         bi = ((XX - rx * 512) // BLEND_CELL).clip(0, blend.shape[1] - 1)
         bj = ((ZZ - rz * 512) // BLEND_CELL).clip(0, blend.shape[0] - 1)
         f = blend[bj.astype(int), bi.astype(int)]
         H = H * f + FLAT_Y * (1 - f)
-    H = np.round(H).astype(np.int32)
+    return np.round(H).astype(np.int32)
+
+
+def terrain_chunk(ch, cx, cz, terr, blend, rx, rz):
+    """用 numpy 一次組出整個 chunk 的地形。"""
+    xs = np.arange(cx * 16, cx * 16 + 16)
+    zs = np.arange(cz * 16, cz * 16 + 16)
+    ZZ, XX = np.meshgrid(zs, xs, indexing="ij")
+    H = surface_y(terr, blend, rx, rz, XX, ZZ)
 
     names = [AIR, BEDROCK, STONE, DIRT, GRASS, SAND, WATER]
     A, B, S, D, G, SD, W = range(7)

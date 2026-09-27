@@ -94,6 +94,19 @@ def _region_dir(save, region_dir=None):
     return rdir
 
 
+def _parse_chunk(raw, i):
+    """region 檔內容 raw 的第 i 個 chunk -> 根 Compound（沒有這個 chunk 回 None）。"""
+    off = int.from_bytes(raw[i * 4:i * 4 + 3], "big")
+    if off == 0:
+        return None
+    q = off * 4096
+    ln = int.from_bytes(raw[q:q + 4], "big")
+    blob = raw[q + 5:q + 4 + ln]
+    root = nbtlib.File.parse(io.BytesIO(
+        zlib.decompress(blob) if raw[q + 4] == 2 else blob))
+    return root[''] if '' in root else root
+
+
 def iter_chunks(rdir, x0, z0, x1, z1):
     """走訪與 [x0,x1] x [z0,z1] 有交集的 chunk，產生 (cx, cz, 根 Compound)。"""
     want = []
@@ -112,16 +125,61 @@ def iter_chunks(rdir, x0, z0, x1, z1):
             if (cx * 16 > x1 or cx * 16 + 15 < x0
                     or cz * 16 > z1 or cz * 16 + 15 < z0):
                 continue
-            off = int.from_bytes(raw[i * 4:i * 4 + 3], "big")
-            if off == 0:
-                continue
-            q = off * 4096
-            ln = int.from_bytes(raw[q:q + 4], "big")
-            blob = raw[q + 5:q + 4 + ln]
-            root = nbtlib.File.parse(io.BytesIO(
-                zlib.decompress(blob) if raw[q + 4] == 2 else blob))
-            root = root[''] if '' in root else root
-            yield cx, cz, root
+            root = _parse_chunk(raw, i)
+            if root is not None:
+                yield cx, cz, root
+
+
+def chunk_coords(save, region_dir=None):
+    """存檔裡實際寫了哪些 chunk：[(cx, cz)]。只讀每個 region 檔開頭 4 KB 的索引。"""
+    rdir = _region_dir(save, region_dir)
+    out = []
+    for path in sorted(glob.glob(os.path.join(rdir, "r.*.*.mca"))):
+        try:
+            rx, rz = (int(t) for t in os.path.basename(path)[2:-4].split("."))
+        except ValueError:
+            continue
+        with open(path, "rb") as f:
+            head = f.read(4096)
+        if len(head) < 4096:
+            continue
+        for i in range(1024):
+            if int.from_bytes(head[i * 4:i * 4 + 3], "big"):
+                out.append((rx * 32 + (i % 32), rz * 32 + (i // 32)))
+    return out
+
+
+def read_chunks(save, coords, region_dir=None):
+    """讀回指定的一批 chunk：產生 (cx, cz, 根 Compound)。每個 region 檔只讀一次。"""
+    rdir = _region_dir(save, region_dir)
+    by_region = {}
+    for cx, cz in coords:
+        by_region.setdefault((cx >> 5, cz >> 5), []).append((cx, cz))
+    for (rx, rz), cs in sorted(by_region.items()):
+        path = os.path.join(rdir, f"r.{rx}.{rz}.mca")
+        if not os.path.exists(path):
+            continue
+        raw = open(path, "rb").read()
+        if len(raw) < 8192:
+            continue
+        for cx, cz in sorted(cs):
+            root = _parse_chunk(raw, (cx & 31) + (cz & 31) * 32)
+            if root is not None:
+                yield cx, cz, root
+
+
+def section_blocks(sec):
+    """一個 section 的方塊 -> (palette 名稱清單, 長度 4096 的索引陣列，(y,z,x) 順序)。
+    沒有 block_states 回 None。"""
+    if "block_states" not in sec:
+        return None
+    bs = sec["block_states"]
+    pal = palette_names(bs)
+    if "data" in bs and len(bs["data"]):
+        idx = unpack(bs["data"], max(4, (len(pal) - 1).bit_length()))
+    else:
+        idx = np.zeros(4096, dtype=np.int64)
+    return pal, idx
 
 
 def component_text(m):
@@ -204,16 +262,10 @@ def read_volume(save, x0, y0, z0, x1, y1, z1, region_dir=None, verbose=True):
             sy = int(sec["Y"])
             if sy < sy0 or sy > sy1 or "block_states" not in sec:
                 continue
-            bs = sec["block_states"]
-            pal = palette_names(bs)
+            pal, idx = section_blocks(sec)
             if len(pal) == 1 and pal[0] == AIR:
                 continue
             ids = np.array([vol.ident(n) for n in pal], dtype=np.int16)
-            if "data" in bs and len(bs["data"]):
-                bits = max(4, (len(pal) - 1).bit_length())
-                idx = unpack(bs["data"], bits)
-            else:
-                idx = np.zeros(4096, dtype=np.int64)
             blk = ids[idx].reshape(16, 16, 16)          # [y][z][x]
 
             # 與目標範圍取交集，只搬重疊的那一塊

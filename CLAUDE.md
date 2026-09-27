@@ -96,6 +96,7 @@ tests/              不需要產生世界就能跑的測試
 ./.venv/bin/python tools/verify_tracks.py <存檔> --station 西門 --expect 4 --levels 2
 ./.venv/bin/python tools/verify_tracks.py <存檔> --pocket 大安 信義安和 --expect 3
                                                           # 讀回每一刀有幾股鐵軌、各在哪個高度
+./.venv/bin/python tools/verify_spawn.py <存檔> [--all]   # 讀回出生點與區塊高度圖，照遊戲的邏輯找一次出生點
 ./.venv/bin/python tools/slice_world.py 忠孝復興          # ASCII 剖面
 ```
 

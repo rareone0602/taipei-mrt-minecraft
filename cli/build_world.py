@@ -28,6 +28,7 @@ from mrt import config
 from mrt.application import build_line as BL
 from mrt.application import build_world as BW
 from mrt.application import landmarks as LM
+from mrt.application import spawn as SP
 from mrt.domain import alignment as AL
 from mrt.domain import network as NW
 from mrt.domain import rails
@@ -439,6 +440,28 @@ def main():
     print(f"搭乘系統：{sum(1 for s in net.values() if s.box is not None)} 站、"
           f"{len(berths)} 個月台邊、{n_slot} 面搭車告示牌、{len(NW.rides(net, berths))} 段車程")
 
+    # ---- 出生點：台北車站捷運出入口亭的門外（規則見 application/spawn.py）----
+    # 門口那一格的地面高度要跟真的蓋出來的一樣：走廊外會漸變回平地，所以照
+    # terrain_chunk 同一個式子、同一張距離場算，不讀存檔
+    blend_cache = {}
+
+    def built_ground(x, z):
+        rx, rz = int(x) >> 9, int(z) >> 9
+        pts = terr_pts.get((rx, rz))
+        if not pts:
+            return FLAT_Y                       # 這個 region 沒有地形：超平坦背景
+        if (rx, rz) not in blend_cache:
+            blend_cache[(rx, rz)] = blend_field(pts, rx, rz, a.corridor, outer)
+        return int(BW.surface_y(terr, blend_cache[(rx, rz)], rx, rz, x, z))
+
+    spawn = SP.plan_spawn(marks, stations, built_ground)
+    if spawn is None:
+        # 挑不到就退回台北車站捷運站點正上方的地面（至少是高度圖算得出來的一格）
+        nx, nz = SP.station_node(stations) or (0, 0)
+        spawn = dict(x=nx, y=built_ground(nx, nz) + 1, z=nz, facing=None,
+                     why="找不到合格的出入口亭，退回捷運站點上方的地面")
+    del blend_cache
+
     regions = sorted(set(struct_b) | set(terr_pts) | set(mark_b))
     if a.bbox:
         x0, z0, x1, z1 = a.bbox
@@ -447,6 +470,9 @@ def main():
                 and rz * 512 <= z1 and (rz + 1) * 512 > z0]
         print(f"--bbox {x0},{z0}..{x1},{z1}：{len(regions)} 個 region 只留 {len(keep)} 個")
         regions = keep
+        if (spawn["x"] >> 9, spawn["z"] >> 9) not in set(keep):
+            print(f"⚠ 出生點 ({spawn['x']},{spawn['z']}) 不在 --bbox 產生的範圍裡，"
+                  f"進遊戲會站在一塊沒蓋東西的超平坦地上")
     print(f"要產生 {len(regions)} 個 region（{len(terr_pts)} 個含地形）")
 
     shutil.rmtree(a.out, ignore_errors=True)
@@ -534,11 +560,13 @@ def main():
             print(f"  [{n}/{len(regions)}] {el:>5.0f}s  {nch:>7,} 區塊  "
                   f"{nbytes/1e6:>6.0f} MB  剩餘約 {el/n*(len(regions)-n):.0f}s")
 
-    gy = int(terr.y_at(np.array([0]), np.array([0]))[0])
-    w = World(a.out, name=config.WORLD_NAME, spawn=(0, gy + 2, 0))
+    w = World(a.out, name=config.WORLD_NAME,
+              spawn=(spawn["x"], spawn["y"], spawn["z"]), spawn_facing=spawn["facing"])
     w._write_level()
     print(f"\n完成：{nch:,} 區塊, {nsign:,} 面告示牌, {nbytes/1e6:.0f} MB, {time.time()-t0:.0f}s")
-    print(f"出生點 (0,{gy+2},0) = 台北車站地面")
+    print(f"出生點 ({spawn['x']},{spawn['y']},{spawn['z']})"
+          + (f" 面向 ({spawn['facing'][0]},{spawn['facing'][1]})" if spawn["facing"] else "")
+          + f"：{spawn['why']}")
 
 
 if __name__ == "__main__":

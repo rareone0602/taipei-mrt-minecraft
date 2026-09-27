@@ -19,6 +19,7 @@ from nbtlib.tag import (Compound, List, String, Int, Byte, Long, LongArray,
                         IntArray, Float)
 
 from mrt.config import Y_MIN, Y_MAX, SEC_MIN, SEC_MAX, N_SEC
+from mrt.infrastructure import heightmap as HM
 
 DATA_VERSION = 4903          # MC 26.2 —— 這個是存檔格式的細節，留在這一層
 
@@ -38,7 +39,19 @@ def background_block(y):
     return "minecraft:air"
 
 
+# 每個 section 背景地層的高度圖 flags（[16] 逐層），算高度圖時「沒寫過」的格子查這張
+_BG_FLAGS = {sy: np.array([HM.flags(background_block(sy * 16 + j)) for j in range(16)],
+                          dtype=np.uint8)
+             for sy in range(SEC_MIN, SEC_MAX + 1)}
+
+
 _BS_RE = re.compile(r"^([a-z0-9_.:]+)(?:\[(.*)\])?$")
+
+
+def yaw_of(fx, fz):
+    """朝向 (dx, dz) -> Minecraft 的 yaw（度，-180～180）：0 = 南 (+z)、90 = 西、
+    ±180 = 北、-90 = 東。告示牌的 rotation 與 level.dat 出生點的 yaw 都用這一個換算。"""
+    return math.degrees(math.atan2(-fx, fz))
 
 
 def _u32():
@@ -154,6 +167,29 @@ class Chunk:
         a = self._sec(y >> 4)
         a[(y & 15) * 256 + z * 16 + x] = self._pid(block)
 
+    def heightmaps(self):
+        """四張高度圖（heightmap.TYPES 的順序），每張 256 筆、索引 x + z*16。
+
+        找出生點、重生點是查 MOTION_BLOCKING 取柱頂（heightmap.py 的說明）。
+        0 號 palette（沒寫過）照背景地層算，沒寫過的 section 整塊都是背景。
+        """
+        lut = HM.flags_lut(self.pal[1:])
+        lut = np.concatenate([np.zeros(1, dtype=np.uint8), lut])
+
+        def section_flags(sy):
+            bg = _BG_FLAGS[sy]
+            arr = self.sections.get(sy)
+            if arr is None:
+                return np.broadcast_to(bg[:, None, None], (16, 16, 16)) if bg.any() else None
+            a = arr.reshape(16, 16, 16)
+            f = lut[a]
+            unset = a == 0
+            if unset.any():
+                f = np.where(unset, bg[:, None, None], f)
+            return f
+
+        return HM.column_heights(section_flags).reshape(4, 256)
+
     def to_nbt(self):
         secs = List[Compound]()
         for sy in range(SEC_MIN, SEC_MAX + 1):
@@ -201,17 +237,21 @@ class Chunk:
             "block_ticks": List[Compound]([]),
             "fluid_ticks": List[Compound]([]),
             "PostProcessing": List[List[Compound]]([List[Compound]([]) for _ in range(N_SEC)]),
-            "Heightmaps": Compound({}),
+            # 遊戲自己存的 full 區塊一定帶這四張表；原本這裡寫空的（見 heightmap.py）
+            "Heightmaps": Compound({
+                t: LongArray(HM.pack(v).tolist())
+                for t, v in zip(HM.TYPES, self.heightmaps())}),
             "structures": Compound({"starts": Compound({}), "References": Compound({})}),
         })
 
 
 class World:
-    def __init__(self, path, name="Generated", seed=0, spawn=(0, 80, 0)):
+    def __init__(self, path, name="Generated", seed=0, spawn=(0, 80, 0), spawn_facing=None):
         self.path = os.path.abspath(path)
         self.name = name
         self.seed = seed
         self.spawn = spawn
+        self.spawn_facing = spawn_facing        # (dx, dz)：新玩家一進來面朝哪邊；None = 朝南
         self.chunks = {}                        # (cx,cz) -> Chunk
         self._region_filter = None              # 設成 (rx,rz) 則只收該 region 的方塊
 
@@ -244,8 +284,7 @@ class World:
         """
         x, y, z = int(x), int(y), int(z)
         fx, fz = facing
-        yaw = math.degrees(math.atan2(-fx, fz))          # MC: 0=南, 90=西, 180=北, 270=東
-        rot = int(round(yaw / 22.5)) % 16
+        rot = int(round(yaw_of(fx, fz) / 22.5)) % 16
         if kind == "wall":
             card = "south" if abs(fz) >= abs(fx) and fz > 0 else \
                    "north" if abs(fz) >= abs(fx) else ("east" if fx > 0 else "west")
@@ -299,7 +338,8 @@ class World:
             "Time": Long(0),
             "version": Int(19133),
             "spawn": Compound({"pos": IntArray(list(self.spawn)),
-                               "pitch": Float(0.0), "yaw": Float(0.0),
+                               "pitch": Float(0.0),
+                               "yaw": Float(yaw_of(*self.spawn_facing) if self.spawn_facing else 0.0),
                                "dimension": String("minecraft:overworld")}),
             "difficulty_settings": Compound({"difficulty": String("normal"),
                                              "hardcore": Byte(0), "locked": Byte(0)}),

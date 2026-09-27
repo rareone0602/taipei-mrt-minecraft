@@ -236,6 +236,19 @@ relation 的成員順序不保證、方向可能相反，直接串接會產生�
   這幾站的出入口走得到上下兩層月台的警示帶。工具挑幾何一律過
   `alignment.select_variants`，跟生成器挑同一份 —— 不然 OSM 的上下行兩份
   relation 差十幾公尺，切在沒蓋的那一份上，會回報一個不存在的問題
+- `tools/verify_spawn.py` — 讀回 level.dat 的出生點與區塊高度圖：出生點站得住、
+  頭上是天空、存的四張高度圖與從方塊重算的逐柱相同（`--all` 比對全部區塊），
+  再照遊戲的 `getLevelRespawnPos` 用高度圖走一遍，玩家要剛好落在出生點那一格、
+  面向出入口亭的門。玩家曾經生在 (0.5, −63, 0.5)，世界最底下的石頭裡 ——
+  原本區塊寫的是空的 `Heightmaps`，出生點是站點正上方、地下街與兩座站體
+  挖得最空的那一柱。現在 full 區塊帶齊遊戲自己也存的四張表
+  （`mrt/infrastructure/heightmap.py`：WORLD_SURFACE、OCEAN_FLOOR、MOTION_BLOCKING、
+  MOTION_BLOCKING_NO_LEAVES，每柱 9 bit、7 筆一個 long、共 37 個 long），打包結果
+  與 26.2 GameTest 伺服器存出來的陣列逐位元相同；方塊分類對全部 32,366 個方塊狀態
+  比對過遊戲的 `Heightmap.Types.isOpaque()` —— 告示牌、旗幟、壓力板穿得過去，
+  高度圖卻算它們擋（forceSolidOn），雪片、梯子、鷹架反過來不算。出生點改成台北車站
+  捷運出口 M4 的出入口亭門外、面朝門口（`mrt/application/spawn.py`）。遊戲預設的
+  respawn_radius 是 10，半徑內有亭子與樓梯的屋頂，約 16% 的機會被放到屋頂上
 - `tests/` — 幾何、線形、鐵軌、地標各自帶單元測試（多邊形填充面積、外圈、內縮、
   屋頂收斂、折返梯的踏面與淨空），不必產生世界就能跑
 - `mrt/domain/tunnel_layers.py` — 分帶後自己驗算：任兩條異線的地下格若相鄰，帶號必須不同
