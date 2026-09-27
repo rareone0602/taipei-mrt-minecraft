@@ -236,6 +236,8 @@ def tower_skin(F, yy, sh):
 class Taipei101(Attraction):
     height_m = 508.0
     margin = 12
+    # 預設觀景點在塔西南 210 m（整座塔才塞得進視野）：那一帶也要是真實地形
+    terrain_margin = 240
 
     # ---------------------------------------------------------------- 資料
     def _ring(self, osm):

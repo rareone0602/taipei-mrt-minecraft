@@ -612,10 +612,11 @@ def main():
         for rx in range(sx0 >> 9, (sx1 >> 9) + 1):
             for rz in range(sz0 >> 9, (sz1 >> 9) + 1):
                 sight_b.setdefault((rx, rz), []).append(s_)
-        # 景點四周要生成真實地形（圓山大飯店在劍潭山腰）。範圍多給 48 m，
-        # 淡出的那一圈才不會正好切在建築腳下
-        for x in range(sx0 - 48, sx1 + 49, 8):
-            for z in range(sz0 - 48, sz1 + 49, 8):
+        # 景點四周要生成真實地形。範圍多給 terrain_margin（預設 48 m；圓山大飯店在劍潭山腰，
+        # 給得大，背後的山才不會在建築後面被削成一道斜坡），淡出的那一圈不會切在建築腳下
+        tm = int(getattr(s_, "terrain_margin", 48))
+        for x in range(sx0 - tm, sx1 + tm + 1, 8):
+            for z in range(sz0 - tm, sz1 + tm + 1, 8):
                 for rx in range((x - outer) >> 9, ((x + outer) >> 9) + 1):
                     for rz in range((z - outer) >> 9, ((z + outer) >> 9) + 1):
                         terr_pts.setdefault((rx, rz), []).append((x, z))

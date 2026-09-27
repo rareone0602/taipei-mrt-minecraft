@@ -128,8 +128,14 @@ class Frame:
         return int(math.floor(x)), int(math.floor(z))
 
     def local(self, x, z):
-        """世界格子 (x, z) 的中心 -> 局部 (u, v)。"""
+        """世界**格子** (x, z) 的中心 -> 局部 (u, v)（會先加 0.5）。
+        OSM 輪廓的頂點是點、不是格子，換算點要用 local_pt()。"""
         dx, dz = x + 0.5 - self.cx, z + 0.5 - self.cz
+        return dx * self.c + dz * self.s, -dx * self.s + dz * self.c
+
+    def local_pt(self, x, z):
+        """世界座標的**點** (x, z)（例如 OSM 頂點）-> 局部 (u, v)，不加 0.5。"""
+        dx, dz = x - self.cx, z - self.cz
         return dx * self.c + dz * self.s, -dx * self.s + dz * self.c
 
     def dir(self, du, dv):
@@ -389,6 +395,9 @@ class Site:
 
     ground(x, z) 是 cli 給的「這一格蓋出來的地面方塊 y」（跟 terrain_chunk 同一個式子，
     走廊外會漸變回超平坦的 y64）。keep 是禁區（同 Guard）。
+
+    地面最好在 plan() 裡查完（site.grid(fr, mask) 先抓一整片）：build() 會被每個
+    region 各呼叫一次，在裡面逐格查地面既慢、又讓 build() 依賴 cli 的地形快取。
     """
 
     def __init__(self, ground, keep=None):
@@ -448,6 +457,9 @@ class Attraction:
 
     height_m = None          # 公開資料的高度（公尺，從地面算到最高點）—— verify_attractions 拿來比
     margin = 12              # bbox 比 OSM 輪廓外擴幾格（廣場、台階、屋簷）
+    # bbox 外再多遠也生成真實地形（再往外 cli 的 --fade 那一圈才漸變回超平坦 y64）。
+    # 山坡上的景點要大一點，否則背後的山在建築後面幾十公尺就被削成一道斜坡
+    terrain_margin = 48
 
     def __init__(self, item):
         self.item = item

@@ -43,7 +43,9 @@ FACTS = {
     "shin_kong_tower":        dict(height=244.15, cover=0.6, spill=15),  # 244.15 m（1993）
     "cks_memorial":           dict(height=70.0, cover=0.25, spill=60),   # 紀念堂本體 70 m
     "presidential_office":    dict(height=60.0, cover=0.4, spill=20),    # 中央塔樓 60 m
-    "grand_hotel":            dict(height=87.0, cover=0.4, spill=40),    # 87 m（1973）
+    # 圓山大飯店指名的是整片飯店用地；主體是主樓加沿山坡往上的後棟
+    "grand_hotel":            dict(height=87.0, cover=0.4, spill=40,     # 87 m（1973）
+                                   outline=["way/25202548", "relation/10098399"]),
     "sun_yat_sen_memorial":   dict(height=30.4, cover=0.5, spill=40),    # 30.4 m
     "miramar_wheel":          dict(height=100.0, cover=0.2, spill=40),   # 摩天輪頂離地 100 m
     "national_taiwan_museum": dict(height=30.0, cover=0.5, spill=20),   # 圓頂頂端近 30 m（1915）
@@ -57,6 +59,9 @@ FACTS = {
 DEFAULT = dict(height=None, cover=0.4, spill=25)
 
 AIRS = ("minecraft:air", "minecraft:cave_air", "minecraft:void_air")
+# 地形生成器（application/build_world.terrain_chunk）與超平坦背景會用到的方塊
+NATURAL = {"minecraft:" + n for n in ("grass_block", "dirt", "stone", "sand", "water", "bedrock",
+                                      "gravel", "coarse_dirt")}
 TP_RE = re.compile(r"^tp @s (-?[\d.]+) (-?\d+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)$")
 
 
@@ -86,10 +91,23 @@ def all_functions(save):
             for f in glob.glob(os.path.join(root, "**", "*.mcfunction"), recursive=True)}
 
 
-def main_outlines(item):
+def main_outlines(item, osm_ids=None):
+    """主體的外環：指名元素裡有 building / building:part 標籤的。
+
+    指名元素不一定是房子 —— 圓山大飯店指名的是整片飯店用地（tourism=hotel，4 萬 m2），
+    拿它當輪廓的話，外圍一圈是山下的河岸平地，高度與出界都會算錯。
+    指名的都不是房子，就取離中心最近、面積大的那棟。"""
     rings = []
+    if osm_ids:                        # FACTS 指定了主體由哪幾棟組成
+        for f in item["features"]:
+            if f["osm"] in osm_ids and f.get("outer"):
+                rings += [r for r in f["outer"] if len(r) >= 3]
+        if rings:
+            return rings
     for f in item["features"]:
-        if f.get("main") and f.get("outer") and f.get("area", 0) > 0:
+        t = f.get("tags", {})
+        if (f.get("main") and f.get("outer") and f.get("area", 0) > 0
+                and ("building" in t or "building:part" in t)):
             rings += [r for r in f["outer"] if len(r) >= 3]
     if not rings:
         blds = [f for f in item["features"] if f.get("outer") and "building" in f["tags"]]
@@ -103,7 +121,7 @@ def check(save, item, fns, funcs, say):
     aid = item["id"]
     fact = FACTS.get(aid, DEFAULT)
     probs = []
-    rings = main_outlines(item)
+    rings = main_outlines(item, fact.get("outline"))
     if not rings:
         return ["資料裡沒有主體輪廓"]
     cells = set()
@@ -123,7 +141,9 @@ def check(save, item, fns, funcs, say):
     def T(x, z):
         return int(top[z - z0, x - x0])
 
-    # 地面：輪廓外擴 spill+8 ~ spill+20 那一圈的柱頂中位數（那裡只該是地形）
+    # 地面：輪廓外擴 spill+8 ~ spill+20 那一圈的柱頂中位數（那裡只該是地形）。
+    # 山坡上的建築（圓山大飯店在劍潭山腰）那一圈是山下的河岸平地，高度要從建築自己的
+    # 基地量起：輪廓內最低的人造方塊（一樓樓板）比遠圈高 2 格以上，就改用它
     fp = np.zeros(top.shape, dtype=bool)
     for x, z in cells:
         fp[z - z0, x - x0] = True
@@ -131,7 +151,19 @@ def check(save, item, fns, funcs, say):
     band = (dist > fact["spill"] + 8) & (dist <= fact["spill"] + 20) & col_any
     if not band.any():
         return probs + ["讀不到輪廓外的地面（範圍外沒有區塊？）"]
-    ground = int(np.median(top[band]))
+    natural = np.array([n.split("[")[0] in NATURAL for n in vol.names])
+    iy = np.clip(top - vol.y0, 0, vol.ny - 1)
+    zz, xx = np.indices(top.shape)
+    top_natural = natural[data[iy, zz, xx]] & col_any
+    far_g = int(np.median(top[band]))
+    # 建築自己的基地：輪廓內每一柱從遠圈地面下 3 格往上第一個人造方塊，取下四分位數
+    # （主樓的一樓樓板；沿山坡往上蓋的後棟樓板比較高，不能讓它把基地抬上去）
+    lo = max(0, far_g - 3 - vol.y0)
+    man = solid[lo:] & ~natural[data[lo:]]
+    has_man = man.any(axis=0) & fp
+    base_g = (int(np.percentile(vol.y0 + lo + np.argmax(man, axis=0)[has_man], 25))
+              if has_man.any() else far_g)
+    ground = base_g if base_g > far_g + 2 else far_g
 
     # 高度
     near = dist <= 3
@@ -140,8 +172,9 @@ def check(save, item, fns, funcs, say):
     if fact["height"] is not None:
         tol = max(2.0, 0.03 * fact["height"])
         ok = abs(h - fact["height"]) <= tol
-        say("  %s 高度：最高點 y%d − 地面 y%d = %d m（公開資料 %.1f m，容許 ±%.0f）"
-            % ("ok  " if ok else "FAIL", peak, ground, h, fact["height"], tol))
+        say("  %s 高度：最高點 y%d − 地面 y%d = %d m（公開資料 %.1f m，容許 ±%.0f）%s"
+            % ("ok  " if ok else "FAIL", peak, ground, h, fact["height"], tol,
+               "" if ground == far_g else "（山坡上：地面取建築基地 y%d，遠處地形 y%d）" % (base_g, far_g)))
         if not ok:
             probs.append("高度 %d m，公開資料 %.1f m" % (h, fact["height"]))
     else:
@@ -157,8 +190,8 @@ def check(save, item, fns, funcs, say):
     if not ok:
         probs.append("輪廓覆蓋只有 %.0f%%" % (cover * 100))
 
-    # 出界：外擴 spill 以外，地面 6 格以上還有東西的柱子
-    tall = top >= ground + 6
+    # 出界：外擴 spill 以外，地面 6 格以上還有東西的柱子。柱頂是天然地形（山坡）的不算
+    tall = (top >= ground + 6) & ~top_natural
     out = tall & (dist > fact["spill"]) & (dist <= fact["spill"] + 20)
     n_out, n_in = int(out.sum()), int((tall & fp).sum())
     spill = n_out / max(1, n_in + n_out)

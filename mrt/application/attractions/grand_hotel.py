@@ -190,6 +190,9 @@ def _pattern(fr, period=3.0):
 class GrandHotel(Attraction):
     height_m = 87.0
     margin = 12
+    # 劍潭山在主樓北邊還有三、四百公尺才下到平地：真實地形給到 bbox 外 240 m，
+    # 否則背後的山在後棟後面就被削成一道往 y64 的斜坡
+    terrain_margin = 240
     MAIN = "way/25202548"
 
     # ---------------------------------------------------------------- 規劃
