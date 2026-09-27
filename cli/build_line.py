@@ -87,7 +87,7 @@ def main():
                 continue
             BL.build_station(w, samples, ys, best,
                              structure_for_ground(ys[best], GROUND) == "tunnel",
-                             label=(full_ref, name, en))
+                             label=(full_ref, name, en), name_signs=True)
             built += 1
         tot = max(1, sum(cnt.values()))
         print(f"{ref:<3} {km:>6.2f} km  y{min(ys):>3}~{max(ys):<3}  "

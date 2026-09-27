@@ -26,6 +26,7 @@
 import collections
 
 from mrt.application import build_concourse as BCC
+from mrt.application import signage as SG
 from mrt.domain import exits as EX
 from mrt.domain.alignment import station_kind
 from mrt.domain.stacked import station_samples
@@ -68,15 +69,17 @@ def footprint(objs, used=None):
     return used
 
 
-def make_well(s, sign):
+def make_well(s, sign, sign_style=None):
     """照計畫蓋一座出入口井。街面比穿堂高就從街上往下挖（地下站），
     反過來就從街上往上爬（高架站）—— 出口牌一律立在街上那扇門邊。"""
     street = s["g0"] + 1
     if street > s["y_to"]:
         return BCC.ShaftStair(s["x0"], s["z0"], s["ux"], s["uz"], s["g0"], s["y_to"],
-                              bottom_door=True, sign=sign, apron=APRON)
+                              bottom_door=True, sign=sign, apron=APRON,
+                              sign_style=sign_style)
     return BCC.ShaftStair(s["x0"], s["z0"], s["ux"], s["uz"], s["y_to"] - 1, street,
-                          bottom_door=True, sign_bottom=sign, apron=APRON)
+                          bottom_door=True, sign_bottom=sign, apron=APRON,
+                          sign_style=sign_style)
 
 
 class GroundGate:
@@ -94,13 +97,15 @@ class GroundGate:
     """
 
     def __init__(self, x0, z0, ux, uz, street, level, sign=None,
-                 step=BCC.STAIR, apron=APRON, run=EX.GATE_RUN, half=EX.PASS_HALF):
+                 step=BCC.STAIR, apron=APRON, run=EX.GATE_RUN, half=EX.PASS_HALF,
+                 sign_style=None):
         self.x0, self.z0 = int(x0), int(z0)
         self.ux, self.uz = int(round(ux)), int(round(uz))
         self.street, self.level = int(street), int(level)   # 街面與穿堂的站立高度
         self.sign = list(sign) if sign else None
         self.step, self.apron = step, apron
         self.run, self.half = int(run), int(half)
+        self.sign_style = dict(sign_style or {})
 
     def _w(self, a, b):
         vx, vz = -self.uz, self.ux
@@ -131,14 +136,15 @@ class GroundGate:
         if self.sign and hasattr(w, "sign"):
             x, z = self._w(self.run, self.half + 1)
             w.set(x, self.street - 1, z, self.step)
-            w.sign(x, self.street, z, self.sign[:4], facing=(self.ux, self.uz))
+            w.sign(x, self.street, z, self.sign[:4], facing=(self.ux, self.uz),
+                   **self.sign_style)
             w.set(x, self.street + 1, z, BCC.AIR)
 
 
-def make_gate(s, sign):
+def make_gate(s, sign, sign_style=None):
     """照計畫蓋一座平面出入口（exits.plan_station 的 gates 項目）。"""
     return GroundGate(s["x0"], s["z0"], s["ux"], s["uz"], s["g0"] + 1, s["y_to"],
-                      sign=sign)
+                      sign=sign, sign_style=sign_style)
 
 
 def make_tile(cells, no_wall, level, kind, ground_at):
@@ -160,7 +166,7 @@ def make_tile(cells, no_wall, level, kind, ground_at):
 
 
 def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
-                  verbose=True, no_transfer=(), no_default=()):
+                  verbose=True, no_transfer=(), no_default=(), colours=None):
     """替所有車站蓋真實出入口，再替轉乘站接轉乘通道。
 
     segs               cli 規劃好的路段（samples / ys / ground / stn / hw）
@@ -170,6 +176,8 @@ def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
     used               Occupancy，已被其他地標占用的格子（footprint() 的結果）
     no_transfer        不接轉乘通道的站名（台北車站複合體靠地下街轉乘）
     no_default         沒有出入口也不補預設出入口的站名（複合體由地下街的連絡梯進出）
+    colours            {路線: "#rrggbb"}（network.line_colours）：出口牌第一行上那條線的
+                       顏色、發光墨水（signage.exit_sign_lines）。None 就是舊的純文字牌
 
     回傳 (objects, exits, report)：
       exits   {(路段索引, 取樣索引): 井的數量}，cli 用它關掉樣板樓梯
@@ -212,13 +220,20 @@ def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
                                ally_tags=sg.get("ally_segs", {}).get(bi, ()))
         out = []
         full, zh, en = labels[key]
+        style = SG.SIGN_STYLE if colours is not None else None
+
+        def sign_of(refs):
+            lines = sign_lines(refs, zh, en)
+            if colours is None:
+                return lines
+            return SG.exit_sign_lines(lines, colours.get(sg["ref"]))
         for s in plan["shafts"]:
-            well = make_well(s, sign_lines(s["refs"], zh, en))
+            well = make_well(s, sign_of(s["refs"]), style)
             well.label = (name, s["refs"])
             well.underground = False
             out.append(well)
         for s in plan["gates"]:
-            gate = make_gate(s, sign_lines(s["refs"], zh, en))
+            gate = make_gate(s, sign_of(s["refs"]), style)
             gate.label = (name, s["refs"])
             gate.underground = False
             out.append(gate)
@@ -250,9 +265,14 @@ def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
                 up_key, lo_key = (ka, kb) if la >= lb else (kb, ka)
                 fa, za, ea = labels[lo_key]
                 fb, zb, eb = labels[up_key]
+                ra, rb = segs[lo_key[0]]["ref"], segs[up_key[0]]["ref"]
+                sa, sb = transfer_lines(ra, za, ea), transfer_lines(rb, zb, eb)
+                if colours is not None:
+                    sa = SG.transfer_sign_lines(sa, colours.get(ra))
+                    sb = SG.transfer_sign_lines(sb, colours.get(rb))
                 well = BCC.ShaftStair(x0, z0, dx, dz, top - 1, bottom, bottom_door=True,
-                                      sign=transfer_lines(segs[lo_key[0]]["ref"], za, ea),
-                                      sign_bottom=transfer_lines(segs[up_key[0]]["ref"], zb, eb))
+                                      sign=sa, sign_bottom=sb,
+                                      sign_style=SG.SIGN_STYLE if colours is not None else None)
                 well.label = (name, "轉乘")
                 well.underground = False
             out.append((ka, kb, res, well))

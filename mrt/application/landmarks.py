@@ -339,7 +339,7 @@ class RailHall:
                     w.set(x, y + self.clear - 1, z, self.lamp)
 # ---------- 世界層級的地標清單 ----------
 
-def for_world(segs, stations, terr):
+def for_world(segs, stations, terr, colours=None):
     """回傳 (地標清單, 真實出入口)。build_world 會依 bbox() 把地標分桶，
     再對每個涵蓋到的 region 呼叫 build(w)。
 
@@ -349,6 +349,7 @@ def for_world(segs, stations, terr):
     segs     : build_world 規劃出來的路段（含 samples / ys / ground / stn / hw）
     stations : (refs, 中文名, mc_x, mc_z, 英文名, ref字串) 串列
     terr     : Terrain，用來查地面高程
+    colours  : {路線: "#rrggbb"}，出口牌上路線色（None 就是純文字的舊牌子）
 
     真實出入口是 {(路段索引, 取樣索引): 井數}：有真實出入口的車站不再蓋
     樣板樓梯，cli 靠這張表把它關掉。
@@ -371,7 +372,7 @@ def for_world(segs, stations, terr):
         by_name[name] = lst
     ex_objs, exits, _ = BX.station_exits(
         segs, by_name, lambda x, z: int(terr.y_at(x, z)),
-        used=BX.footprint(tm), no_transfer=COMPLEX, no_default=COMPLEX)
+        used=BX.footprint(tm), no_transfer=COMPLEX, no_default=COMPLEX, colours=colours)
     out += ex_objs
     # 複合站的地下站體由地下街的連絡梯進出，樣板樓梯要關掉：那座樓梯從穿堂層
     # 一路爬到地面，正好穿過地下街那一層，踏面橫在通道裡把路封死 ——

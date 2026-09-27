@@ -277,7 +277,7 @@ class ShaftStair:
                  slab="minecraft:smooth_stone_slab",
                  rail="minecraft:iron_bars",
                  lamp="minecraft:sea_lantern",
-                 sign=None, sign_bottom=None, apron=None):
+                 sign=None, sign_bottom=None, apron=None, sign_style=None):
         self.x0, self.z0 = int(x0), int(z0)
         self.ux, self.uz = int(round(ux)), int(round(uz))
         self.g0, self.y_to = int(g0), int(y_to)
@@ -289,6 +289,8 @@ class ShaftStair:
         # 出口編號牌得立在那裡
         self.sign_bottom = list(sign_bottom) if sign_bottom else None
         self.apron = apron          # 街上那扇門前的前庭地坪方塊（None 不鋪）
+        # 告示牌的其餘參數（木頭、發光墨水……，見 ports.block_sink.SignSink）
+        self.sign_style = dict(sign_style or {})
 
     # 井內座標 (a 沿 u, b 沿 v) -> 世界座標
     def _w(self, a, b):
@@ -416,11 +418,13 @@ class ShaftStair:
         if self.sign and hasattr(w, "sign"):
             x, z = self._w(-2, 2)
             w.set(x, self.g0, z, self.step)
-            w.sign(x, self.g0 + 1, z, self.sign[:4], facing=(-self.ux, -self.uz))
+            w.sign(x, self.g0 + 1, z, self.sign[:4], facing=(-self.ux, -self.uz),
+                   **self.sign_style)
         if self.sign_bottom and hasattr(w, "sign"):
             x, z = self._w(-2, 2)
             w.set(x, self.y_to - 1, z, self.step)
-            w.sign(x, self.y_to, z, self.sign_bottom[:4], facing=(-self.ux, -self.uz))
+            w.sign(x, self.y_to, z, self.sign_bottom[:4], facing=(-self.ux, -self.uz),
+                   **self.sign_style)
 
 
 

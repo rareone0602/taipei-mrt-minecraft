@@ -243,28 +243,37 @@ def _stair_run(w, samples, ys, s0, d, per_m, y_from, y_to, off_lo, off_hi,
 # ---------- 車站 ----------
 
 def build_station(w, samples, ys, idx, underground, label=None, grounds=None,
-                  access=True, stacked=None):
+                  access=True, stacked=None, name_signs=False):
     """access=False 時不蓋樣板的出入口樓梯 —— 有真實出入口
     （application/build_exits.py）的車站用那些，樣板的那座只會多出一個
     誰也不會走的洞。地下站與側式月台站都適用。
 
     stacked 是 domain/stacked.layout() 的版面：兩股道分到上下兩層的地下站
     （府中的側式疊式、西門那種兩線共用的島式疊式）。samples 這時是站體座標系
-    （共用站體的是兩線中線的 frame，見 stacked.station_samples）。"""
+    （共用站體的是兩線中線的 frame，見 stacked.station_samples）。
+
+    name_signs=True 才在月台上立舊式的純文字站名牌（_plat_signs / place_signs）。
+    全網生成時月台門那一排改立搭車告示牌（application/signage.py，照
+    domain/network.py 的上車位置），同一格不該再有一面站名牌；只有不規劃路網的
+    cli/build_line 還用得到它。"""
     n = len(samples)
     half = int(PLATFORM_LEN / 2 / STEP)
     lo, hi = max(0, idx - half), min(n - 1, idx + half)
+    plat_label = label if name_signs else None
     if stacked is not None:
-        _station_stacked(w, samples, ys, grounds, lo, hi, label, stacked, access=access)
+        _station_stacked(w, samples, ys, grounds, lo, hi, label, stacked, access=access,
+                         plat_label=plat_label)
     elif underground:
-        _station_island(w, samples, ys, grounds, lo, hi, label, access=access)
+        _station_island(w, samples, ys, grounds, lo, hi, label, access=access,
+                        plat_label=plat_label)
     else:
-        _station_side(w, samples, ys, grounds, lo, hi, label, access=access)
+        _station_side(w, samples, ys, grounds, lo, hi, label, access=access,
+                      plat_label=plat_label)
 
 
 # ===== 地下站：島式月台 + 穿堂層 =====
 
-def _station_island(w, samples, ys, grounds, lo, hi, label, access=True):
+def _station_island(w, samples, ys, grounds, lo, hi, label, access=True, plat_label=None):
     """地下島式月台車站。
 
     北捷地下站幾乎都是島式：軌道分到兩側、月台居中，上面再疊一層穿堂。
@@ -329,8 +338,8 @@ def _station_island(w, samples, ys, grounds, lo, hi, label, access=True):
         _plat_stair(w, samples, ys, lo + a0 * per_m, per_m)
     if access:
         _station_access(w, samples, ys, grounds, lo, hi, label)
-    if label:
-        _plat_signs(w, samples, ys, lo, hi, label)
+    if plat_label:
+        _plat_signs(w, samples, ys, lo, hi, plat_label)
 
 
 def _gates(w, samples, ys, s0, per_m, floor_dy=MEZZ_DY, half=BOX_HALF - 2):
@@ -519,7 +528,8 @@ def _plat_signs(w, samples, ys, lo, hi, label, offs=(PLAT_HALF, -PLAT_HALF), dy0
 
 # ===== 疊式地下站：兩股道分到上下兩層 =====
 
-def _station_stacked(w, samples, ys, grounds, lo, hi, label, lay, access=True):
+def _station_stacked(w, samples, ys, grounds, lo, hi, label, lay, access=True,
+                     plat_label=None):
     """雙層地下站（domain/stacked.py）。上層與島式站同一套尺寸 —— 穿堂仍在
     軌面 +7，出入口、轉乘通道與驗證工具全部不必改；下層整層複製到 LEVEL_H
     格底下，頂板就是上層的底板。lay 是 stacked.layout() 的版面：側式疊式
@@ -565,9 +575,9 @@ def _station_stacked(w, samples, ys, grounds, lo, hi, label, lay, access=True):
     _level_stair(w, samples, ys, lo + 4 * per_m, per_m, H, l0, l1)
     if access:
         _station_access(w, samples, ys, grounds, lo, hi, label)
-    if label:
+    if plat_label:
         for dy0 in (0, -H):
-            _plat_signs(w, samples, ys, lo, hi, label, offs=lay["psd"], dy0=dy0)
+            _plat_signs(w, samples, ys, lo, hi, plat_label, offs=lay["psd"], dy0=dy0)
 
 
 def _stacked_level(w, samples, ys, lo, hi, dy0, lay):
@@ -600,7 +610,7 @@ def _stacked_level(w, samples, ys, lo, hi, dy0, lay):
 
 # ===== 高架／平面站：側式月台 =====
 
-def _station_side(w, samples, ys, grounds, lo, hi, label, access=True):
+def _station_side(w, samples, ys, grounds, lo, hi, label, access=True, plat_label=None):
     """側式月台車站：軌道走行面與區間同高，月台面再高 1 m。
 
     兩座月台各自封閉，靠一層穿堂（_side_concourse）串起來：閘門在穿堂層，
@@ -651,8 +661,8 @@ def _station_side(w, samples, ys, grounds, lo, hi, label, access=True):
                 w.set(round(x + nx * off), y + roof_h - 1, round(z + nz * off), LAMP)
 
     _side_concourse(w, samples, ys, grounds, lo, hi)
-    if label:
-        place_signs(w, samples, ys, lo, hi, label)
+    if plat_label:
+        place_signs(w, samples, ys, lo, hi, plat_label)
     if access:
         build_entrance(w, samples, ys, lo, hi, grounds, label)
 
