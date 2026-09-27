@@ -1,8 +1,8 @@
 # 產物：世界存檔 (1 GB+)
 /out/
 
-# 虛擬環境
-/.venv/
+# 虛擬環境（worktree 裡常是指回主目錄的 symlink，所以不加結尾的 /）
+/.venv
 
 # DEM 原始資料 (83 MB，來源見 README「資料來源」)
 /data/dem/

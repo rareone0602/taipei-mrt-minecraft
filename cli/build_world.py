@@ -661,7 +661,9 @@ def main():
     sight_keep = sight_keepout(marks, segs, sights)
     if sights:
         AT.plan_all(sights, built_ground, sight_keep)
-    del blend_cache
+    # 只清內容、不刪變數：景點的 build() 也可能再查 site.g()（built_ground 還要用這個快取），
+    # del 掉的話會變成 NameError: free variable 'blend_cache'
+    blend_cache.clear()
 
     regions = sorted(set(struct_b) | set(terr_pts) | set(mark_b) | set(sight_b))
     if a.bbox:

@@ -46,7 +46,7 @@ FACTS = {
     "grand_hotel":            dict(height=87.0, cover=0.4, spill=40),    # 87 m（1973）
     "sun_yat_sen_memorial":   dict(height=30.4, cover=0.5, spill=40),    # 30.4 m
     "miramar_wheel":          dict(height=100.0, cover=0.2, spill=40),   # 摩天輪頂離地 100 m
-    "national_taiwan_museum": dict(height=None, cover=0.5, spill=20),
+    "national_taiwan_museum": dict(height=30.0, cover=0.5, spill=20),   # 圓頂頂端近 30 m（1915）
     "red_house":              dict(height=None, cover=0.5, spill=15),
     "longshan_temple":        dict(height=None, cover=0.4, spill=20),
     "beimen":                 dict(height=None, cover=0.5, spill=15),
@@ -181,6 +181,9 @@ def check(save, item, fns, funcs, say):
         x, y, z, yaw, pitch = tp
         bx, bz = int(math.floor(x)), int(math.floor(z))
         get = vol.get
+        if not (x0 <= bx <= x1 and z0 <= bz <= z1):
+            # 高的建築要退遠一點才看得全：觀景點可能在讀回範圍外，另外讀它那一小塊
+            get = SR.read_volume(save, bx - 1, y - 2, bz - 1, bx + 1, y + 3, bz + 1, verbose=False).get
         stand = walk.standable(get, bx, y, bz)
         msg = "站得住" if stand else "站不住（腳 %s、頭 %s、腳下 %s）" % (
             get(bx, y, bz), get(bx, y + 1, bz), get(bx, y - 1, bz))
@@ -197,6 +200,8 @@ def check(save, item, fns, funcs, say):
     # 說明牌與點擊指令
     signs = SR.read_sign_entities(save, x0, z0, x1, z1)
     tp = mine.get("sight/" + aid)
+    if tp and not (x0 <= tp[0] <= x1 and z0 <= tp[2] <= z1):
+        signs += SR.read_sign_entities(save, int(tp[0]) - 6, int(tp[2]) - 6, int(tp[0]) + 6, int(tp[2]) + 6)
     if tp:
         x, y, z = tp[0], tp[1], tp[2]
         pl = [s for s in signs if abs(s["x"] - x) <= 4.5 and abs(s["z"] - z) <= 4.5 and abs(s["y"] - y) <= 2]
