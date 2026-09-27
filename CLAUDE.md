@@ -15,7 +15,8 @@
   `demo/.work/` 都在 `.gitignore` 裡。剪接點、字幕、抓圖的秒數全部寫在
   `demo/make_demo.py`，改素材要改那支腳本再重跑
   （`./.venv/bin/python demo/make_demo.py`），不要手工改成品。
-- 任何 HTTP 請求都不要帶個人資料（姓名、email）。
+- 任何 HTTP 請求都不要帶個人資料（姓名、email）。Overpass 的 User-Agent 只報專案名稱
+  （`infrastructure/overpass.USER_AGENT`；overpass-api.de 對 curl 預設的 UA 回 406）。
 
 ## 架構
 
@@ -31,10 +32,11 @@ mrt/
   ports/            內層對外層開的介面：BlockSink（逐格）、ChunkSink（整段批次）、
                     SignSink（告示牌：文字元件、發光、點擊指令、開對話框）
   application/      用例：把 domain 算出來的東西寫進 BlockSink；站內標誌 (signage)、
-                    資料包規格 (ride_plan)、出生點 (spawn)
+                    資料包規格 (ride_plan)、出生點 (spawn)、觀光景點 (attractions/)
   adapters/         外部資料進來：OSM (osm/)、DEM (dem/)、投影 (projection.py)
   infrastructure/   外部技術細節：Anvil 存檔寫入 (mcworld)、讀回 (savereader)、
-                    Overpass HTTP (overpass)、高度圖 (heightmap)、資料包 (datapack)
+                    Overpass HTTP (overpass)、高度圖 (heightmap)、資料包 (datapack，
+                    含把主世界加高的 dimension_type)
 
 cli/                組合根。唯一看得到全部實作的地方，決定要把方塊寫進哪個 World。
                     `cli.build_world.plan_segments()` 只規劃不蓋，工具與試算腳本
@@ -78,6 +80,7 @@ tests/              不需要產生世界就能跑的測試
 ./.venv/bin/python -m mrt.adapters.osm.fetch_details      # 出入口／站體／月台樓層
 ./.venv/bin/python -m mrt.adapters.osm.fetch_indoor       # 地下人行動線（地下街）
 ./.venv/bin/python -m mrt.adapters.osm.fetch_sidings      # 袋狀軌／橫渡線／機廠線
+./.venv/bin/python -m mrt.adapters.osm.fetch_attractions  # 觀光景點的建物輪廓（台北101……）
 ./.venv/bin/python -m mrt.adapters.projection             # 投影到 MC 座標
 ./.venv/bin/python -m mrt.adapters.dem.make_heightmap     # DEM -> 高程網格
 
@@ -87,6 +90,8 @@ tests/              不需要產生世界就能跑的測試
 ./.venv/bin/python -m cli.build_line --lines BR           # 只蓋幾條線（快，不含地形）
 ./.venv/bin/python -m cli.build_world --out /tmp/w \
     --bbox -900 -1400 400 250                             # 只產生台北車站一帶（十幾秒）
+./.venv/bin/python -m cli.build_world --out /tmp/w --bbox ... \
+    --sights taipei101                                    # 只蓋某幾座景點（--no-sights 全不蓋）
 
 # 測試與驗證
 ./.venv/bin/python tests/run_all.py                       # 全部單元測試
@@ -103,6 +108,9 @@ tests/              不需要產生世界就能跑的測試
 ./.venv/bin/python tools/verify_rides.py <存檔>           # 讀回每面搭車告示牌與資料包的傳送目的地
 ./.venv/bin/python tools/check_datapack.py <存檔>         # 資料包交給真的 26.2（無頭 GameTest 伺服器）載入執行
 ./.venv/bin/python tools/slice_world.py 忠孝復興          # ASCII 剖面
+./.venv/bin/python tools/verify_attractions.py <存檔>     # 讀回每座景點的高度、輪廓、傳送點、說明牌
+./.venv/bin/python tools/render_view.py <存檔> --bbox X0 Z0 X1 Z1 --out 前綴 \
+    --views south,east,iso,top                            # 立面／等角／俯視圖（顏色取自遊戲材質）
 ```
 
 驗證的規則有兩條，別搞混：`verify_concourse` 是「不出地面」（腳要比當地地表低
@@ -139,6 +147,22 @@ tests/              不需要產生世界就能跑的測試
 別的牌子第一行不准以「出口」開頭；黃色混凝土是月台警示帶（兩支驗證器都靠它認月台），
 路線色帶不准用它。點擊動作只放第一行 —— 遊戲對每一行的 click_event 都會執行一次。
 
+**世界是 704 格高（y−64..639），不是原版的 384。** 台北101 的塔尖在 y≈580。高度只在
+`config.Y_MIN / Y_MAX` 定義一次：區塊的 section 數、高度圖的位元數（10 bit、43 個 long）、
+資料包的 `dimension_type/overworld.json`、讀回工具都從那裡拿，別再寫死 319 或 384。
+資料包沒載入的話遊戲會照原版高度讀，y319 以上全部消失 —— `check_datapack` 在遊戲裡放一塊
+y639 的方塊驗這件事。地形仍照 `terrain.Y_CAP` 壓在 312 以下。
+
+**觀光景點（`application/attractions/`）一座一個模組，用 `BUILDS = {id: 類別}` 登記**，
+套件自動掃描，新增景點不必改共用的檔。位置、方位、輪廓一律照 `data/attractions.json`
+（OSM）；長相照公開的建築事實寫成參數化的程式，**不抄任何文字、圖片或 3D 模型**。
+景點比車站、出入口、地下街都晚蓋，所有寫入都經過 `Guard`：`cli.build_world.sight_keepout`
+算出的禁區（出入口井、地下街的實際格子、路線斷面）一律不寫。景點的地面在 `plan()` 查完，
+`build()` 每個 region 各被呼叫一次。改了景點要跑 `verify_attractions`（高度比公開數字、
+輪廓、傳送點站不站得住），附近有出入口的再跑一次 `verify_exits`、跟 `--no-sights` 比。
+景點的傳送函式 `sight/<id>` 跟 ride/turn/go 同一個約定（恰好一行 tp），路徑只從
+`kit.sight_fn` 來；說明牌與穿堂景點牌的第一行同樣不准以「出口」開頭。
+
 **遊戲本身可以當驗證器。** 裝好的 26.2 client jar 附一個無頭 GameTest 伺服器
 （`net.minecraft.gametest.Main`，用 launcher 附的 java），在沙盒裡跑得起來（一般伺服器要
 開 port，跑不了）：`check_datapack` 用它載入資料包、執行每個傳送函式再讀回落點；
@@ -158,8 +182,9 @@ OpenStreetMap）。兩者都是 copyleft。新增資料檔到 `data/` 時要確�
 這個原則的產物，README 的「驗證」一節列了它們各自抓到過什麼。
 
 `verify_render.py` 有個坑：終端輸出只列前 20 種方塊，新加的材質排不進去就
-看不到「未列入配色」的提示 —— 要直接掃圖上有沒有洋紅像素才算數
-（洋紅會被高度陰影調暗，判斷條件是 `g=0 且 r=b`，不是 `r>200`）。
+看不到提示 —— 要直接掃圖上有沒有洋紅像素才算數（洋紅會被高度陰影調暗，判斷條件是
+`g=0 且 r=b`，不是 `r>200`）。手填配色以外的方塊照遊戲材質上色（`tools/blockcolors.py`
+讀裝好的 jar），洋紅只代表「連材質都算不出顏色」—— 通常是方塊 id 打錯了。
 
 **驗證器自己也會騙人。** 三個真的發生過的例子：把「地下」定成一個全域的
 y 上限，車站多加兩座、地面低 3 m，整條地下街就被判成地表，六十個出入口
