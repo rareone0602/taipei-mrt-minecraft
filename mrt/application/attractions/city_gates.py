@@ -22,10 +22,10 @@
 —— 城座取 18.5 × 13.5 m 置中，外框其餘部分做成花台與草坪。高度（城座約 5 m、屋脊 12～15 m）
 是照片裡跟城座寬度比例量的，沒有官方數字。
 
-資料：data/attractions.json 的北門有指名的 way/238316480。東門、南門、小南門的目錄中心點
-（mrt/adapters/osm/fetch_attractions.py 的 CATALOG）離真正的城門 146～348 m，抓回來的資料裡
-沒有城門本身 —— 這裡先用 OSM 的城門 way 當後備輪廓（下面的 OSM_RINGS，同一套投影算的），
-資料修正之後（目錄改指名這三個 way）會自動改用資料裡的那一份。
+資料：data/attractions.json 裡四座城門都有指名的 OSM way（historic=city_gate）：北門
+way/238316480、東門 way/209580573、南門 way/245993047、小南門 way/246651384。
+（東門、南門、小南門原本的目錄中心點差了 146～348 m，抓回來的是附近別的房子 ——
+蓋城門時讀回世界才發現，目錄已經改成指名這三個 way。）
 """
 import math
 
@@ -36,19 +36,6 @@ from mrt.application.attractions import trad_parts as TP
 from mrt.application.attractions.kit import Attraction, Frame, Painter, Spot
 
 AIR = kit.AIR
-
-# OSM 的城門輪廓（MC 座標，照 fetch_attractions 同一個原點與投影換算，保留到 0.1 m）。
-# 資料 © OpenStreetMap 貢獻者，ODbL 1.0。目錄修正後資料裡就會有，這份只是後備。
-OSM_RINGS = {
-    "way/209580573": [   # 臺北府城東門（景福門）
-        [14.7, 806.4], [16.2, 803.1], [17.6, 798.3], [19.1, 792.8], [19.2, 789.4], [21.7, 790.5],
-        [29.4, 792.6], [32.3, 792.7], [30.9, 795.2], [29.3, 801.5], [27.7, 807.4], [27.7, 809.7],
-        [25.6, 808.7], [16.9, 806.4]],
-    "way/245993047": [   # 臺北府城南門（麗正門）
-        [-260.9, 1239.7], [-227.4, 1244.1], [-224.8, 1224.8], [-258.3, 1220.4]],
-    "way/246651384": [   # 臺北府城小南門（重熙門）
-        [-947.0, 1029.0], [-934.8, 1034.6], [-940.0, 1045.9], [-946.5, 1042.9], [-952.3, 1040.3]],
-}
 
 # ---- 材質 ----
 RED_WALL = "minecraft:red_terracotta"          # 北門上層的紅磚牆（照片上的朱紅）
@@ -130,7 +117,10 @@ class CityGate(Attraction):
         if f and f.get("outer"):
             self.ring = [tuple(p) for p in max(f["outer"], key=len)]
         else:
-            self.ring = [tuple(p) for p in OSM_RINGS[self.osm]]
+            # 資料裡沒有這座城門的 way（舊的 attractions.json）：在目錄中心點蓋一座
+            # 標準尺寸的城座，至少不會讓整個世界生成停下來
+            cx, cz = self.item["center"]
+            self.ring = [(cx - 9, cz - 7), (cx + 9, cz - 7), (cx + 9, cz + 7), (cx - 9, cz + 7)]
         self.cx, self.cz, self.ang, self.ra, self.rb = rect_frame(self.ring, self.outer)
         self.a, self.b = self.base_half or (self.ra, self.rb)
 

@@ -50,7 +50,8 @@ FACTS = {
     "miramar_wheel":          dict(height=100.0, cover=0.2, spill=40),   # 摩天輪頂離地 100 m
     "national_taiwan_museum": dict(height=30.0, cover=0.5, spill=20),   # 圓頂頂端近 30 m（1915）
     "red_house":              dict(height=None, cover=0.5, spill=15),
-    "longshan_temple":        dict(height=None, cover=0.4, spill=20),
+    # 指名的 way 只是正殿；三川殿在前面 28 m、山門牌樓 48 m（OSM 上就是這樣）
+    "longshan_temple":        dict(height=None, cover=0.4, spill=50),
     "beimen":                 dict(height=None, cover=0.5, spill=15),
     "dongmen":                dict(height=None, cover=0.5, spill=25),
     "nanmen":                 dict(height=None, cover=0.5, spill=25),

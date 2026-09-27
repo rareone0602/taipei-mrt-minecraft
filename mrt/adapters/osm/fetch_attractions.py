@@ -49,10 +49,14 @@ CATALOG = [
     ("presidential_office", "總統府", "Presidential Office Building", 25.04000, 121.51198, 160,
      ("relation/206817",)),
     ("red_house", "西門紅樓", "Red House", 25.04213, 121.50650, 70, ("way/222080307",)),
-    ("dongmen", "東門（景福門）", "East Gate (Jingfu Gate)", 25.03772, 121.51745, 45,
-     ("relation/13145687",)),
-    ("nanmen", "南門（麗正門）", "South Gate (Lizheng Gate)", 25.03310, 121.51520, 45, ()),
-    ("xiaonanmen", "小南門（重熙門）", "Little South Gate (Chongxi Gate)", 25.03565, 121.51125, 45, ()),
+    # 三座城門原本的中心點是憑印象估的，差了 146～348 m，抓回來的只是附近別的房子
+    # （城門與廟那一組代理人讀回世界才發現）；改成 OSM 上城門 way 的位置並指名
+    ("dongmen", "東門（景福門）", "East Gate (Jingfu Gate)", 25.03902, 121.51767, 45,
+     ("way/209580573",)),
+    ("nanmen", "南門（麗正門）", "South Gate (Lizheng Gate)", 25.03511, 121.51499, 45,
+     ("way/245993047",)),
+    ("xiaonanmen", "小南門（重熙門）", "Little South Gate (Chongxi Gate)", 25.03691, 121.50807, 45,
+     ("way/246651384",)),
     ("cks_memorial", "中正紀念堂", "Chiang Kai-shek Memorial Hall", 25.03550, 121.51980, 420,
      ("way/1052759757", "way/1052759775", "way/1052759776", "way/1053359244")),
     # ---- 捷運沿線的其他代表性景點 ----

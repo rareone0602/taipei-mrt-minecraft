@@ -100,11 +100,11 @@ for aid, (ex, ez) in expect.items():
     chk("%s 中心 (%.1f, %.1f) 在 OSM 城門上（誤差 < 1.5 m）" % (aid, cx, cz), math.hypot(cx - ex, cz - ez) < 1.5)
     x0, z0, x1, z1 = a.bbox()
     chk("%s 的 bbox 包住城門輪廓" % aid, x0 < cx < x1 and z0 < cz < z1)
-for osm, ring in CG.OSM_RINGS.items():
-    for it in ITEMS.values():
-        f = next((f for f in it["features"] if f["osm"] == osm), None)
-        if f:
-            chk("資料裡的 %s 跟後備輪廓一致" % osm, [list(p) for p in f["outer"][0]] == ring)
+for aid in expect:
+    a = AT.for_world([], items=[ITEMS[aid]])[0]
+    f = a.feature(a.osm)
+    chk("%s 用的是資料裡指名的城門 way（%s，historic=city_gate）" % (aid, a.osm),
+        f is not None and f.get("main") and f["tags"].get("historic") == "city_gate")
 
 for aid in ("beimen", "dongmen", "nanmen", "xiaonanmen"):
     print("\n%s" % aid)
