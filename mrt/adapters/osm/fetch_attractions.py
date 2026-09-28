@@ -10,8 +10,9 @@ parametric code from public architectural facts (height, floors, bays); the
 footprints and orientations are not estimated.
 
 One Overpass query per attraction: every building, building:part, historic,
-man_made and attraction within a radius of the center point, plus the OSM
-elements the catalog names (the main structure of some attractions has no
+man_made and attraction within a radius of the center point (or of a line, for
+an attraction strung along one; see PATH), anything EXTRA asks for, plus the
+OSM elements the catalog names (the main structure of some attractions has no
 building tag, for example the Liberty Square gate). Neighboring buildings
 within the radius are kept as well; they are needed to build plazas and walls
 and to avoid the real neighbors. Coordinates use the fetch_details origin
@@ -84,14 +85,47 @@ CATALOG = [
      ("way/557039975", "relation/7659663")),
     ("miramar_wheel", "美麗華摩天輪", "Miramar Ferris Wheel", 25.08281, 121.55772, 90,
      ("node/5121602758",)),
+    # The campus is built from the main gate on Roosevelt Road along Royal Palm
+    # Boulevard to the Main Library, about 750 m. A circle round all of it would
+    # take in 1,200 elements, most of the campus, so the radius is measured from
+    # the boulevard instead (PATH below). The center is halfway along.
+    ("national_taiwan_university", "國立臺灣大學", "National Taiwan University", 25.01730, 121.53780, 110,
+     ("relation/14045849", "relation/2589022", "node/472493077")),
 ]
+
+# Attractions strung along a line rather than round a point: the radius is
+# measured from this polyline (latitude, longitude) instead of the center.
+PATH = {
+    # The main gate, the west end of the boulevard, its east end, and the far
+    # side of the Main Library.
+    "national_taiwan_university": ((25.01702, 121.53359), (25.01725, 121.53420),
+                                   (25.01732, 121.53900), (25.01740, 121.54200)),
+}
+
+# Extra Overpass statements for one attraction, beyond the buildings every
+# attraction gets. Each is completed with the attraction's (around:...) filter.
+# Royal Palm Boulevard's palms are mapped one by one (natural=tree with their
+# species), and some stretches as tree rows; the boulevard itself is a road.
+EXTRA = {
+    "national_taiwan_university": (
+        'node["natural"="tree"]["species"~"Roystonea|Juniperus|Uniperus"]',
+        'way["natural"="tree_row"]',
+        'way["highway"]["name"="椰林大道"]',
+    ),
+}
 
 KEEP_TAGS = ("name", "name:zh", "name:en", "building", "building:part", "building:levels",
              "building:levels:underground", "building:min_level", "min_height", "height",
              "roof:shape", "roof:height", "roof:levels", "roof:colour", "roof:material",
              "roof:orientation", "roof:direction", "building:colour", "building:material",
              "colour", "material", "historic", "man_made", "tourism", "attraction", "amenity",
-             "leisure", "layer", "location", "start_date", "architect", "wikidata", "diameter")
+             "leisure", "layer", "location", "start_date", "architect", "wikidata", "diameter",
+             "natural", "species", "species:zh", "leaf_type", "highway", "lanes", "width",
+             "barrier", "artwork_type")
+
+# Open ways with these tags are lines, not outlines (a road, a wall, a row of
+# trees): they keep their points as "line" rather than an "outer" ring.
+LINE_TAGS = ("highway", "barrier")
 
 
 def origin():
@@ -102,13 +136,16 @@ def origin():
     raise SystemExit("Origin station ref=R10 not found. Run fetch_stations first.")
 
 
-def query_for(lat, lon, r, named):
+def query_for(lat, lon, r, named, extra=(), path=None):
     ids = {"way": [], "relation": [], "node": []}
     for key in named:
         t, _, i = key.partition("/")
         ids[t].append(i)
-    body = [f'wr["{k}"](around:{r},{lat},{lon});' for k in ("building", "building:part", "historic", "man_made")]
-    body.append(f'nwr["attraction"](around:{r},{lat},{lon});')
+    pts = path or ((lat, lon),)
+    near = f"around:{r}," + ",".join(f"{la},{lo}" for la, lo in pts)
+    body = [f'wr["{k}"]({near});' for k in ("building", "building:part", "historic", "man_made")]
+    body.append(f'nwr["attraction"]({near});')
+    body += [f"{sel}({near});" for sel in extra]
     for t, lst in ids.items():
         if lst:
             body.append(f"{t}(id:{','.join(lst)});")
@@ -185,6 +222,11 @@ def feature(e, to_mc):
         return rec
     if e["type"] == "way":
         r = ring(e.get("geometry"), to_mc)
+        if len(r) >= 2 and r[0] != r[-1] and (t.get("natural") == "tree_row"
+                                              or any(k in t for k in LINE_TAGS)):
+            mid = r[len(r) // 2]
+            rec.update(line=r, area=0.0, centroid=mid)
+            return rec
         outer, inner = ([r] if r else []), []
     else:
         outer, inner = [], []
@@ -226,7 +268,7 @@ def main():
             if aid in old:
                 items.append(old[aid])
             continue
-        d = query_cached("attr_" + aid, query_for(lat, lon, r, named), cache_dir=CACHE,
+        d = query_cached("attr_" + aid, query_for(lat, lon, r, named, EXTRA.get(aid, ()), PATH.get(aid)), cache_dir=CACHE,
                          refresh=a.refresh, timeout=200, tries=8)
         if d is None:
             failed.append(aid)
