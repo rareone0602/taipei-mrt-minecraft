@@ -1,27 +1,38 @@
 #!/usr/bin/env python3
-"""台北101：508 m、地上 101 層，照公開的建築事實 1:1 蓋。
+"""Taipei 101: 508 m and 101 floors above ground, built 1:1 from public architectural facts.
 
-位置、方位、購物中心與裙樓的平面是 OSM 的（data/attractions.json：塔樓 way/198637969
-偏 1.0°、半邊長 27 m；購物中心 way/64566862 高 30 m；裙樓 way/1159328963、
-way/1159328964 高 25 m；圓頂 way/615183624 與兩個圓瓣 way/1339487731、way/1339487732
-是如意形的屋頂）。塔樓的長相照下面這些公開資料：
+Position, orientation, and the plans of the mall and the podium come from OSM
+(data/attractions.json: tower way/198637969, skewed 1.0°, half-width 27 m; mall
+way/64566862, 30 m tall; podium way/1159328963 and way/1159328964, 25 m tall; the dome
+way/615183624 and its two round lobes way/1339487731 and way/1339487732 form a
+ruyi-shaped roof). The tower's appearance follows these public sources:
 
-  · 高度：塔尖 508 m、屋頂 449.2 m、頂樓 438 m、89 樓室內觀景台 382 m、
-    91 樓戶外觀景台約 390 m（Wikipedia「Taipei 101」、中文維基「台北101」）
-  · 層高：辦公層 4.2 m（structures-explained.com「Taipei 101 structural engineering」）
-  · 造型：25～26 層高的截頭角錐基座，上面疊八個倒梯形的「斗」，每斗八層、往外斜約 7°，
-    再上去是平面小很多的頂部（91 樓以上）與 60 m 的塔尖（同上兩處）。第一斗從 27 樓
-    開始（基座的抗彎構架到 26 樓為止：NCREE 研討會 Shieh 談 101 巨柱設計的論文）
-  · 平面：腰身約 45.9 m 見方（Structure 雜誌「Dynamic Loading Solutions in Taipei 101」），
-    轉角是 2.5 m 的缺角（同上）
-  · 立面裝飾：基座與塔身交接處每面一個圓盤，代表古錢（Wikipedia）；外牆的如意每個
-    至少 8 m 高（Wikipedia），這裡排在每一斗頂端的正中
-  · 阻尼器：直徑 5.5 m、660 公噸的鋼球，吊在 92 樓到 88 樓之間（Wikipedia）
-  · 帷幕牆：藍綠色的雙層玻璃（Wikipedia）
+  · Heights: spire 508 m, roof 449.2 m, top floor 438 m, 89F indoor observatory 382 m,
+    91F outdoor observatory about 390 m (the English and Chinese Wikipedia articles
+    "Taipei 101")
+  · Story height: office floors 4.2 m (structures-explained.com "Taipei 101 structural
+    engineering")
+  · Form: a truncated-pyramid base 25–26 stories tall, topped by eight inverted
+    trapezoidal modules (dou), each eight stories tall and flaring outward by about 7°;
+    above them a top section with a much smaller plan (above 91F) and a 60 m spire
+    (the same two sources). The first module starts at 27F (the base's moment frame
+    ends at 26F: Shieh's NCREE seminar paper on the design of Taipei 101's mega-columns)
+  · Plan: the waist is about 45.9 m square (Structure magazine "Dynamic Loading
+    Solutions in Taipei 101"), with 2.5 m notches at the corners (same source)
+  · Facade ornaments: one disc on each face where the base meets the tower, representing
+    an ancient coin (Wikipedia); each ruyi on the facade is at least 8 m tall
+    (Wikipedia), placed here at the center of the top of each module
+  · Damper: a steel sphere 5.5 m in diameter weighing 660 metric tons, hung between 92F and
+    88F (Wikipedia)
+  · Curtain wall: blue-green double glazing (Wikipedia)
 
-蓋法見 highrise.py：逐層算遮罩，外殼是外圈、挑簷是「這層有上層沒有」的格子。
-一樓大廳（南、東兩面有門）、89 樓觀景台（兩層挑高、玻璃外牆、阻尼器在正中央）、
-91 樓戶外觀景台都走得進去；大廳的告示牌傳送到 89 樓，觀景台的告示牌傳送回大廳。
+For the construction method see highrise.py: the mask is computed story by story, the
+shell is its outer ring, and overhangs are the cells "present on this story but not on
+the one above".
+The ground-floor lobby (doors on the south and east faces), the 89F observatory (double
+height, glass walls, the damper at the center) and the 91F outdoor observatory are all
+walkable. The lobby sign teleports to 89F, and the observatory sign teleports back to
+the lobby.
 """
 import math
 
@@ -32,46 +43,54 @@ from mrt.application.attractions import highrise as HR
 from mrt.application.attractions import kit
 from mrt.application.attractions.kit import Attraction, Frame, Spot
 
-# ---------------------------------------------------------------- OSM 元素
-TOWER = "way/198637969"             # 塔樓（89 層那一段，平面有缺角）
-MALL = "way/64566862"               # 台北101購物中心，6 層、30 m
-SKIRTS = ("way/1159328963", "way/1159328964")      # 塔樓腳下的裙樓，5 層、25 m
-VESTIBULE = "way/1339487722"        # 南門的門廳
-DOME = ("way/615183624", "way/1339487731", "way/1339487732")   # 如意形的圓頂（30 -> 42 m）
+# ---------------------------------------------------------------- OSM elements
+TOWER = "way/198637969"             # The tower (the 89-story part; its plan has notched corners).
+MALL = "way/64566862"               # Taipei 101 Mall, 6 stories, 30 m.
+# The podium at the tower's foot, 5 stories, 25 m.
+SKIRTS = ("way/1159328963", "way/1159328964")
+VESTIBULE = "way/1339487722"        # The vestibule of the south entrance.
+DOME = ("way/615183624", "way/1339487731", "way/1339487732")   # The ruyi-shaped dome (30 -> 42 m).
 CANOPIES = ("way/1339487735", "way/1339487734", "way/1339487736",
-            "way/1339487737", "way/1339487738")   # 一層高的門口雨庇
-SKYWALKS = ("way/1339487709", "way/1339487716", "way/1339401632")  # 信義區空橋，二樓高
-PLAZA = "way/248210267"             # 景點範圍（含廣場）
+            "way/1339487737", "way/1339487738")   # One-story entrance canopies.
+# Xinyi skywalks, second-floor level.
+SKYWALKS = ("way/1339487709", "way/1339487716", "way/1339401632")
+PLAZA = "way/248210267"             # The attraction's grounds (including the plaza).
 
-# ---------------------------------------------------------------- 尺寸（公尺）
-BASE_A0 = 27.0          # 基座在地面的半邊長（OSM 塔樓輪廓 54 m）
-BASE_A1 = 23.5          # 基座頂（26 樓）的半邊長：往內收
-MOD_B0 = 22.0           # 每一斗底部的半邊長（腰身約 45.9 m）
-MOD_B1 = 26.0           # 每一斗頂部的半邊長：33.6 m 往外斜 4 m，約 6.8°
-NOTCH = 2.5             # 轉角兩階缺角，每階 2.5 m
-BAY = 7.25              # 基座每面正中的凸出開間（OSM 四條 14.5 m 寬的細長 part）
-TOP91 = 14.8            # 91～92 樓那一段的半邊長（OSM way/1339487717，30 m 見方）
-SHAFT0, SHAFT1 = 10.3, 10.9     # 93～101 樓的半邊長（OSM 頂樓 21.3 m 見方），也微微外斜
-CROWN_R = 7.3           # 439～448 m 的圓形頂冠（OSM way/615184269）
+# ---------------------------------------------------------------- Dimensions (meters)
+BASE_A0 = 27.0          # Half-width of the base at ground level (the OSM tower outline is 54 m).
+BASE_A1 = 23.5          # Half-width at the top of the base (26F): it tapers inward.
+MOD_B0 = 22.0           # Half-width at the bottom of each module (the waist is about 45.9 m).
+# Half-width at the top of each module: 4 m of flare over 33.6 m, about 6.8°.
+MOD_B1 = 26.0
+NOTCH = 2.5             # Two notched steps at each corner, 2.5 m each.
+BAY = 7.25              # Projecting bay at the middle of each face of the base (four slender
+                        # 14.5 m wide parts in OSM).
+TOP91 = 14.8            # Half-width of the 91F–92F section (OSM way/1339487717, 30 m square).
+# Half-width of 93F–101F (OSM top floor 21.3 m square); also flares slightly.
+SHAFT0, SHAFT1 = 10.3, 10.9
+CROWN_R = 7.3           # The round crown from 439 to 448 m (OSM way/615184269).
 
-H_BASE = 121.8          # 27 樓樓板 = 基座頂
-H_MOD = 33.6            # 一斗 = 八層 × 4.2 m
-H_91 = 390.6            # 91 樓樓板（第八斗的頂）
-H_93 = 399.0            # 93 樓樓板：91～92 樓那一段的頂
-H_SHAFT = 439.0         # 頂樓那一段的頂（OSM）
-H_ROOF = 449            # 屋頂 449.2 m：頂冠的最後一格
-H_TIP = 508             # 塔尖
+H_BASE = 121.8          # 27F floor = top of the base.
+H_MOD = 33.6            # One module = eight stories × 4.2 m.
+H_91 = 390.6            # 91F floor (the top of the eighth module).
+H_93 = 399.0            # 93F floor: the top of the 91F–92F section.
+H_SHAFT = 439.0         # Top of the top-floor section (OSM).
+H_ROOF = 449            # Roof at 449.2 m: the last row of the crown.
+H_TIP = 508             # Spire.
 
-# ---------------------------------------------------------------- 材質
-GLASS = "minecraft:cyan_stained_glass"            # 藍綠色帷幕玻璃
-SPANDREL = "minecraft:prismarine_bricks"          # 每層樓板那一列的層間帶
-MULLION = "minecraft:light_gray_stained_glass"    # 直櫺（銀灰色鋁框）
-MECH = "minecraft:dark_prismarine"                # 每斗頂的機電層
-LEDGE = "minecraft:smooth_quartz"                 # 每斗頂的挑簷（反光的斜頂，遠看是白的）
-BAND = "minecraft:light_gray_concrete"            # 基座頂那一圈（古錢後面的帶子）
-CORE = "minecraft:polished_andesite"              # 電梯核
-SLAB = "minecraft:smooth_stone"                   # 樓板
-FLOOR1 = "minecraft:polished_diorite"             # 一樓大廳與觀景台的地坪
+# ---------------------------------------------------------------- Materials
+GLASS = "minecraft:cyan_stained_glass"            # Blue-green curtain-wall glass.
+SPANDREL = "minecraft:prismarine_bricks"          # Spandrel band on each floor-slab row.
+MULLION = "minecraft:light_gray_stained_glass"    # Vertical mullions (silver-gray aluminum frames).
+MECH = "minecraft:dark_prismarine"                # Mechanical floor at the top of each module.
+LEDGE = "minecraft:smooth_quartz"                 # Overhang at the top of each module (a reflective
+                                                  # sloped top that reads as white from afar).
+# Ring at the top of the base (the band behind the coins).
+BAND = "minecraft:light_gray_concrete"
+CORE = "minecraft:polished_andesite"              # Elevator core.
+SLAB = "minecraft:smooth_stone"                   # Floor slabs.
+# Paving of the ground-floor lobby and the observatory.
+FLOOR1 = "minecraft:polished_diorite"
 LAMP = "minecraft:sea_lantern"
 COIN_RIM = "minecraft:iron_block"
 COIN_FACE = "minecraft:prismarine_bricks"
@@ -87,8 +106,9 @@ TMD = "minecraft:gold_block"
 CHAIN = "minecraft:iron_chain[axis=y,waterlogged=false]"
 RAIL = "minecraft:glass"
 
-# 如意：每斗頂端、每一面正中各一個，至少 8 m 高（Wikipedia）
-# 點陣是如意頭（雲形、心形的三瓣）接一段柄，8 列 = 8 m；不留洞，遠看才不會像一張臉
+# Ruyi: one at the middle of each face at the top of each module, at least 8 m tall (Wikipedia).
+# The dot matrix is a ruyi head (a three-lobed cloud or heart shape) on a short handle; 8 rows =
+# 8 m. It has no holes, so from afar it does not look like a face.
 RUYI_GLYPH = HR.glyph([
     ".XX.XX.",
     "XXXXXXX",
@@ -102,8 +122,11 @@ RUYI_GLYPH = HR.glyph([
 
 
 def floor_h(k):
-    """k 樓樓板離一樓樓板幾公尺：1～5 樓是挑高的大廳層，6 樓（33.6 m）起每層 4.2 m。
-    這樣 27 樓 = 121.8 m、89 樓 = 382.2 m（觀景台 382 m）、91 樓 = 390.6 m（OSM）。"""
+    """Return the height in meters of floor k's slab above the ground-floor slab.
+
+    Floors 1–5 are double-height lobby floors; from 6F (33.6 m) up, each story is
+    4.2 m. This gives 27F = 121.8 m, 89F = 382.2 m (observatory 382 m) and
+    91F = 390.6 m (OSM)."""
     if k <= 1:
         return 0.0
     if k <= 6:
@@ -111,21 +134,23 @@ def floor_h(k):
     return 33.6 + 4.2 * (k - 6)
 
 
-FLOOR_ROWS = [int(math.floor(floor_h(k))) for k in range(1, 102)]      # 1..101 樓的樓板列
+FLOOR_ROWS = [int(math.floor(floor_h(k))) for k in range(1, 102)]      # Slab rows of floors 1..101.
 ROW_FLOOR = {}
 for _k, _r in enumerate(FLOOR_ROWS, 1):
     ROW_FLOOR[_r] = _k
 OBS_FLOOR = 89
 OBS_ROW = FLOOR_ROWS[OBS_FLOOR - 1]           # 382
-DECK_ROW = FLOOR_ROWS[91 - 1]                  # 390：第八斗的頂 = 91 樓戶外觀景台
-SKIP_SLAB = {FLOOR_ROWS[90 - 1]}               # 90 樓不鋪：89 樓觀景台兩層挑高
-CORE_TOP = FLOOR_ROWS[86 - 1]                  # 電梯核蓋到 86 樓（上面是阻尼器那幾層）
-COIN_Y = 113            # 古錢中心（25 樓上下）
+# 390: the top of the eighth module = 91F outdoor observatory.
+DECK_ROW = FLOOR_ROWS[91 - 1]
+SKIP_SLAB = {FLOOR_ROWS[90 - 1]}               # No 90F slab: the 89F observatory is double height.
+# The elevator core rises to 86F (the damper floors are above).
+CORE_TOP = FLOOR_ROWS[86 - 1]
+COIN_Y = 113            # Center of the coins (around 25F).
 COIN_R = 6.5
 
 
 def floor_of_row(yy):
-    """-> (樓層, 這一列是那層的第幾列)。"""
+    """Return (floor, row within that floor) for a row."""
     k = 1
     for i, r in enumerate(FLOOR_ROWS):
         if r <= yy:
@@ -136,7 +161,9 @@ def floor_of_row(yy):
 
 
 def section(yy):
-    """這一列屬於哪一段：base / mod（附第幾斗 0..7）/ top91 / shaft / crown / spire。"""
+    """Return the section of a row.
+
+    One of base / mod (with module index 0..7) / top91 / shaft / crown / spire."""
     t = yy + 0.5
     if t < H_BASE:
         return "base", None
@@ -152,7 +179,7 @@ def section(yy):
 
 
 def half_width(yy):
-    """這一列的平面半邊長（基座與八斗；其他段回 None）。"""
+    """Return the plan half-width of a row (base and the eight modules; None for other sections)."""
     t = yy + 0.5
     sec, m = section(yy)
     if sec == "base":
@@ -164,12 +191,12 @@ def half_width(yy):
 
 
 def section_top(yy):
-    """這一列是不是一段的最後一列（挑簷、屋頂用白色）。"""
+    """Return whether a row is the last row of its section (overhangs and roofs are white)."""
     return section(yy) != section(yy + 1)
 
 
 class Fields:
-    """某個 Frame 上以塔樓中心為原點的各種距離場（每個 Frame 算一次）。"""
+    """Distance fields on a Frame with the tower center as origin (computed once per Frame)."""
 
     def __init__(self, fr, du, dv):
         u, v = fr.U - du, fr.V - dv
@@ -187,7 +214,7 @@ class Fields:
 
 
 def tower_mass(F, yy):
-    """塔樓在第 yy 列（離一樓樓板 yy 格）的平面遮罩。"""
+    """Return the tower's plan mask at row yy (yy blocks above the ground-floor slab)."""
     sec, m = section(yy)
     if sec == "base":
         a = half_width(yy)
@@ -205,7 +232,7 @@ def tower_mass(F, yy):
 
 
 def tower_skin(F, yy, sh):
-    """塔樓外殼第 yy 列的材質：[(遮罩, 方塊)]，後面蓋前面。"""
+    """Return the materials of the tower shell at row yy as [(mask, block)]; later entries win."""
     sec, m = section(yy)
     k, kr = floor_of_row(yy)
     out = [(sh, GLASS)]
@@ -215,7 +242,8 @@ def tower_skin(F, yy, sh):
             out.append((sh, SPANDREL))
     if sec == "base":
         bay = sh & F.bay
-        # 基座正中的開間：一層兩道深色橫帶（遠看是一條直的「梯子」）
+        # The bay at the middle of the base: two dark horizontal bands per story (from afar,
+        # a vertical "ladder").
         if kr in (0, 2):
             out.append((bay, MECH))
         else:
@@ -223,11 +251,12 @@ def tower_skin(F, yy, sh):
         if COIN_Y - 2 <= yy <= COIN_Y + 1:
             out.append((sh, BAND))
     elif sec == "mod":
-        # 每斗最上面一層是機電層（外伸桁架所在），顏色深一點
+        # The top story of each module is a mechanical floor (where the outrigger trusses are),
+        # slightly darker.
         if k == 34 + 8 * m:
             out.append((sh & ~F.mull, MECH))
     elif sec == "crown":
-        # 頂冠：玻璃加一圈圈的金屬環
+        # Crown: glass with rings of metal.
         if kr == 0 or yy % 3 == 0:
             out.append((sh, SPIRE))
     return out
@@ -236,10 +265,11 @@ def tower_skin(F, yy, sh):
 class Taipei101(Attraction):
     height_m = 508.0
     margin = 12
-    # 預設觀景點在塔西南 210 m（整座塔才塞得進視野）：那一帶也要是真實地形
+    # The default viewpoint is 210 m southwest of the tower (so the whole tower fits in view);
+    # that area must be real terrain too.
     terrain_margin = 240
 
-    # ---------------------------------------------------------------- 資料
+    # ---------------------------------------------------------------- Data
     def _ring(self, osm):
         f = self.feature(osm)
         if not f or not f.get("outer"):
@@ -255,7 +285,8 @@ class Taipei101(Attraction):
         return m
 
     def bbox(self):
-        """景點範圍（含廣場、行道樹）：OSM 的 tourism=attraction 範圍（way/248210267）外擴 margin。"""
+        """Return the grounds (plaza and street trees included): the OSM tourism=attraction area
+        (way/248210267) grown by margin."""
         r = self._ring(PLAZA) or self.outline()
         xs = [p[0] for p in r]
         zs = [p[1] for p in r]
@@ -263,19 +294,22 @@ class Taipei101(Attraction):
         return (int(math.floor(min(xs))) - m, int(math.floor(min(zs))) - m,
                 int(math.ceil(max(xs))) + m, int(math.ceil(max(zs))) + m)
 
-    # ---------------------------------------------------------------- 定案
+    # ---------------------------------------------------------------- Planning
     def plan(self, site):
         self.site = site
         cx, cz, ang_osm, _, _ = HR.outline_axes(self._ring(TOWER))
-        # 塔樓偏 1.0°：轉正（highrise.snap_angle 的說明），中心照 OSM。購物中心與裙樓
-        # 仍照 OSM 的多邊形原樣光柵化（它們在世界座標裡，不受 Frame 角度影響）
+        # The tower is skewed 1.0°: square it up (see highrise.snap_angle), with its center as in
+        # OSM. The mall and the podium are still rasterized from their OSM polygons as they are
+        # (they are in world coordinates and unaffected by the Frame angle).
         ang = HR.snap_angle(ang_osm)
         self.ang = ang
-        self.fr = Frame(cx, cz, ang, 48)                        # 塔樓（含門口雨庇）
+        # Tower (including the entrance canopies).
+        self.fr = Frame(cx, cz, ang, 48)
         x0, z0, x1, z1 = self.bbox()
         scx, scz = (x0 + x1) / 2.0, (z0 + z1) / 2.0
-        self.sfr = Frame(scx, scz, ang, max(x1 - x0, z1 - z0) / 2.0 + 2)   # 整個基地
-        # 塔樓中心在基地 Frame 的局部座標（兩個 Frame 同角度，局部座標只差一個平移）
+        self.sfr = Frame(scx, scz, ang, max(x1 - x0, z1 - z0) / 2.0 + 2)   # The whole site.
+        # The tower center in the site Frame's local coordinates (both Frames share an angle, so
+        # their local coordinates differ only by a translation).
         c, s = math.cos(ang), math.sin(ang)
         tu = (cx - scx) * c + (cz - scz) * s
         tv = -(cx - scx) * s + (cz - scz) * c
@@ -294,11 +328,12 @@ class Taipei101(Attraction):
         base0 = tower_mass(self.SF, 0)
         self.m_foot = self.m_mall | self.m_skirt | self.m_vest | base0
         self.g0 = site.level(sfr, base0)
-        # 整地要用的地面高度現在就查好（Site 會快取）：cli 在 plan 之後就把
-        # 「蓋出來的地面」的距離場丟掉了，build() 的時候再查會失敗
+        # Look up the ground heights needed for grading now (Site caches them): cli discards the
+        # distance field of the "built terrain" after plan, so looking them up in build() fails.
         site.grid(sfr, self.m_plaza | self.m_foot)
 
-        # 觀景點：廣場西南角外的街上（信義路側），整座塔框得進畫面（塔尖仰角約 67°）
+        # Viewpoint: on the street outside the plaza's southwest corner (Xinyi Road side), with
+        # the whole tower in frame (the spire at an elevation angle of about 67°).
         pr = self._ring(PLAZA)
         vx = int(math.floor(min(p[0] for p in pr))) - 50
         vz = int(math.ceil(max(p[1] for p in pr))) + 49
@@ -307,10 +342,12 @@ class Taipei101(Attraction):
         up = math.degrees(math.atan2(self.g0 + H_TIP - (vy + 1.62), d))
         down = math.degrees(math.atan2(vy + 1.62 - self.g0, d))
         yaw, _ = kit.look(vx, vy, vz, cx, self.g0 + 200, cz)
-        pitch = round(-(up - down) / 2.0, 1)                    # 仰角的一半：塔腳到塔尖都在畫面裡
-        # 大廳：電梯核南面 6 m（南門進來十幾公尺），面向核上的告示牌
+        # Half the elevation: base to spire in frame.
+        pitch = round(-(up - down) / 2.0, 1)
+        # Lobby: 6 m south of the elevator core (a dozen or so meters in from the south entrance),
+        # facing the sign on the core.
         lx, lz = self.fr.cell(0.0, 16.0)
-        # 89 樓：面向台北車站那一側（城市的方向）的窗邊
+        # 89F: by the window on the side facing Taipei Main Station (toward the city).
         a89 = half_width(OBS_ROW + 1)
         wu, wv = self._city_dir()
         tx, tz = self.fr.cell(wu * (a89 - 3.5), wv * (a89 - 3.5))
@@ -324,7 +361,9 @@ class Taipei101(Attraction):
         ]
 
     def _city_dir(self):
-        """塔樓往台北車站（原點）的方向，換成局部座標的單位向量。"""
+        """Return the direction from the tower to Taipei Main Station (the origin).
+
+        The result is a unit vector in local coordinates."""
         dx, dz = -self.fr.cx, -self.fr.cz
         L = math.hypot(dx, dz) or 1.0
         dx, dz = dx / L, dz / L
@@ -332,10 +371,13 @@ class Taipei101(Attraction):
         return dx * c + dz * s, -dx * s + dz * c
 
     def plaque(self):
-        # 告示牌一行最寬 90 px（signage.SIGN_W）：這兩行各 88、85 px
+        # A sign line is at most 90 px wide (signage.SIGN_W): these two lines are 88 and 85 px.
         return [self.name_zh, self.name_en, "508 m，2004年落成", "101 層，八斗各八層"]
 
-    # ---------------------------------------------------------------- 蓋
+    def plaque_en(self):
+        return ["508 m high, completed in 2004", "508 m high, 2004"]
+
+    # ---------------------------------------------------------------- Building
     def build(self, w):
         self._ground(w)
         self._podium(w)
@@ -348,13 +390,13 @@ class Taipei101(Attraction):
         self._skywalks(w)
         self._trees(w)
 
-    # ---- 整地：基地整成一樓樓板的高度，廣場鋪石板 ----
+    # ---- Grading: level the site to the ground-floor slab and pave the plaza ----
     def _ground(self, w):
         sfr = self.sfr
         self.site.prepare(w, sfr, self.m_plaza & ~self.m_foot, self.g0, top=PAVING)
         self.site.prepare(w, sfr, self.m_foot, self.g0, top=FLOOR1)
 
-    # ---- 購物中心、裙樓、塔樓的前 31 列（同一個遮罩，交界不砌內牆）----
+    # ---- Mall, podium and the tower's first 31 rows (one mask, no inner walls at the seams) ----
     def _podium_mass(self, yy):
         m = np.zeros_like(self.m_foot)
         if yy < 30:
@@ -379,8 +421,9 @@ class Taipei101(Attraction):
                     t = tower_mass(SF, yy)
                     m = self._podium_mass(yy) | t
                     if yy < 25:
-                        # OSM 的裙樓在塔樓轉角照 45° 斜切的缺口畫，這裡的塔樓是兩階鋸齒：
-                        # 兩者之間留下幾個一兩格寬、沒有屋頂的小縫，補起來
+                        # OSM draws the podium's notch at the tower corners as a 45° chamfer, while
+                        # the tower here has two sawtooth steps; the two leave a few unroofed gaps
+                        # one or two cells wide, which are filled in here.
                         m |= kit.erode(kit.dilate(m, 2), 2) & near_tower
                     mass[yy] = (t, m)
             return mass[yy]
@@ -395,19 +438,21 @@ class Taipei101(Attraction):
             tsh = sh & t_m
             psh = sh & ~t_m
             layers = tower_skin(SF, yy, tsh)
-            # 購物中心：每層 6 m，樓板那列與最上一列是石材、中間是玻璃，每 6 格一根石柱
+            # Mall: 6 m per story; the slab row and the top row are stone, glass in between,
+            # with a stone pillar every 6 cells.
             kr = yy % 6
             mall = psh & self.m_mall
             layers.append((mall, MALL_WALL if kr in (0, 5) else GLASS))
             if kr not in (0, 5):
                 layers.append((mall & pillar, MALL_WALL))
-            # 裙樓：跟塔樓同一種玻璃，每層 5 m
+            # Podium: the same glass as the tower, 5 m per story.
             sk = psh & ~self.m_mall
             layers.append((sk, SPANDREL if yy % 5 == 0 else GLASS))
             if yy % 5:
                 layers.append((sk & self.SF.mull, MULLION))
             HR.paint_layers(w, sfr, layers, y)
-            # 屋頂：這一列有、上一列沒有（圓頂那一塊挑空，屋頂由圓頂自己蓋）
+            # Roof: present on this row but not the next (the dome area is left open; the dome
+            # builds its own roof).
             cap = m & ~mn & ~sh & ~self.m_dome
             HR.paint(w, sfr, cap & ~t_m, y, MALL_ROOF)
             HR.paint(w, sfr, cap & t_m, y, GLASS)
@@ -424,7 +469,7 @@ class Taipei101(Attraction):
                 HR.paint(w, sfr, slab & ~cap & self.SF.lamps, y, LAMP)
             if yy > 0:
                 HR.paint(w, sfr, SF.core_ring & t_m & ~sh & ~slab, y, CORE)
-        # 如意形圓頂：購物中心屋頂上的玻璃拱，30 -> 42 m
+        # The ruyi-shaped dome: a glass vault on the mall roof, 30 -> 42 m.
         dm = self.m_dome
         h = HR.dome(dm, 12.0)
         rib = (np.floor(sfr.U).astype(int) % 5 == 0) | (np.floor(sfr.V).astype(int) % 5 == 0)
@@ -433,7 +478,7 @@ class Taipei101(Attraction):
         p.heightfield(dm & rib, g0 + 29, h, DOME_RIB, shell=1)
         HR.paint(w, sfr, kit.ring(dm), g0 + 29, MALL_ROOF)
 
-    # ---- 塔樓：第 31 列到屋頂 ----
+    # ---- Tower: row 31 to the roof ----
     def _tower(self, w):
         fr, F, g0 = self.fr, self.F, self.g0
         cache = {}
@@ -443,7 +488,7 @@ class Taipei101(Attraction):
                 cache[yy] = tower_mass(F, yy)
             return cache[yy]
 
-        hole = F.D <= 5.5                              # 阻尼器那一圈樓板挖空
+        hole = F.D <= 5.5                              # The slabs are cut open around the damper.
         for yy in range(31, H_ROOF):
             m = M(yy)
             if not m.any():
@@ -455,8 +500,10 @@ class Taipei101(Attraction):
             cap = m & ~mn & ~sh
             sec, mod = section(yy)
             if section_top(yy):
-                # 一段的頂：外緣一圈白色挑簷（遠看是每斗頂的那一圈亮邊）。基座與各斗的頂
-                # 是往內收的玻璃斜頂（下面 slope），91 樓戶外觀景台（第八斗的頂）鋪地坪
+                # Top of a section: a white overhang around the edge (from afar, the
+                # bright rim at the top of each module). The tops of the base and
+                # the modules are inward-sloping glass (slope below); the 91F
+                # outdoor observatory (top of the eighth module) is paved.
                 if sec == "mod" and mod == 7:
                     HR.paint(w, fr, cap, y, FLOOR1)
                 elif sec in ("base", "mod"):
@@ -465,10 +512,12 @@ class Taipei101(Attraction):
                     HR.paint(w, fr, cap, y, LEDGE)
                 HR.paint(w, fr, sh & ~mn, y, LEDGE)
             elif cap.any():
-                # 斜面每收一格露出來的小平台：跟立面一樣是玻璃
+                # The small ledges exposed by each one-cell
+                # setback of a slope: glass, like the facade.
                 HR.paint(w, fr, cap, y, GLASS)
             if sec == "mod":
-                # 斗與斗之間的玻璃斜頂：從下面那一斗的挑簷往內、往上收三格，接到這一斗的底
+                # Sloped glass between modules: from the lower module's overhang, stepping in and up
+                # three cells to the bottom of this module.
                 yt = int(math.ceil(H_BASE + mod * H_MOD - 0.5)) - 1
                 i = yy - yt
                 if 1 <= i <= 3:
@@ -484,7 +533,7 @@ class Taipei101(Attraction):
             elif yy < CORE_TOP:
                 HR.paint(w, fr, F.core_ring & inner, y, CORE)
 
-    # ---- 塔尖：449 -> 508 m，底座是錐、上面越來越細，頂端是白色的避雷針 ----
+    # ---- Spire: 449 -> 508 m; a cone at the base, thinner higher up, a white rod on top ----
     def _spire(self, w):
         fr, F, g0 = self.fr, self.F, self.g0
         for yy in range(H_ROOF, H_TIP + 1):
@@ -504,10 +553,11 @@ class Taipei101(Attraction):
                 x, z = fr.cell(0.0, 0.0)
                 w.set(x, g0 + yy, z, "minecraft:end_rod[facing=up]")
 
-    # ---- 古錢（基座頂、每面一枚）與如意（每斗頂、每面一個）----
+    # ---- Ancient coins (top of the base) and ruyi (top of each module), one per face ----
     def _ornaments(self, w):
         fr, F, g0 = self.fr, self.F, self.g0
-        # 古錢：直徑 13 m 的圓盤、凸出立面 3 m；正面是外圈、錢面、方孔
+        # Coins: 13 m discs projecting 3 m from the facade; the front shows the rim, the face and
+        # the square hole.
         for yy in range(int(COIN_Y - COIN_R) - 1, int(COIN_Y + COIN_R) + 2):
             a = half_width(yy)
             dy = yy - COIN_Y
@@ -525,7 +575,8 @@ class Taipei101(Attraction):
             HR.paint(w, fr, face & (sq > 2.5), y, COIN_FACE)
             HR.paint(w, fr, face & (sq <= 2.5) & (sq > 1.5), y, COIN_HOLE)
             HR.paint(w, fr, face & (sq <= 1.5), y, MECH)
-        # 如意：貼在每一斗頂端（挑簷下一列開始往下畫），凸出立面一格
+        # Ruyi: set at the top of each module (drawn downward from the row below the overhang),
+        # projecting one cell from the facade.
         pts = RUYI_GLYPH
         for m in range(8):
             top = int(math.ceil(H_BASE + (m + 1) * H_MOD - 0.5)) - 2
@@ -536,36 +587,39 @@ class Taipei101(Attraction):
                 cellm = (np.floor(F.T).astype(int) == col) & (F.S > a) & (F.S <= a + 1.0)
                 HR.paint(w, fr, cellm, g0 + yy, RUYI)
 
-    # ---- 89 樓觀景台、阻尼器、91 樓戶外觀景台 ----
+    # ---- 89F observatory, damper, 91F outdoor observatory ----
     def _observatory(self, w):
         fr, F, g0 = self.fr, self.F, self.g0
         y_obs = g0 + OBS_ROW
         a = half_width(OBS_ROW + 1)
         inner = F.R <= a - 1.5
-        # 兩層挑高的觀景空間（89、90 樓），把中間清空
+        # The double-height observatory space (89F and 90F): clear the interior.
         for yy in range(OBS_ROW + 1, DECK_ROW):
             HR.paint(w, fr, inner & ~(F.D <= 3.0), g0 + yy, kit.AIR)
-        # 阻尼器：直徑 5.5 m 的金色鋼球，球心在 89 樓樓板高度（上半在 89 樓、下半在 88 樓）
+        # Damper: a gold steel sphere 5.5 m in diameter, centered at the 89F slab level (upper half
+        # on 89F, lower half on 88F).
         cx, cz = fr.world(0.0, 0.0)
         HR.sphere(w, cx, y_obs + 0.5, cz, 2.75, TMD)
-        # 吊索：從球頂拉到 91 樓樓板（92 樓在它上面）
+        # Cables: from the top of the sphere to the 91F slab (92F is above it).
         for du, dv in ((1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)):
             x, z = fr.cell(du, dv)
             for y in range(y_obs + 3, g0 + DECK_ROW):
                 w.set(x, y, z, CHAIN)
-        # 洞口的玻璃欄杆
+        # Glass railing around the opening.
         HR.paint(w, fr, (F.D > 5.5) & (F.D <= 6.5), y_obs + 1, RAIL)
-        # 91 樓戶外觀景台：第八斗的頂上一圈，外緣一格高的玻璃欄板
+        # 91F outdoor observatory: a ring on top of the eighth module, with a one-block glass
+        # parapet at the edge.
         a8 = half_width(DECK_ROW)
         deck = (F.R <= a8) & ~((F.S <= TOP91) & ~F.notch91)
         HR.paint(w, fr, kit.ring(F.R <= a8) & deck, g0 + DECK_ROW + 1, RAIL)
-        # 觀景台的燈：天花（91 樓樓板）與地坪各一格燈
+        # Observatory lights: one lamp cell each in the ceiling (the 91F slab) and in the paving.
         HR.paint(w, fr, inner & F.lamps & ~(F.D <= 6.5), y_obs, LAMP)
         HR.paint(w, fr, inner & F.lamps, g0 + DECK_ROW, LAMP)
-        # 告示牌：回一樓大廳；阻尼器的說明牌
+        # Signs: back to the ground-floor lobby; the damper's information sign, with its English
+        # version on the reader's right.
         tx, tz = self.top_cell
         wu, wv = self._city_dir()
-        ru, rv = -wv, wu                                  # 觀景點右手邊
+        ru, rv = -wv, wu                                  # To the viewpoint's right.
         su, sv = self.fr.local(tx, tz)
         sx, sz = fr.cell(su + ru * 2.0 - wu * 1.0, sv + rv * 2.0 - wv * 1.0)
         w.sign(sx, y_obs + 1, sz, ["回 1 樓 ▼", "To Lobby", "", ""],
@@ -574,8 +628,11 @@ class Taipei101(Attraction):
         mx, mz = fr.cell(0.0, 7.5)
         w.sign(mx, y_obs + 1, mz, ["調諧質量阻尼器", "660 公噸", "直徑 5.5 m", "88～92 樓"],
                facing=fr.dir(0, 1), wood="pale_oak", kind="standing", glow=True)
+        ex, ez = fr.cell(1.0, 7.5)
+        w.sign(ex, y_obs + 1, ez, ["Tuned mass", "damper, 660 t", "5.5 m diameter", "Floors 88–92"],
+               facing=fr.dir(0, 1), wood="pale_oak", kind="standing", glow=True)
 
-    # ---- 一樓大廳：南、東兩面開門，電梯核上立往 89 樓的告示牌 ----
+    # ---- Ground-floor lobby: doors on the south and east faces, a sign to 89F on the core ----
     def _lobby(self, w):
         fr, F, g0 = self.fr, self.F, self.g0
         foot = set()
@@ -583,7 +640,7 @@ class Taipei101(Attraction):
         for x, z in zip(self.sfr.X[m1].tolist(), self.sfr.Z[m1].tolist()):
             foot.add((x, z))
         for du, dv in ((0.0, 1.0), (1.0, 0.0)):
-            # 從外往內找第一道牆
+            # Search inward from outside for the first wall.
             hit = None
             for k in range(90, 30, -1):
                 d = k * 0.5
@@ -593,8 +650,8 @@ class Taipei101(Attraction):
                     break
             if hit is None:
                 continue
-            face = kit.cardinal(*fr.dir(-du, -dv))     # 進門的人面向的方位
-            tu, tv = dv, du                             # 沿牆方向
+            face = kit.cardinal(*fr.dir(-du, -dv))     # The direction a player entering faces.
+            tu, tv = dv, du                             # Along the wall.
             for s, hinge in ((-0.5, "left"), (0.5, "right")):
                 x, z = fr.cell(du * hit + tu * s, dv * hit + tv * s)
                 HR.door(w, x, g0 + 1, z, face, hinge=hinge)
@@ -606,7 +663,7 @@ class Taipei101(Attraction):
                 x, z = fr.cell(du * hit + tu * s, dv * hit + tv * s)
                 w.set(x, g0 + 1, z, GLASS)
                 w.set(x, g0 + 2, z, GLASS)
-        # 電梯核南面：兩座電梯門（鐵框）與告示牌
+        # South face of the elevator core: two elevator doors (iron frames) and the sign.
         for su in (-4.0, -3.0, 3.0, 4.0):
             for yy in (1, 2, 3):
                 x, z = fr.cell(su, 10.0)
@@ -616,7 +673,7 @@ class Taipei101(Attraction):
                facing=fr.dir(0, 1), wood="pale_oak", kind="standing", glow=True,
                command="function %s:%s" % (config.DATAPACK_NS, kit.sight_fn(self.id, "top")))
 
-    # ---- 門口雨庇：一層高（5 m）的頂板與柱子，底下走得過去 ----
+    # ---- Entrance canopies: a one-story (5 m) roof slab on posts, walkable underneath ----
     def _canopies(self, w):
         sfr, g0 = self.sfr, self.g0
         post = HR.grid_mask(sfr, 5, 0)
@@ -629,7 +686,7 @@ class Taipei101(Attraction):
             for yy in range(1, 5):
                 HR.paint(w, sfr, rg, g0 + yy, MALL_WALL)
 
-    # ---- 空橋：二樓高的玻璃廊道（只蓋景點範圍裡那一段）----
+    # ---- Skywalks: glass corridors at second-floor level (only the stretch in the grounds) ----
     def _skywalks(self, w):
         sfr, g0 = self.sfr, self.g0
         post = HR.grid_mask(sfr, 12, 0)
@@ -645,7 +702,7 @@ class Taipei101(Attraction):
             for yy in range(1, 6):
                 HR.paint(w, sfr, m & post & kit.erode(m, 1), g0 + yy, MALL_WALL)
 
-    # ---- 廣場的行道樹：每 8 m 一棵，門口前面與空橋底下留空 ----
+    # ---- Plaza trees: one every 8 m, none in front of the entrances or under the skywalks ----
     def _trees(self, w):
         sfr, g0 = self.sfr, self.g0
         free = self.m_plaza & ~kit.dilate(self.m_foot, 4)
@@ -653,7 +710,7 @@ class Taipei101(Attraction):
             free &= ~kit.dilate(m, 3)
         for m in self.m_walk:
             free &= ~kit.dilate(m, 3)
-        # 南門、東門前面各留一條 14 m 寬的通道
+        # Keep a 14 m wide passage clear in front of each of the south and east entrances.
         tu, tv = self.tuv
         free &= ~((np.abs(sfr.U - tu) <= 7) & (sfr.V > tv))
         free &= ~((np.abs(sfr.V - tv) <= 7) & (sfr.U > tu))
@@ -661,7 +718,9 @@ class Taipei101(Attraction):
         keep = self.site.keep
 
         def near_keep(x, z):
-            """樹冠 3 格內有禁區（捷運 4 號出口就在南廣場）：不種，免得擋住出口的門。"""
+            """Return whether a keep-out zone lies within 3 cells of the crown.
+
+            MRT Exit 4 is on the south plaza; no tree goes there, so none blocks the exit door."""
             if keep is None:
                 return False
             return any(keep(x + dx, self.g0 + dy, z + dz)

@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""補抓 ref 不是標準代號的支線關聯，合併進既有的 data/lines/*.json。
+"""Fetch the branch-line relations whose ref is not a standard line code.
 
-例如新北投支線在 OSM 的 ref 是「捷運紅線 (新北投支線)」而非 "R"，
-用代號查會整條漏掉。
+They are merged into the existing data/lines/*.json. For example, the
+Xinbeitou Branch has the ref "捷運紅線 (新北投支線)" in OSM rather than "R", so a
+query by line code misses the whole branch.
 """
 import json, os
 
 from mrt import config
 from mrt.infrastructure.overpass import query
 
-# 關聯 id -> 併入哪一條線
-BRANCHES = {"R": [2665129, 9437206]}      # 新北投支線 (上下行)
+# Relation id -> the line it is merged into.
+BRANCHES = {"R": [2665129, 9437206]}      # Xinbeitou Branch (both directions)
 
 
 def run(q, label="branch"):
@@ -28,7 +29,7 @@ def main():
 
         geom = run(f"[out:json][timeout:180];rel(id:{ids_str});out geom;")
         if geom is None:
-            print(f"{ref}: 幾何抓取失敗"); continue
+            print(f"{ref}: geometry fetch failed"); continue
         added = 0
         for e in geom["elements"]:
             if e["id"] in have:
@@ -45,7 +46,7 @@ def main():
 
         json.dump(d, open(path, "w", encoding="utf-8"), ensure_ascii=False)
         json.dump(tags, open(config.WAY_TAGS_JSON, "w", encoding="utf-8"), ensure_ascii=False)
-        print(f"{ref}: 併入 {added} 個關聯, {nw} 條 way 標籤 -> {path}")
+        print(f"{ref}: merged {added} relations, {nw} way tags -> {path}")
 
 
 if __name__ == "__main__":

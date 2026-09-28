@@ -1,29 +1,39 @@
 #!/usr/bin/env python3
-"""搭乘系統的資料包規格：把路網（domain/network.py）變成一份純資料。
+"""The datapack spec of the ride system: turns the network (domain/network.py) into plain data.
 
-月台上的告示牌只負責「點了執行哪個函式」（mrt:ride/bl12_bl13、mrt:turn/bl01_m），
-售票機的告示牌打開路線圖對話框（mrt:network）。這裡把那些 id 背後真正要做的事
-寫成 Minecraft 指令與對話框 JSON：
+The platform signs only decide which function a click runs (mrt:ride/bl12_bl13,
+mrt:turn/bl01_m), and the ticket machine sign opens the route map dialog
+(mrt:network). This module writes what those ids actually do as Minecraft
+commands and dialog JSON:
 
-  ride/*   坐一站：傳送到下一站同一個行車方向的月台、正對著繼續往前的那面牌，
-           大標題是到站的站名（線色），副標題是站號、英文站名與路線，
-           動作列提示「下一站」，再響一聲到站鈴
-  turn/*   終點站到站側的牌：換到對面月台（往回開的那一側）的主位
-  go/*     路線圖的站名按鈕：傳送到那一站有下一站那一側的主位
-  sight/*  景點清單的按鈕與景點裡的告示牌：傳送到景點的觀景點（或 101 的觀景台）
-  sys/*    載入、每 tick、首次進入、trigger 分派、進站提示（HUD）、世界初始設定
+  ride/*   Ride one stop: teleport to the platform for the same direction at the
+           next station, facing the sign that continues onward. The title is the
+           arriving station's name (in the line color), the subtitle its code,
+           English name and line, the action bar gives the next station, and an
+           arrival chime plays.
+  turn/*   The sign on the arrival side of a terminus: move to the primary berth
+           on the opposite platform (the side trains leave from).
+  go/*     A station button on the route map: teleport to the primary berth on
+           the side of that station that has a next station.
+  sight/*  A button in the attraction list and the signs at attractions: teleport
+           to the attraction's viewpoint (or Taipei 101's observatory).
+  sys/*    Load, tick, first join, trigger dispatch, the arrival notice (HUD) and
+           the initial world settings.
 
-**約定**（tools/ 的讀回驗證器與 tools/check_datapack.py 靠它）：每個 ride/*、turn/*、
-go/*、sight/* 函式恰好有一行 ``tp @s <x> <y> <z> <yaw> <pitch>``，座標是絕對的數字，
-x、z 是站位方塊的中心（+0.5）、y 是腳所在的方塊。
+**Convention** (the read-back verifiers in tools/ and tools/check_datapack.py rely
+on it): every ride/*, turn/*, go/* and sight/* function has exactly one line
+``tp @s <x> <y> <z> <yaw> <pitch>`` with absolute numeric coordinates, where x
+and z are the center of the berth block (+0.5) and y is the block the feet are in.
 
-這一層只產生 dict／list／字串，不碰檔案：寫檔在 infrastructure/datapack.py，
-命名空間與資料夾名稱在 config（告示牌那一端也從那裡拿）。
+This layer only produces dicts, lists and strings and never touches files:
+writing happens in infrastructure/datapack.py, and the namespace and folder names
+live in config (the sign side takes them from there too).
 """
 import json
 import math
 
 from mrt import config
+from mrt.application import signage as SG
 from mrt.application.attractions.kit import sight_fn
 from mrt.domain import alignment as AL
 from mrt.domain import network as NW
@@ -31,56 +41,67 @@ from mrt.domain import stacked as SK
 
 NS = config.DATAPACK_NS
 
-# ---- 記分板與標籤（全部掛命名空間前綴，不跟別的資料包撞名）----
-OBJ_GO = NS + ".go"          # trigger：路線圖的站名按鈕（/trigger mrt.go set <n>）
-OBJ_MENU = NS + ".menu"      # trigger：打開路線圖（/trigger mrt.menu）
-OBJ_STATE = NS + ".state"    # dummy：#setup 世界初始設定的版本、#notice 設定通知待送、#beat HUD 心跳
-OBJ_AREA = NS + ".area"      # dummy：玩家上一輪在哪一站的範圍（進站提示只亮一次）
-OBJ_HERE = NS + ".here"      # dummy：這一輪掃描時玩家在哪一站的範圍（0 = 不在任何車站）
-TAG_JOINED = NS + ".joined"  # 玩家標籤：來過了（首次進入的傳送與歡迎訊息只做一次）
+# ---- Scoreboards and tags (all prefixed with the namespace so they never collide with another datapack) ----
+OBJ_GO = NS + ".go"          # trigger: the route map's station buttons (/trigger mrt.go set <n>).
+OBJ_MENU = NS + ".menu"      # trigger: open the route map (/trigger mrt.menu).
+OBJ_STATE = NS + ".state"    # dummy: #setup holds the initial settings version, #notice a pending settings notice, #beat the HUD heartbeat.
+OBJ_AREA = NS + ".area"      # dummy: the station area the player was in on the previous scan (the arrival notice shows once).
+OBJ_HERE = NS + ".here"      # dummy: the station area the player is in on this scan (0 = not in any station).
+TAG_JOINED = NS + ".joined"  # Player tag: has joined before (the first-join teleport and welcome message happen once).
 
-SETUP_VERSION = 1            # 世界初始設定改了就加一：舊世界 /reload 之後會再套一次
-HUD_EVERY = 10               # 進站提示每幾 tick 掃一次（每秒兩次，全網約兩百個選擇器）
-HOME = ("R", "台北車站")      # 首次進入的落腳處：淡水信義線台北車站（R10）的主位
+SETUP_VERSION = 1            # Bump when the initial world settings change: old worlds apply them again after /reload.
+HUD_EVERY = 10               # Ticks between arrival notice scans (twice a second, about two hundred selectors across the network).
+HOME = ("R", "台北車站")      # First-join landing spot: the primary berth of Taipei Main Station (R10) on the Tamsui-Xinyi Line.
 
-# 視線：人眼高 1.62 格，瞄準告示牌方塊裡 0.6 格高的地方（牌面中間）。
-# 傳送過去時準星正好落在牌上，再按一次右鍵就是下一站。
+# Line of sight: the eyes are 1.62 blocks up, aimed 0.6 blocks up inside the sign
+# block (the middle of the face). After a teleport the crosshair rests on the
+# sign, so one more right-click rides to the next station.
 EYE_H, AIM_H = 1.62, 0.6
 
-# 到站鈴：兩聲鐘琴疊在一起，相差一個完全四度（音高 1.0 與 1.335 = 2^(5/12)）
+# Arrival chime: two chimes together, a perfect fourth apart (pitches 1.0 and 1.335 = 2^(5/12)).
 CHIME = ("minecraft:block.note_block.chime", 0.8, (1.0, 1.335))
 
-# 世界初始設定：(規則, 設定值, 26.2 預設值, 說明)。26.2 的規則 id 是 snake_case，
-# 清單取自遊戲產生的 game_rules.dat（見 tools/check_datapack.py 的遊戲內驗證）。
+# Initial world settings: (rule, value, 26.2 default, description shown to the
+# player). Rule ids in 26.2 are snake_case; the list comes from the
+# game_rules.dat the game writes (see the in-game check in tools/check_datapack.py).
 GAME_RULES = [
-    ("spawn_monsters", "false", "true", "不生成敵對生物"),
-    ("spawn_phantoms", "false", "true", "不生成夜魅"),
-    ("spawn_patrols", "false", "true", "不生成災厄巡邏隊"),
-    ("spawn_wandering_traders", "false", "true", "不生成流浪商人"),
-    ("advance_time", "false", "true", "時間停在中午"),
-    ("advance_weather", "false", "true", "天氣固定晴天"),
-    ("keep_inventory", "true", "false", "死亡不掉落物品"),
-    ("mob_griefing", "false", "true", "生物不破壞方塊"),
-    ("respawn_radius", "0", "10", "重生不隨機偏移"),
+    ("spawn_monsters", "false", "true", "不生成敵對生物 No hostile mobs"),
+    ("spawn_phantoms", "false", "true", "不生成夜魅 No phantoms"),
+    ("spawn_patrols", "false", "true", "不生成災厄巡邏隊 No pillager patrols"),
+    ("spawn_wandering_traders", "false", "true", "不生成流浪商人 No wandering traders"),
+    ("advance_time", "false", "true", "時間停在中午 Time stays at noon"),
+    ("advance_weather", "false", "true", "天氣固定晴天 Weather stays clear"),
+    ("keep_inventory", "true", "false", "死亡不掉落物品 Items are kept on death"),
+    ("mob_griefing", "false", "true", "生物不破壞方塊 Mobs do not break blocks"),
+    ("respawn_radius", "0", "10", "重生不隨機偏移 Respawn exactly at the spawn point"),
 ]
 NOON = 6000
+MAX_SAY = 256                # The game rejects a whole function if one say message is longer.
 
-ATTRIBUTION = "地圖資料 © OpenStreetMap contributors（ODbL 1.0）"
+ATTRIBUTION = "地圖資料 Map data © OpenStreetMap contributors（ODbL 1.0）"
 MENU_TITLE = "台北捷運路線圖"
 
+# Dialog buttons use the same font as signs, so signage.text_width measures
+# their labels. A label keeps 2 px of margin on each side
+# (AbstractButton.extractDefaultLabel) and scrolls if it is wider.
+LABEL_MARGIN = 4
+STATION_BUTTON_W = 130       # Three columns of 130 plus 2 px gaps stay within the 400 px body.
+SIGHT_BUTTON_W = 200
 
-# ---------- 小工具 ----------
+
+# ---------- Helpers ----------
 
 def fid(path):
-    """函式／對話框路徑 -> 完整 id（"ride/bl12_bl13" -> "mrt:ride/bl12_bl13"）。"""
+    """Function or dialog path -> full id ("ride/bl12_bl13" -> "mrt:ride/bl12_bl13")."""
     return "%s:%s" % (NS, path)
 
 
 def text(obj):
-    """文字元件 -> 指令裡的字面值。
+    """Text component -> its literal in a command.
 
-    26.2 的指令吃 SNBT；JSON 是它的子集（雙引號鍵、true、\\n 跳脫都認得），
-    所以直接 json.dumps。中文不跳脫，函式檔是 UTF-8。
+    Commands in 26.2 take SNBT, and JSON is a subset of it (double-quoted keys,
+    true and \\n escapes are all understood), so json.dumps is used directly.
+    Chinese is not escaped; function files are UTF-8.
     """
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
 
@@ -90,16 +111,33 @@ def line_name(ref):
 
 
 def line_order(refs):
-    """路線的顯示順序：照 LINE_NAMES（北捷的路線編號順序），沒列到的排最後。"""
+    """Display order of lines: as in LINE_NAMES (the Taipei Metro line numbering), with unlisted lines last."""
     known = list(NW.LINE_NAMES)
     return sorted(refs, key=lambda r: (known.index(r) if r in known else len(known), r))
 
 
-def aim(slot):
-    """(x, y, z, yaw, pitch)：站在 slot 的站位中心、面向並瞄準那面告示牌。
+def _full_name(st):
+    """Code, Chinese name and English name of a station, as a tooltip shows them."""
+    en = st.en if st.en != st.name else ""
+    return " ".join(p for p in (st.code, st.name, en) if p)
 
-    偏航角用站位到牌子的方塊中心算，不直接用 slot.yaw（月台門的法向）：
-    斜 45 度的站，牌子取整之後不一定正好在法向上，差半格就可能瞄不到牌。
+
+def _label_en(forms, used, width):
+    """The longest English form that fits beside the used part of a button
+    label, truncated if none fits; "" if there is no room for even that."""
+    room = width - LABEL_MARGIN - used - SG.text_width(" ")
+    if not forms or room < SG.text_width("Xx…"):
+        return ""
+    return SG.fit(forms, width=room)
+
+
+def aim(slot):
+    """(x, y, z, yaw, pitch): standing at the center of slot's berth, facing and aiming at its sign.
+
+    The yaw is computed from the berth to the sign's block center rather than
+    taken from slot.yaw (the platform screen door normal): at a 45-degree
+    station the rounded sign cell is not always exactly on the normal, and half
+    a block off can miss the sign.
     """
     sx, sy, sz = slot.sign
     tx, ty, tz = slot.stand
@@ -111,7 +149,7 @@ def aim(slot):
 
 
 def tp_line(slot):
-    """約定的那一行：tp @s <x> <y> <z> <yaw> <pitch>（絕對座標）。"""
+    """The convention line: tp @s <x> <y> <z> <yaw> <pitch> (absolute coordinates)."""
     x, y, z, yaw, pitch = aim(slot)
     return "tp @s %.1f %d %.1f %.1f %.1f" % (x, y, z, yaw, pitch)
 
@@ -122,7 +160,7 @@ def chime_lines():
             for p in pitches]
 
 
-# ---------- 到站的畫面 ----------
+# ---------- Arrival screen ----------
 
 def _station_en(net, ref, name):
     st = net.get((ref, name))
@@ -130,14 +168,14 @@ def _station_en(net, ref, name):
 
 
 def _terminals(net, ref, dr):
-    """這個方向的終點站：("南港展覽館", "Nangang Exhibition Center")。"""
+    """The terminals in this direction: ("南港展覽館", "Nangang Exhibition Center")."""
     zh = "／".join(dr.terminals)
     en = " / ".join(_station_en(net, ref, t) for t in dr.terminals)
     return zh, en
 
 
 def arrival_lines(net, st, slot, colours):
-    """到站：大標題站名、副標題站號與路線、動作列下一站。"""
+    """Arrival: the station name as the title, its code and line as the subtitle, the next station in the action bar."""
     ref = st.ref
     c = colours.get(ref, "#FFFFFF")
     lz, le = line_name(ref)
@@ -157,23 +195,25 @@ def arrival_lines(net, st, slot, colours):
             {"text": "　往 To %s %s" % (tz_, te), "color": "gray"}]))
     else:
         out.append("title @s actionbar " + text([
-            {"text": "本站為終點站 Terminal station", "color": "yellow"},
-            {"text": "　點月台上的告示牌換到對面月台 Click a sign to cross over", "color": "gray"}]))
+            {"text": "本站為終點站 Terminus", "color": "yellow"},
+            {"text": "　點月台上的告示牌換到對面月台 Click a sign to cross to the other platform",
+             "color": "gray"}]))
     return out
 
 
 def _fn_header(desc):
-    return ["# " + desc, "# 自動產生（mrt/application/ride_plan.py），請改產生器、別手改"]
+    return ["# " + desc, "# Generated by mrt/application/ride_plan.py; edit the generator, not this file."]
 
 
-# ---------- 各種函式 ----------
+# ---------- Functions ----------
 
 def _ride_targets(net, berths):
-    """{(路線, 起站名, 迄站名): (起站, 迄站, 下車 Slot)}。
+    """{(line, from name, to name): (from station, to station, arrival Slot)}.
 
-    以 NW.rides 為準；月台上每一面牌指向的車程都得有函式，arrival 萬一找不到
-    下車位置（那一側的牌全被地標擋掉）就退回迄站的 home_slot，免得點了
-    「Unknown function」。
+    NW.rides is authoritative. Every ride a platform sign points to needs a
+    function, so if arrival finds no berth (landmarks blocked every sign on that
+    side), it falls back to the destination's home_slot rather than answer the
+    click with "Unknown function".
     """
     bidx = NW.berth_index(berths)
     got = {}
@@ -194,7 +234,7 @@ def _ride_targets(net, berths):
 
 
 def _turn_targets(berths):
-    """[(Berth, 目的 Slot)]：終點站到站側（沒有下一站）的每個月台邊。"""
+    """[(Berth, target Slot)]: every platform edge on the arrival side of a terminus (no next station)."""
     bidx = NW.berth_index(berths)
     out = []
     for b in berths:
@@ -211,7 +251,7 @@ def _turn_targets(berths):
 
 
 def _stations_by_line(net, berths):
-    """{路線: [Station]}，站號自然排序，只收有 home_slot 的（go 函式傳得過去的）。"""
+    """{line: [Station]} in natural code order, only stations with a home_slot (that a go function can reach)."""
     bidx = NW.berth_index(berths)
     out = {}
     for st in net.values():
@@ -224,7 +264,7 @@ def _stations_by_line(net, berths):
 
 
 def _codes_by_name(net):
-    """{站名: [(路線, 站號)]}：轉乘站在每條線上的站號（顯示用）。"""
+    """{station name: [(line, code)]}: a transfer station's code on each line (for display)."""
     out = {}
     for st in net.values():
         if st.box is not None:
@@ -235,18 +275,22 @@ def _codes_by_name(net):
     return out
 
 
-# ---------- 進站提示（HUD）----------
+# ---------- Arrival notice (HUD) ----------
 
-AREA_HALF = AL.BOX_HALF + 1      # 站體半寬再多一格
+AREA_HALF = AL.BOX_HALF + 1      # Half the station box width, plus one block.
 
 
 def station_area(box):
-    """站體的軸向外接盒 (x0, y0, z0, dx, dy, dz)，給 @a[x=,y=,z=,dx=,dy=,dz=] 用。
+    """The axis-aligned bounding box of a station box (x0, y0, z0, dx, dy, dz), for @a[x=,y=,z=,dx=,dy=,dz=].
 
-    水平：月台兩端（lo、hi）各往兩側 BOX_HALF+1 格的四個角。
-    垂直（腳的高度）：地下站從月台（疊式站是下層月台）到穿堂（軌面 +7）；
-    高架／平面站的穿堂可能在橋下（軌面 −6）或月台上方（軌面 +8），兩種都涵蓋。
-    斜 45 度的站外接盒會比站體大一圈，進站提示早一點亮而已。
+    Horizontal: the four corners BOX_HALF+1 blocks to either side of both
+    platform ends (lo, hi).
+    Vertical (foot height): an underground station spans from the platform (the
+    lower platform in a stacked station) to the concourse (rail top +7); an
+    elevated or at-grade station's concourse may be under the viaduct (rail top
+    −6) or above the platforms (rail top +8), and both are covered.
+    At a 45-degree station the bounding box is larger than the station box; the
+    arrival notice simply shows a little earlier.
     """
     xs, zs = [], []
     for i in (box.lo, box.hi):
@@ -267,7 +311,7 @@ def station_area(box):
 
 
 def hud_text(name, en, codes, colours):
-    """動作列：站號（各自的線色）＋站名＋英文站名。"""
+    """Action bar: the station codes (each in its line color), the station name and its English name."""
     parts = []
     for ref, code in codes:
         parts.append({"text": "▌", "color": colours.get(ref, "#FFFFFF")})
@@ -279,7 +323,7 @@ def hud_text(name, en, codes, colours):
     return parts
 
 
-# ---------- 對話框 ----------
+# ---------- Dialogs ----------
 
 def _line_dialog(ref, stations, trig, codes_by_name, colours, near_sights=None):
     c = colours.get(ref, "#FFFFFF")
@@ -289,19 +333,27 @@ def _line_dialog(ref, stations, trig, codes_by_name, colours, near_sights=None):
         xfer = [rc for rc in codes_by_name.get(st.name, ()) if rc[0] != ref]
         tip = [{"text": st.en}]
         if xfer:
-            tip.append({"text": "\n轉乘 Transfer: ", "color": "gray"})
-            for k, (r, code) in enumerate(xfer):
-                tip.append({"text": ("、" if k else "") + code + " " + line_name(r)[0],
+            tip.append({"text": "\n轉乘 Transfer:", "color": "gray"})
+            for r, code in xfer:
+                tip.append({"text": "\n%s %s %s" % ((code,) + line_name(r)),
                             "color": colours.get(r, "#FFFFFF")})
         near = (near_sights or {}).get(st.name)
         if near:
-            tip.append({"text": "\n★ 附近景點 Nearby: ", "color": SIGHT_COLOR})
-            tip.append({"text": "、".join(near), "color": "white"})
+            tip.append({"text": "\n★ 附近景點 Nearby:", "color": SIGHT_COLOR})
+            for zh, en in near:
+                tip.append({"text": "\n%s %s" % (zh, en), "color": "white"})
+        label = [{"text": st.code + " ", "color": c, "bold": True},
+                 {"text": st.name, "color": "white"}]
+        # Abbreviations only: a dropped word ("Taipei City" for Taipei City Hall)
+        # misleads where a truncation ("Taipei City…") does not.
+        en = _label_en(SG.en_abbrevs(st.en) if st.en and st.en != st.name else [],
+                      SG.text_width(st.code + " ", True) + SG.text_width(st.name), STATION_BUTTON_W)
+        if en:
+            label.append({"text": " " + en, "color": "gray"})
         actions.append({
-            "label": [{"text": st.code + " ", "color": c, "bold": True},
-                      {"text": st.name, "color": "white"}],
+            "label": label,
             "tooltip": tip,
-            "width": 130,
+            "width": STATION_BUTTON_W,
             "action": {"type": "minecraft:run_command",
                        "command": "trigger %s set %d" % (OBJ_GO, trig[(st.ref, st.name)])},
         })
@@ -311,7 +363,8 @@ def _line_dialog(ref, stations, trig, codes_by_name, colours, near_sights=None):
         "external_title": [{"text": "▌", "color": c}, {"text": "%s %s" % (lz, le)}],
         "body": [{"type": "minecraft:plain_message", "width": 400, "contents": [
             {"text": "點站名就傳送到那一站的月台（面向往下一站的告示牌）\n", "color": "white"},
-            {"text": "Click a station to teleport to its platform.", "color": "gray"}]}],
+            {"text": "Click a station to teleport to its platform, facing the sign for the next station.",
+             "color": "gray"}]}],
         "columns": 3,
         "actions": actions,
         "exit_action": {"label": {"text": "← 返回路線圖 Back"}, "width": 200,
@@ -329,7 +382,7 @@ def _menu_dialog(refs, by_line, colours, n_sights=0):
             "label": [{"text": "▌", "color": c}, {"text": lz + " ", "color": c, "bold": True},
                       {"text": le, "color": "white"}],
             "tooltip": [{"text": "%d 站 stations\n" % len(sts)},
-                        {"text": "%s %s ↔ %s %s" % (sts[0].code, sts[0].name, sts[-1].code, sts[-1].name),
+                        {"text": "%s\n↔ %s" % (_full_name(sts[0]), _full_name(sts[-1])),
                          "color": "gray"}],
             "width": 200,
             "action": {"type": "minecraft:show_dialog", "dialog": fid(NW.line_dialog(ref))},
@@ -339,6 +392,8 @@ def _menu_dialog(refs, by_line, colours, n_sights=0):
             "label": [{"text": "★ ", "color": SIGHT_COLOR}, {"text": "觀光景點 ", "color": SIGHT_COLOR, "bold": True},
                       {"text": "Attractions", "color": "white"}],
             "tooltip": [{"text": "%d 處景點：台北101、中正紀念堂、總統府……\n" % n_sights},
+                        {"text": "%d attractions, including Taipei 101, Chiang Kai-shek Memorial Hall "
+                                 "and the Presidential Office Building\n" % n_sights, "color": "gray"},
                         {"text": "傳送到景點前的觀景點 Teleport to a viewpoint", "color": "gray"}],
             "width": 200,
             "action": {"type": "minecraft:show_dialog", "dialog": fid(SIGHTS_DIALOG)},
@@ -359,19 +414,21 @@ def _menu_dialog(refs, by_line, colours, n_sights=0):
     }
 
 
-# ---------- 觀光景點 ----------
+# ---------- Attractions ----------
 
-SIGHT_COLOR = "#E0B040"      # 景點按鈕與標題的顏色（金色，跟各線的線色分開）
-SIGHTS_DIALOG = "sights"     # 景點清單對話框（mrt:sights）
+SIGHT_COLOR = "#E0B040"      # Color of the attraction buttons and titles (gold, distinct from every line color).
+SIGHTS_DIALOG = "sights"     # The attraction list dialog (mrt:sights).
 
 
 def sight_tp_line(sp):
-    """景點傳送點的那一行（同 tp_line 的格式）：sp 是 attractions.Spot 的 dict。"""
+    """The teleport line of an attraction spot (the tp_line format); sp is the dict of an attractions.Spot."""
     return "tp @s %.1f %d %.1f %.1f %.1f" % (sp["x"] + 0.5, sp["y"], sp["z"] + 0.5, sp["yaw"], sp["pitch"])
 
 
 def sight_arrival_lines(e, sp):
-    """到了景點：大標題景點名（或觀景台的名字）、副標題英文名、動作列一句事實與最近的站。"""
+    """Arrival at an attraction: the name (or the observatory's name) as the
+    title, the English name as the subtitle, and a fact and the nearest station
+    in the action bar."""
     main = not sp["key"]
     title = e["name_zh"] if main else sp["zh"]
     sub = e["name_en"] if main else sp["en"]
@@ -398,10 +455,17 @@ def _sight_dialog(entries, trig):
         if st:
             tip.append({"text": "\n最近的捷運站 %s（%d m）\nNearest MRT: %s" % (st[0], st[2], st[3]),
                         "color": "gray"})
+        # tools/check_datapack.py reads the Chinese name from the last label
+        # element's "text", so the English rides in that element's "extra".
+        name = {"text": e["name_zh"], "color": "white"}
+        en = _label_en(SG.sight_en_forms(e["name_en"]),
+                      SG.text_width("★ ") + SG.text_width(e["name_zh"]), SIGHT_BUTTON_W)
+        if en:
+            name["extra"] = [{"text": " " + en, "color": "gray"}]
         actions.append({
-            "label": [{"text": "★ ", "color": SIGHT_COLOR}, {"text": e["name_zh"], "color": "white"}],
+            "label": [{"text": "★ ", "color": SIGHT_COLOR}, name],
             "tooltip": tip,
-            "width": 200,
+            "width": SIGHT_BUTTON_W,
             "action": {"type": "minecraft:run_command",
                        "command": "trigger %s set %d" % (OBJ_GO, trig[e["id"]])},
         })
@@ -413,7 +477,9 @@ def _sight_dialog(entries, trig):
         "body": [{"type": "minecraft:plain_message", "width": 400, "contents": [
             {"text": "點景點就傳送到它前面的觀景點。建築的位置、方位與輪廓來自 OpenStreetMap。\n",
              "color": "white"},
-            {"text": "Click to teleport to a viewpoint in front of the attraction.", "color": "gray"}]}],
+            {"text": "Click to teleport to a viewpoint in front of the attraction. "
+                     "The buildings' positions, orientations and outlines come from OpenStreetMap.",
+             "color": "gray"}]}],
         "columns": 2,
         "actions": actions,
         "exit_action": {"label": {"text": "← 返回路線圖 Back"}, "width": 200,
@@ -421,11 +487,12 @@ def _sight_dialog(entries, trig):
     }
 
 
-# ---------- 系統函式 ----------
+# ---------- System functions ----------
 
 def _setup_fns():
-    """世界初始設定（只做一次）與設定通知。"""
-    setup = _fn_header("世界初始設定：第一次載入才做（#setup 記版本），/reload 不會蓋掉玩家之後的調整")
+    """The initial world settings (applied once) and the settings notice."""
+    setup = _fn_header("Initial world settings: applied only on first load (#setup records the version), "
+                       "so /reload does not overwrite later changes by players")
     for rule, val, _default, _desc in GAME_RULES:
         setup.append("gamerule %s %s" % (rule, val))
     setup += [
@@ -433,36 +500,51 @@ def _setup_fns():
         "weather clear",
         "scoreboard players set #setup %s %d" % (OBJ_STATE, SETUP_VERSION),
         "scoreboard players set #notice %s 1" % OBJ_STATE,
-        # 伺服器主控台看得到（開世界的當下通常還沒有玩家在線上）
+        # Visible on the server console (usually no player is online when the world opens).
         "say [台北捷運] 已套用世界初始設定：" + "、".join(
             "%s=%s" % (r, v) for r, v, _, _ in GAME_RULES)
         + "；時間定在中午、天氣晴。還原：/gamerule <規則> <原值>",
-        # /reload 升版時玩家已經在線上：當場通知，不必等下一個新玩家
+        # Two English lines, because a chat message is capped at 256 characters
+        # (MAX_SAY) and the rules alone take most of that.
+        "say [Taipei Metro] World rules set: " + ", ".join(
+            "%s=%s" % (r, v) for r, v, _, _ in GAME_RULES),
+        "say [Taipei Metro] Time set to noon, weather clear. To undo a rule: "
+        "/gamerule <rule> <original value>",
+        # On a /reload upgrade players are already online: tell them now rather
+        # than wait for the next new player.
         "execute as @a run function %s" % fid("sys/notice"),
     ]
-    notice = _fn_header("通知玩家世界初始設定改了哪些規則、怎麼還原（點指令會填進聊天欄）")
-    msg = [{"text": "[台北捷運] 已套用世界初始設定 World settings applied\n", "color": "gold", "bold": True}]
+    notice = _fn_header("Tell players which rules the initial world settings changed and how to undo them "
+                        "(clicking a command fills it into the chat box)")
+    msg = [{"text": "[台北捷運 Taipei Metro] 已套用世界初始設定 World settings applied\n",
+            "color": "gold", "bold": True}]
     for rule, val, default, desc in GAME_RULES:
         cmd = "/gamerule %s %s" % (rule, default)
         msg.append({"text": " · %s（%s = %s）" % (desc, rule, val), "color": "white"})
-        msg.append({"text": "  還原 " + cmd + "\n", "color": "gray",
+        msg.append({"text": "  還原 Undo: " + cmd + "\n", "color": "gray",
                     "click_event": {"action": "suggest_command", "command": cmd},
                     "hover_event": {"action": "show_text", "value": "點一下填入聊天欄 Click to fill in"}})
-    msg.append({"text": " · 時間定在中午、天氣晴（time set %d、weather clear）" % NOON, "color": "white"})
+    msg.append({"text": " · 時間定在中午、天氣晴 Time set to noon, weather clear（time set %d、weather clear）"
+                        % NOON, "color": "white"})
     notice += ["tellraw @s " + text(msg), "scoreboard players set #notice %s 0" % OBJ_STATE]
     return setup, notice
 
 
 def _welcome_line(home, n_lines, n_stations):
     return [
-        {"text": "\n歡迎來到 1:1 台北捷運！ Welcome to the 1:1 Taipei Metro!\n", "color": "gold", "bold": True},
+        {"text": "\n歡迎來到 1:1 台北捷運 The Taipei Metro, 1:1\n", "color": "gold", "bold": True},
         {"text": "整個路網照 OpenStreetMap 資料等比例重建：%d 條路線、%d 站，" % (n_lines, n_stations)
                  + "隧道、高架、車站與出入口都在真實位置。\n", "color": "white"},
-        {"text": "The whole network, rebuilt at real scale from OpenStreetMap data.\n\n", "color": "gray"},
+        {"text": "The whole network, rebuilt at real scale from OpenStreetMap data: %d lines and %d stations, "
+                 "with tunnels, viaducts, stations and exits where they really are.\n\n" % (n_lines, n_stations),
+         "color": "gray"},
         {"text": "▶ 右鍵點月台上的告示牌就能坐到下一站（連點就連坐好幾站）\n", "color": "white"},
-        {"text": "   Right-click a platform sign to ride to the next station.\n", "color": "gray"},
-        # 暫停選單：#minecraft:pause_screen_additions 只有一個對話框時，遊戲直接用它的
-        # external_title 當按鈕（PauseScreen.getCustomAdditions）；多於一個才收進「自訂選項...」
+        {"text": "   Right-click a platform sign to ride to the next station; click again to keep going.\n",
+         "color": "gray"},
+        # Pause menu: when #minecraft:pause_screen_additions holds a single dialog,
+        # the game uses its external_title as the button itself
+        # (PauseScreen.getCustomAdditions); with more than one, they are grouped
+        # under one custom options button.
         {"text": "▶ 路線圖：按「快速動作」鍵（預設 G）、暫停選單裡的「%s」，或輸入 /trigger %s\n"
                  % (MENU_TITLE, OBJ_MENU), "color": "white"},
         {"text": "   Route map: Quick Actions key (G), the Route Map button in the pause menu, or /trigger %s\n"
@@ -476,13 +558,15 @@ def _welcome_line(home, n_lines, n_stations):
     ]
 
 
-# ---------- 組起來 ----------
+# ---------- Putting it together ----------
 
 def _areas(net):
-    """({站名: 車站編號}, [(x0, y0, z0, dx, dy, dz, 車站編號)])。
+    """({station name: station number}, [(x0, y0, z0, dx, dy, dz, station number)]).
 
-    每座站體一個範圍；同名車站（轉乘站的幾座站體）共用一個編號，在轉乘通道
-    走來走去不會一直重播站名。共用疊式站（西門）兩條線是同一座站體，只算一次。
+    One area per station box. Stations with the same name (the boxes of a
+    transfer station) share a number, so walking back and forth in a transfer
+    passage does not replay the name. A shared stacked station (Ximen) is one
+    box for both lines and counts once.
     """
     group, areas, seen = {}, [], set()
     built = [s for s in net.values() if s.box is not None]
@@ -497,17 +581,17 @@ def _areas(net):
 
 
 def build_spec(net, berths, colours, sights=None):
-    """整份資料包規格（純資料）：
+    """The whole datapack spec (plain data):
 
-    functions     {路徑: [指令行]}             路徑不含命名空間，如 "ride/bl12_bl13"
-    dialogs       {路徑: 對話框 dict}
-    tags          {"function": {標籤 id: [函式 id]}, "dialog": {標籤 id: [對話框 id]}}
-    description   pack.mcmeta 的說明（文字元件）
-    triggers      {n: go／sight 函式路徑}       路線圖與景點清單按鈕的 trigger 值（1..N，連續不重複）
-    areas         [(x0, y0, z0, dx, dy, dz, 車站編號)]  進站提示的範圍
-    home          首次進入呼叫的 go 函式路徑
-    warnings      [str]                        id 撞名之類的問題（有就該查）
-    sights        [景點 dict]                   attractions.datapack_entries() 的結果（輸入也是它）
+    functions     {path: [command lines]}      paths without the namespace, e.g. "ride/bl12_bl13"
+    dialogs       {path: dialog dict}
+    tags          {"function": {tag id: [function ids]}, "dialog": {tag id: [dialog ids]}}
+    description   the description in pack.mcmeta (a text component)
+    triggers      {n: go or sight function path}  trigger values of the route map and attraction list buttons (1..N, consecutive and unique)
+    areas         [(x0, y0, z0, dx, dy, dz, station number)]  the arrival notice areas
+    home          the go function path called on first join
+    warnings      [str]                        problems such as id collisions (investigate any)
+    sights        [attraction dict]            the result of attractions.datapack_entries() (also the input)
     """
     sights = list(sights or [])
     bidx = NW.berth_index(berths)
@@ -517,13 +601,14 @@ def build_spec(net, berths, colours, sights=None):
 
     def put(path, lines):
         if path in fns:
-            warnings.append("函式 id 撞名，保留第一個：" + path)
+            warnings.append("duplicate function id, kept the first: " + path)
             return
         fns[path] = lines
 
     def landed(st):
-        """傳送之後：先把「上一次所在的車站」記成目的地，進站提示就不會蓋掉
-        到站畫面的動作列（大標題已經講過站名了）。"""
+        """After a teleport, first record the destination as the last station
+        visited, so the arrival notice does not overwrite the arrival screen's
+        action bar (the title has already given the station name)."""
         return ["scoreboard players set @s %s %d" % (OBJ_AREA, group[st.name])]
 
     # ride/*
@@ -532,7 +617,7 @@ def build_spec(net, berths, colours, sights=None):
             key=lambda kv: (NW.code_sort_key(kv[1][0].code), NW.code_sort_key(kv[1][1].code))):
         lz, le = line_name(ref)
         put(NW.ride_fn(st.code, to.code),
-            _fn_header("%s %s %s → %s %s" % (lz, st.code, st.name, to.code, to.name))
+            _fn_header("%s %s %s → %s %s" % (le, st.code, st.en or st.name, to.code, to.en or to.name))
             + [tp_line(slot)] + landed(to) + chime_lines() + arrival_lines(net, to, slot, colours))
 
     # turn/*
@@ -548,14 +633,14 @@ def build_spec(net, berths, colours, sights=None):
             title = [{"text": st.name, "color": c, "bold": True}]
             sub = [{"text": st.en, "color": "white"}]
         put(NW.turn_fn(st.code, b.d),
-            _fn_header("%s %s 終點站：換到對面月台" % (st.code, st.name))
+            _fn_header("%s %s terminus: cross to the opposite platform" % (st.code, st.en or st.name))
             + [tp_line(slot)] + landed(st) + chime_lines()
             + ["title @s times 5 40 15",
                "title @s subtitle " + text(sub),
                "title @s title " + text(title),
                "title @s actionbar " + text([
                    {"text": "本站終點，已換到對面月台 ", "color": "yellow"},
-                   {"text": "Terminus — you crossed to the other platform", "color": "gray"}])])
+                   {"text": "Terminus — you have crossed to the other platform", "color": "gray"}])])
 
     # go/*
     by_line = _stations_by_line(net, berths)
@@ -564,10 +649,10 @@ def build_spec(net, berths, colours, sights=None):
         for st in by_line[ref]:
             slot = NW.home_slot(bidx, st)
             put(NW.go_fn(st.code),
-                _fn_header("傳送到 %s %s（%s）" % (st.code, st.name, line_name(ref)[0]))
+                _fn_header("Teleport to %s %s (%s)" % (st.code, st.en or st.name, line_name(ref)[1]))
                 + [tp_line(slot)] + landed(st) + chime_lines() + arrival_lines(net, st, slot, colours))
 
-    # 路線圖按鈕的 trigger 值：路線順序 × 站號順序，1..N
+    # Trigger values of the route map buttons: line order × code order, 1..N.
     trig, triggers = {}, {}
     for ref in refs:
         for st in by_line[ref]:
@@ -575,23 +660,24 @@ def build_spec(net, berths, colours, sights=None):
             trig[(st.ref, st.name)] = n
             triggers[n] = NW.go_fn(st.code)
 
-    # sight/*：每座景點每個傳送點一個函式；預設觀景點排在站名按鈕之後編 trigger 值
+    # sight/*: one function per spot of each attraction; the default viewpoints
+    # get trigger values after the station buttons.
     sight_trig = {}
     for e in sights:
         for sp in e["spots"]:
             put(sight_fn(e["id"], sp["key"]),
-                _fn_header("景點 %s %s%s" % (e["name_zh"], e["name_en"], ("：" + sp["zh"]) if sp["key"] else ""))
+                _fn_header("Attraction %s %s%s" % (e["name_zh"], e["name_en"], (": " + sp["en"]) if sp["key"] else ""))
                 + [sight_tp_line(sp), "scoreboard players set @s %s 0" % OBJ_AREA]
                 + sight_arrival_lines(e, sp))
         n = len(trig) + len(sight_trig) + 1
         sight_trig[e["id"]] = n
         triggers[n] = sight_fn(e["id"])
 
-    near_sights = {}                 # 站名 -> [走得到的景點中文名]（站表按鈕的提示）
+    near_sights = {}                 # Station name -> [(Chinese, English) names of attractions within walking distance] (station button tooltips).
     for e in sights:
         st = e.get("station")
         if st:
-            near_sights.setdefault(st[0], []).append(e["name_zh"])
+            near_sights.setdefault(st[0], []).append((e["name_zh"], e["name_en"]))
     dialogs = {NW.MENU_DIALOG: _menu_dialog(refs, by_line, colours, n_sights=len(sights))}
     if sights:
         dialogs[SIGHTS_DIALOG] = _sight_dialog(sights, sight_trig)
@@ -599,17 +685,18 @@ def build_spec(net, berths, colours, sights=None):
         dialogs[NW.line_dialog(ref)] = _line_dialog(ref, by_line[ref], trig, codes_by_name, colours,
                                                     near_sights)
 
-    # 首次進入的落腳處
+    # First-join landing spot.
     home = net.get(HOME)
     if home is None or home.box is None or NW.home_slot(bidx, home) is None:
         home = by_line[refs[0]][0] if refs else None
-        warnings.append("找不到 %s %s，首次進入改傳到 %s" % (HOME[0], HOME[1], home.code if home else "（無）"))
+        warnings.append("%s %s not found; first join goes to %s instead"
+                        % (HOME[0], HOME[1], home.code if home else "(none)"))
 
     setup, notice = _setup_fns()
     fns["sys/setup"] = setup
     fns["sys/notice"] = notice
 
-    fns["sys/load"] = _fn_header("#minecraft:load：每次載入與 /reload 都會跑") + [
+    fns["sys/load"] = _fn_header("#minecraft:load: runs on every load and /reload") + [
         "scoreboard objectives add %s dummy" % OBJ_STATE,
         "scoreboard objectives add %s trigger %s" % (OBJ_GO, text({"text": "捷運傳送 MRT teleport"})),
         "scoreboard objectives add %s trigger %s" % (OBJ_MENU, text({"text": "捷運路線圖 MRT map"})),
@@ -618,12 +705,14 @@ def build_spec(net, berths, colours, sights=None):
         "execute unless score #setup %s matches %d.. run function %s" % (OBJ_STATE, SETUP_VERSION, fid("sys/setup")),
         "schedule function %s %dt replace" % (fid("sys/hud"), HUD_EVERY),
     ]
-    fns["sys/tick"] = _fn_header("#minecraft:tick：只放便宜的選擇器，重活在 sys/hud（每 %d tick）" % HUD_EVERY) + [
+    fns["sys/tick"] = _fn_header("#minecraft:tick: cheap selectors only; the heavy work is in sys/hud "
+                                 "(every %d ticks)" % HUD_EVERY) + [
         "execute as @a[tag=!%s] run function %s" % (TAG_JOINED, fid("sys/join")),
         "execute as @a[scores={%s=1..}] run function %s" % (OBJ_GO, fid("sys/go")),
         "execute as @a[scores={%s=1..}] run function %s" % (OBJ_MENU, fid("sys/menu")),
     ]
-    join = _fn_header("首次進入：傳送到 %s %s 的月台、歡迎訊息" % (home.code, home.name) if home else "首次進入")
+    join = _fn_header("First join: teleport to the platform at %s %s and show the welcome message"
+                      % (home.code, home.en or home.name) if home else "First join")
     join += ["tag @s add " + TAG_JOINED,
              "scoreboard players enable @s " + OBJ_GO,
              "scoreboard players enable @s " + OBJ_MENU]
@@ -634,27 +723,30 @@ def build_spec(net, berths, colours, sights=None):
     join.append("execute if score #notice %s matches 1 run function %s" % (OBJ_STATE, fid("sys/notice")))
     fns["sys/join"] = join
 
-    fns["sys/go"] = _fn_header("/trigger %s set <n>：路線圖的站名按鈕" % OBJ_GO) + [
+    fns["sys/go"] = _fn_header("/trigger %s set <n>: the route map's station buttons" % OBJ_GO) + [
         "function " + fid("sys/go_dispatch"),
         "scoreboard players set @s %s 0" % OBJ_GO,
         "scoreboard players enable @s " + OBJ_GO,
     ]
-    fns["sys/go_dispatch"] = _fn_header("trigger 值 -> go 函式（值由 ride_plan.build_spec 依路線、站號順序編）") + [
+    fns["sys/go_dispatch"] = _fn_header("Trigger value -> go function (values assigned by ride_plan.build_spec "
+                                        "in line and code order)") + [
         "execute if score @s %s matches %d run return run function %s" % (OBJ_GO, n, fid(path))
         for n, path in sorted(triggers.items())
-    ] + ["tellraw @s " + text({"text": "[台北捷運] 沒有這個站的編號 Unknown station number", "color": "red"})]
-    fns["sys/menu"] = _fn_header("/trigger %s：打開路線圖" % OBJ_MENU) + [
+    ] + ["tellraw @s " + text({"text": "[台北捷運 Taipei Metro] 沒有這個站的編號 Unknown station number",
+                               "color": "red"})]
+    fns["sys/menu"] = _fn_header("/trigger %s: open the route map" % OBJ_MENU) + [
         "dialog show @s " + fid(NW.MENU_DIALOG),
         "scoreboard players set @s %s 0" % OBJ_MENU,
         "scoreboard players enable @s " + OBJ_MENU,
     ]
 
-    # 進站提示：每 HUD_EVERY tick 掃一次所有站體範圍
+    # Arrival notice: scan every station area once every HUD_EVERY ticks.
     names = {g: n for n, g in group.items()}
     en_of = {}
     for st in net.values():
         en_of.setdefault(st.name, st.en)
-    fns["sys/hud"] = _fn_header("進站提示：每 %d tick 掃一次，玩家進到車站範圍時動作列亮一次站名" % HUD_EVERY) + [
+    fns["sys/hud"] = _fn_header("Arrival notice: scan every %d ticks and show the station name in the action bar "
+                                "once when a player enters a station area" % HUD_EVERY) + [
         "schedule function %s %dt replace" % (fid("sys/hud"), HUD_EVERY),
         "scoreboard players add #beat %s 1" % OBJ_STATE,
         "execute unless entity @a run return 0",
@@ -667,7 +759,8 @@ def build_spec(net, berths, colours, sights=None):
     ] + [
         "execute as @a unless score @s %s = @s %s run function %s" % (OBJ_HERE, OBJ_AREA, fid("sys/hud_enter")),
     ]
-    fns["sys/hud_enter"] = _fn_header("換了範圍：記下來，進到車站就亮站名（離開車站只記不亮）") + [
+    fns["sys/hud_enter"] = _fn_header("Area changed: record it, and show the station name on entering a station "
+                                      "(leaving a station is recorded without a notice)") + [
         "scoreboard players operation @s %s = @s %s" % (OBJ_AREA, OBJ_HERE),
     ] + [
         "execute if score @s %s matches %d run return run title @s actionbar %s"

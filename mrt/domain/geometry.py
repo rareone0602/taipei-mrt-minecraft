@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
-"""建築幾何工具：多邊形填充、外牆描邊、四坡屋頂。
+"""Building geometry tools: polygon fill, outer wall outline and hip roofs.
 
-車站站體是沿著路線的斷面掃出來的，但地面上的站屋不是 —— 它是一個
-從 OSM 拿到的任意多邊形，得自己光柵化。這裡只做純幾何，不碰世界寫入，
-所以可以單獨跑自我測試。
+A station box is swept from the cross-section along the line, but a station building
+above ground is not: it is an arbitrary polygon taken from OSM and has to be rasterized
+here. This module does pure geometry and writes nothing to the world, so its self-test
+can run on its own.
 
-自我測試: ./.venv/bin/python -m mrt.domain.geometry
+Self-test: ./.venv/bin/python -m mrt.domain.geometry
 """
 import math
 
 
 def poly_cells(poly):
-    """多邊形內部的整數格 (x, z)。掃描線 + 奇偶規則。
+    """Return the integer cells (x, z) inside a polygon, by scanline and the even-odd rule.
 
-    判定的是**格心**（xc+0.5, zc+0.5）在不在多邊形內，不是格角。
-    這樣格數才等於面積（(0,0)-(10,10) 的方形剛好 100 格），
-    共用邊的相鄰多邊形也不會重複填到同一格。
+    The test is whether the **cell center** (xc+0.5, zc+0.5) is inside the polygon, not a
+    cell corner. That way the cell count equals the area (a (0,0)-(10,10) square is exactly
+    100 cells), and adjacent polygons that share an edge never both fill the same cell.
     """
     if len(poly) < 3:
         return set()
@@ -42,14 +43,15 @@ def poly_cells(poly):
 
 
 def ring_cells(cells):
-    """填充區的最外圈 —— 四鄰有一格不在集合內就算外牆。"""
+    """Return the outermost ring of a filled area: a cell with any of its four neighbors outside
+    the set is outer wall."""
     return {(x, z) for x, z in cells
             if not all((x + dx, z + dz) in cells
                        for dx, dz in ((1, 0), (-1, 0), (0, 1), (0, -1)))}
 
 
 def inset(cells, n=1):
-    """把填充區往內縮 n 格（連續剝掉 n 層外圈）。"""
+    """Shrink a filled area inward by n cells (peeling off n outer rings in turn)."""
     cur = set(cells)
     for _ in range(n):
         cur -= ring_cells(cur)
@@ -57,10 +59,11 @@ def inset(cells, n=1):
 
 
 def depth_map(cells):
-    """每一格到邊界的曼哈頓距離（外圈 = 1）。多來源 BFS。
+    """Return each cell's Manhattan distance to the edge (outer ring = 1), by multi-source BFS.
 
-    四坡屋頂就是拿這個當高度：離邊越遠越高，脊線自然出現在最裡面，
-    對任意形狀的平面圖都成立，不必假設是矩形。
+    A hip roof uses this as its height: the farther from the edge, the higher, so the
+    ridge appears naturally innermost. It works for a floor plan of any shape, with no
+    need to assume a rectangle.
     """
     from collections import deque
     d = {}
@@ -79,10 +82,11 @@ def depth_map(cells):
 
 
 def hip_roof(cells, y0, slope=0.5, max_rise=None):
-    """四坡（廡殿）屋頂 -> {(x, z): (y_底, y_頂)}。
+    """Hip roof -> {(x, z): (y_bottom, y_top)}.
 
-    y0 是簷口高度。每格從簷口疊到 y0 + round(dist * slope)，
-    夾在 max_rise 以內；封頂那格另外回傳，呼叫端可以換成脊瓦。
+    y0 is the eave height. Each cell is stacked from the eave up to
+    y0 + round(dist * slope), clamped to max_rise; the capping cell is returned
+    separately so that the caller can replace it with ridge tiles.
     """
     d = depth_map(cells)
     out = {}
@@ -114,7 +118,8 @@ def bbox(poly):
 
 
 def rect(cx, cz, w, h, rot=0.0):
-    """中心 (cx,cz)、寬 w 深 h、逆時針轉 rot 弧度的矩形頂點。"""
+    """Return the vertices of a rectangle centered at (cx,cz), w wide and h deep, rotated
+    counterclockwise by rot radians."""
     c, s = math.cos(rot), math.sin(rot)
     out = []
     for dx, dz in ((-w/2, -h/2), (w/2, -h/2), (w/2, h/2), (-w/2, h/2)):

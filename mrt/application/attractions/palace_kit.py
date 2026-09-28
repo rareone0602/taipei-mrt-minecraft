@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""中式宮殿建築的共用零件：台基、欄杆、半階樓梯、屋頂（廡殿推山、歇山、八角攢尖、
-重簷的腰簷）、屋脊與簷口描邊、斗拱帶、寶頂，以及一座「重簷宮殿式廳堂」的整套砌法。
+"""Shared parts for Chinese palace-style buildings: platforms, balustrades, half-step stairs,
+roofs (hip with tuishan, xieshan, octagonal pyramidal, the lower eave of a double-eaved
+roof), ridge and eave trim, dougong bands, finials, and the complete construction of a
+double-eaved palace-style hall.
 
-中正紀念堂園區（紀念堂、國家戲劇院、國家音樂廳、自由廣場牌樓）與國父紀念館共用。
-這個模組不是一座景點，沒有 BUILDS；座標慣例與 kit.py 相同（Frame 的局部 u、v，
-方塊 (x, z) 的中心在 (x+.5, z+.5)），寫入一律經過呼叫端給的 Painter（已包 Guard）。
+Shared by the Chiang Kai-shek Memorial Hall grounds (the memorial hall, the National
+Theater, the National Concert Hall and the Liberty Square paifang) and the Sun Yat-sen
+Memorial Hall. This module is not an attraction and has no BUILDS. Coordinates follow
+kit.py (local u, v of a Frame; block (x, z) is centered at (x+.5, z+.5)), and every write
+goes through the Painter the caller supplies (already wrapped in a Guard).
 
-高度的說法：G 是基地地面那一格方塊的 y（人站在 G+1）。「s 公尺高的站立面」
-= 人的腳在 G+1+s；s 是 0.5 的倍數時，小數那半格用下半磚。
+Heights: G is the y of the site's ground block (a person stands at G+1). "A standing
+surface s meters high" means the feet are at G+1+s; when s is a multiple of 0.5, the
+half block is a bottom slab.
 """
 import math
 
@@ -19,18 +24,18 @@ from mrt.application.attractions.kit import Frame
 AIR = kit.AIR
 
 
-# ---------------------------------------------------------------- 框與輪廓
+# ---------------------------------------------------------------- Frames and outlines
 
 def local_bbox(fr, ring):
-    """世界座標的多邊形 -> 在 fr 局部座標裡的 (u0, u1, v0, v1)。"""
-    pts = [fr.local(x - 0.5, z - 0.5) for x, z in ring]   # local() 量的是格心，這裡要的是點
+    """Polygon in world coordinates -> (u0, u1, v0, v1) in fr's local coordinates."""
+    pts = [fr.local(x - 0.5, z - 0.5) for x, z in ring]   # local() measures cell centers; these are points
     us = [p[0] for p in pts]
     vs = [p[1] for p in pts]
     return min(us), max(us), min(vs), max(vs)
 
 
 def ring_centroid(ring):
-    """多邊形的面積重心（世界座標）。"""
+    """Area centroid of a polygon (world coordinates)."""
     a = cx = cz = 0.0
     n = len(ring)
     for i in range(n):
@@ -46,33 +51,39 @@ def ring_centroid(ring):
 
 
 def sub_frame(fr, u, v, extent, turn=0.0):
-    """跟 fr 同方向（再轉 turn 弧度）、原點在 fr 的局部 (u, v) 的新框。"""
+    """A new frame with fr's orientation (turned a further turn radians) and its origin at
+    fr's local (u, v)."""
     x, z = fr.world(u, v)
     return Frame(x, z, fr.angle + turn, extent)
 
 
-# ---------------------------------------------------------------- 寫入小工具
+# ---------------------------------------------------------------- Small write helpers
 
 def steps(p, mask, g, s, block, slab):
-    """半階樓梯（或任何站立面）：遮罩每格填到站立面 s（公尺，0.5 的倍數），
-    從 g+1 開始往上填實心，小數半格用下半磚。s <= 0 的格子不寫。
-    slab 帶不帶 [type=...] 都可以（Painter.heightfield 會自己加 [type=bottom]）。"""
+    """Half-step stairs (or any standing surface): fill each cell of the mask up to the
+    standing surface s (meters, a multiple of 0.5), solid from g+1 upward, with a bottom
+    slab for the half block. Cells with s <= 0 are not written.
+    slab may be given with or without [type=...] (Painter.heightfield adds [type=bottom]
+    itself)."""
     m = mask & (np.asarray(s) > 0)
     slab_id = slab.split("[")[0] if slab else None
     p.heightfield(m, g + 1, np.asarray(s, dtype=float) - 1.0, block, slab=slab_id)
 
 
 def half_flight(t, s0, n):
-    """一段半階梯段的站立面：t 是沿上坡方向、從梯段起點量的距離（公尺），
-    第 k 格（k = floor(t)）的站立面 = s0 + 0.5 (k+1)，最多 n 階。t < 0 回 s0。"""
+    """Standing surface of a flight of half steps: t is the distance upslope from the start
+    of the flight (meters). The standing surface of cell k (k = floor(t)) is
+    s0 + 0.5 (k+1), up to n steps. Returns s0 where t < 0."""
     k = np.floor(t)
     return np.where(t < 0, s0, s0 + 0.5 * (np.clip(k, -1, n - 1) + 1))
 
 
 def balustrade(p, mask, y, rail, post, cap=None, every=3, skip=None):
-    """台基邊緣的欄杆：遮罩外圈一格寬，高一格；每 every 格一根望柱（post），
-    望柱頂上再加 cap（例如石英半磚），比欄板高半格。skip 遮罩裡的格子不立
-    （樓梯口）。y 可以是整數或陣列（沿著樓梯斜上去的扶手）。"""
+    """Balustrade along the edge of a platform: the outer ring of the mask, one block wide
+    and one block high, with a baluster post (post) every `every` cells topped by cap
+    (such as a quartz slab), half a block higher than the panels. Cells in the skip mask
+    are left open (stair openings). y may be an integer or an array (a handrail rising
+    along a stair)."""
     rg = kit.ring(mask)
     if skip is not None:
         rg &= ~skip
@@ -88,7 +99,8 @@ def balustrade(p, mask, y, rail, post, cap=None, every=3, skip=None):
 
 
 def band(p, mask, y0, y1, a, b, period=2):
-    """斗拱帶：遮罩每格 y0..y1，a、b 兩種方塊沿格子交錯（遠看是一排一排的斗拱）。"""
+    """Dougong band: each cell of the mask from y0 to y1, alternating blocks a and b along
+    the cells (from a distance it reads as rows of dougong brackets)."""
     X, Z = p.fr.X[mask].tolist(), p.fr.Z[mask].tolist()
     for x, z in zip(X, Z):
         blk = a if ((x + z) // period) % 2 == 0 else b
@@ -97,7 +109,8 @@ def band(p, mask, y0, y1, a, b, period=2):
 
 
 def sphere(p, u, v, y, r, block, y_min=None):
-    """局部 (u, v)、高度 y（浮點數，格心量）為中心、半徑 r 的實心球。寶頂用。"""
+    """Solid sphere of radius r centered at local (u, v) and height y (a float, measured at
+    cell centers). Used for finials."""
     fr = p.fr
     near = np.hypot(fr.U - u, fr.V - v) <= r + 0.5
     X, Z, UU, VV = fr.X[near].tolist(), fr.Z[near].tolist(), fr.U[near].tolist(), fr.V[near].tolist()
@@ -111,32 +124,38 @@ def sphere(p, u, v, y, r, block, y_min=None):
 
 
 def fine_angle(ring):
-    """輪廓的主軸方向（弧度，0～90°）：各邊方向折到 90° 以內、依邊長加權的圓形平均。
-    kit.principal_angle 取整數度，國父紀念館偏 1.65° 取成 2°，100 m 的邊兩端差 0.6 m。"""
+    """Principal direction of an outline (radians, 0–90°): the circular mean of the side
+    directions, folded into 90° and weighted by side length. kit.principal_angle rounds to
+    whole degrees, which turns the Sun Yat-sen Memorial Hall's 1.65° into 2°: a 0.6 m
+    difference between the ends of a 100 m side."""
     sx = sy = 0.0
     n = len(ring)
     for i in range(n):
         x1, z1 = ring[i]
         x2, z2 = ring[(i + 1) % n]
         L = math.hypot(x2 - x1, z2 - z1)
-        a = math.atan2(z2 - z1, x2 - x1) * 4.0          # 四重對稱：0°、90°、180°、270° 疊在一起
+        a = math.atan2(z2 - z1, x2 - x1) * 4.0          # Fourfold symmetry: 0°, 90°, 180° and 270° coincide
         sx += L * math.cos(a)
         sy += L * math.sin(a)
     return (math.atan2(sy, sx) / 4.0) % (math.pi / 2)
 
 
 def seated_statue(p, cu, cv, y0, face, body, chair):
-    """坐姿銅像（高約 6 m）：椅子、腿、長袍、手、頭，用幾個橢球與方塊拼。
-    (cu, cv) 是像的中心（局部座標），face 是面向的局部方向 (du, dv)，y0 是座底那一格。
-    中正紀念堂的蔣中正像（坐姿 6.3 m）與國父紀念館的孫中山像（本體 5.8 m）共用。"""
+    """Seated bronze statue (about 6 m high): chair, legs, robe, hands and head, assembled
+    from a few ellipsoids and boxes.
+    (cu, cv) is the center of the statue (local coordinates), face the local direction it
+    faces (du, dv), and y0 the block at the base of the seat.
+    Shared by the statue of Chiang Kai-shek in the Chiang Kai-shek Memorial Hall (6.3 m
+    seated) and the statue of Sun Yat-sen in the Sun Yat-sen Memorial Hall (5.8 m for the
+    figure)."""
     fr = p.fr
     fu, fv = face
     n = math.hypot(fu, fv)
     fu, fv = fu / n, fv / n
     du, dv = fr.U - cu, fr.V - cv
     near = np.hypot(du, dv) <= 5.0
-    b = -(du * fu + dv * fv)                 # 往後為正（椅背那側）
-    l = -du * fv + dv * fu                   # 左右
+    b = -(du * fu + dv * fv)                 # Positive toward the back (the chair back)
+    l = -du * fv + dv * fu                   # Left-right
     X, Z = fr.X[near].tolist(), fr.Z[near].tolist()
     for x, z, u, v in zip(X, Z, b[near].tolist(), l[near].tolist()):
         av = abs(v)
@@ -144,41 +163,45 @@ def seated_statue(p, cu, cv, y0, face, body, chair):
             yy = k + 0.5
             blk = None
             if -0.5 <= u <= 2.2 and av <= 2.6 and yy <= 1.0:
-                blk = chair                                            # 椅座
+                blk = chair                                            # Seat
             if 1.5 <= u <= 2.4 and av <= 2.6 and yy <= 4.6:
-                blk = chair                                            # 椅背
+                blk = chair                                            # Chair back
             if -0.8 <= u <= 1.8 and 1.8 < av <= 2.6 and 1.0 <= yy <= 2.0:
-                blk = chair                                            # 扶手
+                blk = chair                                            # Armrests
             if -2.6 <= u <= 0.8 and av <= 1.6 and 1.0 <= yy <= 2.1:
-                blk = body                                             # 大腿
+                blk = body                                             # Thighs
             if -2.9 <= u <= -1.7 and av <= 1.6 and yy <= 1.2:
-                blk = body                                             # 小腿、鞋
+                blk = body                                             # Shins and shoes
             if ((u - 0.6) / 1.2) ** 2 + (v / 1.7) ** 2 + ((yy - 3.1) / 1.5) ** 2 <= 1.0:
-                blk = body                                             # 身體（長袍）
+                blk = body                                             # Torso (robe)
             if -1.4 <= u <= 0.9 and 1.4 < av <= 2.3 and 2.0 <= yy <= 3.3:
-                blk = body                                             # 手臂
+                blk = body                                             # Arms
             if (u - 0.5) ** 2 + v ** 2 + (yy - 5.3) ** 2 <= 0.95:
-                blk = body                                             # 頭
+                blk = body                                             # Head
             if blk:
                 p.set(x, y0 + k, z, blk)
 
 
-# ---------------------------------------------------------------- 屋頂高度場
+# ---------------------------------------------------------------- Roof heightfields
 #
-# 跟 kit 的屋頂一樣回傳「比簷口高多少」的陣列，但多回一個屋脊遮罩（正脊與垂脊／
-# 戧脊），讓 roof() 在上面加一道脊。
+# Like the roofs in kit, these return arrays of height above the eaves, plus a ridge mask
+# (the main ridge and the hip or diagonal ridges) on which roof() adds a ridge.
 
 def hip_ridge(fr, a, b, rise, ridge, profile=1.0, lift=0.0, corner=None, du=0.0, dv=0.0):
-    """廡殿頂，正脊沿 u、半長 ridge（推山：兩端的坡比前後坡陡，正脊才拉得長）。
-    kit.hip 的正脊一定沿長邊；戲劇院的屋頂進深比面寬還大，正脊卻平行正面，要用這個。"""
+    """Hip roof with the main ridge along u and half-length ridge (tuishan: the end slopes
+    are steeper than the front and back slopes, which lengthens the main ridge).
+    kit.hip always runs the main ridge along the long side. The National Theater's roof is
+    deeper than it is wide, yet its main ridge runs parallel to the front, so it needs
+    this function."""
     u, v = np.abs(fr.U - du), np.abs(fr.V - dv)
-    t_long = ((b - v) / b).clip(0, 1)                     # 前後坡：到簷口的比例
-    t_end = ((a - u) / (a - ridge)).clip(0, 1)            # 兩端的坡
+    t_long = ((b - v) / b).clip(0, 1)                     # Front and back slopes: fraction of the way to the eaves
+    t_end = ((a - u) / (a - ridge)).clip(0, 1)            # End slopes
     t = np.minimum(t_long, t_end)
     h = rise * t ** profile
     d = np.minimum(a - u, b - v).clip(0, None)
     h = h + kit._lift(u, v, a, b, lift, corner, d)
-    # 垂脊：兩種坡的比例相等處（到那條線的距離不到 0.6 m）；正脊：v≈0、|u|<=ridge
+    # Hip ridges: where the two slope fractions are equal (within 0.6 m of that line).
+    # Main ridge: v≈0, |u|<=ridge.
     k = b / (a - ridge)
     hips = np.abs((b - v) - (a - u) * k) / math.hypot(1.0, k) <= 0.6
     main = (v <= 0.6) & (u <= ridge + 0.5)
@@ -187,17 +210,20 @@ def hip_ridge(fr, a, b, rise, ridge, profile=1.0, lift=0.0, corner=None, du=0.0,
 
 
 def hip_gable(fr, a, b, rise, gable_in, profile=1.0, lift=0.0, corner=None, du=0.0, dv=0.0):
-    """歇山頂（kit.hip_gable）加上屋脊遮罩與山花遮罩。
+    """Xieshan roof (kit.hip_gable) with a ridge mask and a gable pediment mask.
 
-    回傳 (h, 脊, 山花)：山花是 |u| = a - gable_in 內側那一格寬的直立三角形牆面
-    （那一排的高度場從兩端小坡的高度直接跳到長坡的高度）。"""
+    Returns (h, ridges, pediment). The pediment is the one-block-wide vertical triangular
+    wall just inside |u| = a - gable_in (in that row the heightfield jumps straight from
+    the height of the short end slopes to that of the long slopes)."""
     h = kit.hip_gable(fr, a, b, rise, gable_in, profile, lift, corner, du, dv)
     u, v = np.abs(fr.U - du), np.abs(fr.V - dv)
     ug = a - gable_in
     main = (v <= 0.6) & (u <= ug + 0.5)
-    # 戧脊：兩端小坡與前後坡交界（(b - v) 與 (a - u) 相等），只在山花外側
+    # Diagonal ridges: where the short end slopes meet the front and back slopes
+    # ((b - v) equals (a - u)), only outside the pediment.
     hips = (np.abs((b - v) - (a - u)) / math.sqrt(2.0) <= 0.6) & (u > ug)
-    # 垂脊：山花邊緣順著前後坡往下
+    # Vertical ridges: from the edges of the pediment down along the front and back
+    # slopes.
     verge = (np.abs(u - ug) <= 0.6) & (v <= b)
     gable = (u <= ug) & (u > ug - 1.0) & (v < b * 0.95)
     inside = (u <= a) & (v <= b)
@@ -205,7 +231,8 @@ def hip_gable(fr, a, b, rise, gable_in, profile=1.0, lift=0.0, corner=None, du=0
 
 
 def octagon(fr, r, rise, profile=1.0, lift=0.0, du=0.0, dv=0.0):
-    """八角攢尖（kit.pyramid sides=8，一條邊正對 +u）加上八條垂脊的遮罩。"""
+    """Octagonal pyramidal roof (kit.pyramid with sides=8, one side facing +u squarely) with
+    a mask of its eight hip ridges."""
     h = kit.pyramid(fr, r, rise, sides=8, rot=0.0, profile=profile, lift=lift, du=du, dv=dv)
     u, v = fr.U - du, fr.V - dv
     ds = np.stack([u * math.cos(2 * math.pi * k / 8) + v * math.sin(2 * math.pi * k / 8)
@@ -216,8 +243,9 @@ def octagon(fr, r, rise, profile=1.0, lift=0.0, du=0.0, dv=0.0):
 
 
 def skirt(fr, a_out, b_out, a_in, b_in, rise, profile=1.0, lift=0.0, corner=None):
-    """重簷的下簷（腰簷）：外框 |u|<=a_out、|v|<=b_out 的簷口往內升到內框（上層屋身）
-    的牆腳，內框裡面不算。回傳 (h, 遮罩)。"""
+    """Lower eave of a double-eaved roof: rises from the eaves of the outer rectangle
+    |u|<=a_out, |v|<=b_out inward to the foot of the inner rectangle's walls (the upper
+    storey); the inside of the inner rectangle is excluded. Returns (h, mask)."""
     u, v = np.abs(fr.U), np.abs(fr.V)
     w = min(a_out - a_in, b_out - b_in)
     d = np.minimum(a_out - u, b_out - v).clip(0, None)
@@ -226,19 +254,26 @@ def skirt(fr, a_out, b_out, a_in, b_in, rise, profile=1.0, lift=0.0, corner=None
     return h, m
 
 
-# ---------------------------------------------------------------- 把高度場寫成屋頂
+# ---------------------------------------------------------------- Writing heightfields as roofs
 
 def roof(p, mask, base, h, tile, shell=2, under=None, rim=None, rim_under=None,
          ridge=None, ridge_mask=None, cap_ridge=True, rim_w=2):
-    """屋頂殼：每格頂面 = floor(base + h)，往下 shell 格；鄰格比較低的地方往下補到
-    跟最低的四鄰接起來（山花、兩層屋頂交界那種陡坎才不會漏空）。
+    """Roof shell: the top of each cell is floor(base + h), extending shell blocks down.
+    Where a neighbor is lower, the shell extends down to meet the lowest of the four
+    neighbors (so steep steps such as a gable pediment or the junction of two roof tiers
+    leave no gaps).
 
-    under     殼底下一格（簷下的椽子／天花的顏色）
-    rim       簷口最外一圈的頂面方塊；rim_under 是簷口外 rim_w 圈頂面底下那一格
-              （封簷板）。斜著的框外圈是鋸齒狀的，只換一圈的話從正面看會在白邊之間
-              露出第二圈的瓦，所以封簷板預設兩圈寬
-    ridge     屋脊：ridge_mask 的格子在頂面上再加一格（cap_ridge=False 就只換材質）
-    回傳頂面高度陣列（int，遮罩外是很小的數），放脊獸、寶頂用。"""
+    under     One block below the shell (the color of the rafters or ceiling under the
+              eaves).
+    rim       Top block of the outermost ring at the eaves. rim_under is the block below
+              the top in the outer rim_w rings (the fascia board). The outer ring of a
+              rotated frame is jagged; replacing only one ring would show the second ring
+              of tiles between the white edges from the front, so the fascia is two rings
+              wide by default.
+    ridge     Ridge: cells in ridge_mask get one more block on top (cap_ridge=False only
+              changes the material).
+    Returns the array of top heights (int; a very small number outside the mask), for
+    placing ridge beasts and finials."""
     fr = p.fr
     T = np.full(fr.shape, -10 ** 6, dtype=np.int64)
     B = np.broadcast_to(np.asarray(base, dtype=float), fr.shape)
@@ -278,8 +313,9 @@ def roof(p, mask, base, h, tile, shell=2, under=None, rim=None, rim_under=None,
 
 
 def gable_panel(p, mask, T_face, T_low, block, border=None):
-    """歇山的山花：遮罩（山花那一排格子）裡，從外側小坡的頂面 T_low+1 到
-    這一排的頂面 T_face-1 換成 block（三角形的山花板），最上面一格留給 border。"""
+    """Gable pediment of a xieshan roof: within the mask (the row of pediment cells), blocks
+    from the top of the outer end slope T_low+1 up to this row's top T_face-1 become block
+    (the triangular pediment board); the top block is left for border."""
     X, Z = p.fr.X[mask].tolist(), p.fr.Z[mask].tolist()
     A, B = T_face[mask].tolist(), T_low[mask].tolist()
     for x, z, t, lo in zip(X, Z, A, B):
@@ -289,22 +325,27 @@ def gable_panel(p, mask, T_face, T_low, block, border=None):
             p.set(x, int(t), z, border)
 
 
-# ---------------------------------------------------------------- 重簷宮殿式廳堂
+# ---------------------------------------------------------------- Double-eaved palace-style hall
 #
-# 國家戲劇院、國家音樂廳（楊卓成設計，1987）：平面是十字形 —— 中央主殿前後進深大、
-# 兩側翼樓淺；主殿是重簷（上層廡殿或歇山、下層腰簷），翼樓是單簷；紅柱、斗拱、
-# 黃色琉璃瓦、白色台基與欄杆、正面一座大階梯。公開照片量出來的比例（音樂廳正面照，
-# 以面寬約 104 m 換算）：台基約 5 m、柱頭約 15 m、下簷口約 18～19 m、
-# 上簷口約 25 m、正脊 37 m（OSM height=37、roof:height=12）。
+# The National Theater and the National Concert Hall (designed by Yang Cho-cheng, 1987):
+# a cross-shaped plan, with a deep central main hall and shallow wings on either side. The
+# main hall is double-eaved (hip or xieshan above, a lower eave below); the wings are
+# single-eaved. Red columns, dougong brackets, yellow glazed tiles, a white platform and
+# balustrade, and a grand staircase at the front. Proportions measured from public
+# photographs (a front view of the Concert Hall, scaled by its frontage of about 104 m):
+# platform about 5 m, column tops about 15 m, lower eaves about 18–19 m, upper eaves
+# about 25 m, main ridge 37 m (OSM height=37, roof:height=12).
 
 class HallSpec:
-    """一座重簷宮殿式廳堂的尺寸（局部座標，正面朝 -v）。
+    """Dimensions of a double-eaved palace-style hall (local coordinates, front facing -v).
 
-    ca, cb   中央主殿的半面寬、半進深（屋頂滴水線）
-    wa, wb   翼樓外端的半長、翼樓半進深
-    sw, sd   正面大階梯的半寬、深度（從主殿正面往外）
-    roof     "hip"（廡殿）或 "hip_gable"（歇山）
-    ridge    正脊半長（廡殿推山）或歇山的正脊半長（山花位置）
+    ca, cb   Half-frontage and half-depth of the central main hall (roof drip line)
+    wa, wb   Half-length to the outer end of the wings, and half-depth of the wings
+    sw, sd   Half-width and depth of the grand staircase at the front (outward from the
+             front of the main hall)
+    roof     "hip" (wudian) or "hip_gable" (xieshan)
+    ridge    Half-length of the main ridge (hip with tuishan), or of the xieshan main ridge
+             (the position of the gable pediments)
     """
 
     def __init__(self, ca, cb, wa, wb, sw, sd, roof, ridge,
@@ -317,30 +358,31 @@ class HallSpec:
 
 
 PALACE = dict(
-    tile="minecraft:honeycomb_block",              # 黃色琉璃瓦（照片上偏橘金）
-    ridge="minecraft:yellow_glazed_terracotta",    # 屋脊、脊獸
-    column="minecraft:red_concrete",               # 紅柱
-    wall="minecraft:white_terracotta",             # 柱後的牆（淡橘粉）
-    window="minecraft:yellow_glazed_terracotta",   # 牆上的金色方窗
-    door="minecraft:brown_stained_glass",          # 正門
-    beam="minecraft:cyan_glazed_terracotta",       # 額枋（青綠彩畫）
-    bracket="minecraft:dark_prismarine",           # 斗拱、簷下
-    red="minecraft:red_terracotta",                # 簷口的紅色封簷板、上層屋身
-    base="minecraft:polished_diorite",             # 台基
-    floor="minecraft:smooth_stone",                # 台基面
-    rail="minecraft:smooth_quartz",                # 白色欄杆
+    tile="minecraft:honeycomb_block",              # Yellow glazed tiles (orange-gold in photographs)
+    ridge="minecraft:yellow_glazed_terracotta",    # Ridges, ridge beasts
+    column="minecraft:red_concrete",               # Red columns
+    wall="minecraft:white_terracotta",             # Wall behind the columns (pale orange-pink)
+    window="minecraft:yellow_glazed_terracotta",   # Gold square windows in the wall
+    door="minecraft:brown_stained_glass",          # Main door
+    beam="minecraft:cyan_glazed_terracotta",       # Architrave (blue-green painted decoration)
+    bracket="minecraft:dark_prismarine",           # Dougong brackets, underside of the eaves
+    red="minecraft:red_terracotta",                # Red fascia at the eaves, upper storey
+    base="minecraft:polished_diorite",             # Platform
+    floor="minecraft:smooth_stone",                # Platform surface
+    rail="minecraft:smooth_quartz",                # White balustrade
     post="minecraft:quartz_pillar",
     cap="minecraft:smooth_quartz_slab[type=bottom]",
-    stair="minecraft:polished_andesite",           # 花崗石階
+    stair="minecraft:polished_andesite",           # Granite steps
     stair_slab="minecraft:polished_andesite_slab",
-    gable="minecraft:blue_glazed_terracotta",      # 山花板
-    plaque="minecraft:lapis_block",                # 匾（磁青底）
+    gable="minecraft:blue_glazed_terracotta",      # Gable pediment board
+    plaque="minecraft:lapis_block",                # Name board (porcelain-blue ground)
     gold="minecraft:gold_block",
 )
 
 
 def palace_hall(w, fr, spec, g, mat=None):
-    """在 fr（正面朝 -v）上蓋一座重簷宮殿式廳堂。g 是基地地面方塊的 y。"""
+    """Build a double-eaved palace-style hall on fr (front facing -v). g is the y of the
+    site's ground block."""
     M = dict(PALACE)
     M.update(mat or {})
     p = kit.Painter(w, fr)
@@ -353,14 +395,14 @@ def palace_hall(w, fr, spec, g, mat=None):
     stairs = (au <= S.sw + 1) & (V < -S.cb) & (V >= -S.cb - S.sd)
     plat = central | wing
 
-    # ---- 台基：實心，外牆淡灰石、頂面石板
+    # ---- Platform: solid, pale gray stone outside, stone slabs on top
     y_top = g + S.plat
     p.fill(plat, g + 1, y_top - 1, M["base"])
     p.layer(plat, y_top, M["floor"])
     balustrade(p, plat, y_top + 1, M["rail"], M["post"], M["cap"],
                skip=(au <= S.sw + 1.5) & (V < -S.cb + 2))
 
-    # ---- 正面大階梯：半階，往 +v 升到台基面
+    # ---- Grand staircase at the front: half steps rising toward +v to the platform
     run = S.sd
     n = 2 * S.plat
     tread = run / n
@@ -373,32 +415,34 @@ def palace_hall(w, fr, spec, g, mat=None):
     balustrade(p, cheek | ((au > S.sw) & (au <= S.sw + 1) & (V >= -S.cb) & (V < -S.cb + 1)),
                g + np.ceil(s).astype(int) + 1, M["rail"], M["post"], M["cap"], every=2)
 
-    # ---- 柱列：主殿滴水線內 3.5 m、翼樓內 3 m；每 6.5 m 左右一根，正中一間放寬
+    # ---- Colonnade: 3.5 m inside the main hall's drip line and 3 m inside the wings';
+    # about one column every 6.5 m, with a wider central bay
     y0, y1 = y_top + 1, g + S.col_top
     pts = []
     vf = S.cb - 3.5
     n_c = max(2, int(round(2 * (S.ca - 2.5) / 6.5)) + 1)
     for k in range(n_c):
         u = -(S.ca - 2.5) + 2 * (S.ca - 2.5) * k / (n_c - 1)
-        if abs(u) < 5.0:                    # 正門那一間
+        if abs(u) < 5.0:                    # The main-door bay
             continue
         pts += [(u, -vf), (u, vf)]
     pts += [(-4.5, -vf), (4.5, -vf), (-4.5, vf), (4.5, vf)]
     for sgn in (-1, 1):
-        # 主殿兩側（翼樓以外的那一段）
+        # Sides of the main hall (the stretch beyond the wings)
         for v in np.linspace(S.wb - 3.0 + 3.2, vf, 3):
             pts += [(sgn * (S.ca - 2.5), v), (sgn * (S.ca - 2.5), -v)]
-        # 翼樓正面、背面
+        # Front and back of the wings
         for u in np.linspace(S.ca + 1.5, S.wa - 2.5, 3):
             pts += [(sgn * u, -(S.wb - 3.0)), (sgn * u, S.wb - 3.0)]
-        # 翼樓外端
+        # Outer ends of the wings
         n_e = max(2, int(round(2 * (S.wb - 3.0) / 6.5)) + 1)
         for k in range(n_e):
             v = -(S.wb - 3.0) + 2 * (S.wb - 3.0) * k / (n_e - 1)
             pts.append((sgn * (S.wa - 2.5), v))
     p.columns(pts, 0.8, y0, y1, M["column"])
 
-    # ---- 柱後的牆（前廊 3.5 m）：主殿與翼樓的聯集外圈
+    # ---- Wall behind the columns (3.5 m front gallery): the outer ring of the union of
+    # the main hall and the wings
     wall_c = (au <= S.ca - 5.0) & (av <= S.cb - 7.0)
     wall_w = (au <= S.wa - 5.0) & (av <= S.wb - 5.0)
     wm = wall_c | wall_w
@@ -408,17 +452,18 @@ def palace_hall(w, fr, spec, g, mat=None):
     p.fill(win, y0 + 4, y0 + 6, M["window"])
     door = rg & (au <= 4.5) & (V < 0)
     p.fill(door, y0, y0 + 7, M["door"])
-    # 天花（室內頂）：牆頂那一層蓋起來，裡面是空的大廳
+    # Ceiling: the layer at the top of the walls is closed over the empty hall inside
     p.layer(kit.erode(wm, 1), y1 + 3, M["bracket"])
 
-    # ---- 額枋與斗拱：柱頭上一圈
+    # ---- Architrave and dougong brackets: a ring above the column tops
     col_line = (((au <= S.ca - 2.5) & (av <= S.cb - 3.5)) |
                 ((au <= S.wa - 2.5) & (av <= S.wb - 3.0)))
     cl = kit.ring(col_line)
     p.layer(cl, y1 + 1, M["beam"])
     band(p, cl, y1 + 2, y1 + 3, M["bracket"], M["beam"])
 
-    # ---- 下層屋頂：翼樓單簷（廡殿，正脊沿 v）+ 主殿腰簷，取聯集的最高面
+    # ---- Lower roofs: single eaves on the wings (hip, main ridge along v) plus the main
+    # hall's lower eave, taking the highest surface of the union
     e_w, e_l = g + S.wing_eave, g + S.low_eave
     a_core, b_core = S.ca - 2.0, S.cb - 7.0
     hs, ms = skirt(fr, S.ca + 4.5, S.cb, a_core, b_core, rise=(S.up_eave - 1 - S.low_eave),
@@ -428,7 +473,7 @@ def palace_hall(w, fr, spec, g, mat=None):
     wing_len = (S.wa - (S.ca - 4.0)) / 2.0
     for sgn in (-1, 1):
         du = sgn * (S.ca - 4.0 + wing_len)
-        uu, vv = np.abs(fr.V), np.abs(fr.U - du)            # 翼樓的長向（v）當廡殿的 u
+        uu, vv = np.abs(fr.V), np.abs(fr.U - du)            # The wing's long axis (v) serves as the hip roof's u
         a_, b_ = S.wb, wing_len
         d = np.minimum(a_ - uu, b_ - vv).clip(0, None)
         hw = 5.0 * (d / min(a_, b_)).clip(0, 1) ** 1.3 + kit._lift(uu, vv, a_, b_, 1.2, None, d)
@@ -439,19 +484,20 @@ def palace_hall(w, fr, spec, g, mat=None):
     roof(p, low_m, 0, H, M["tile"], shell=2, under=M["bracket"],
          rim=M["tile"], rim_under=M["red"])
 
-    # ---- 上層屋身（兩簷之間）：紅牆 + 斗拱
+    # ---- Upper storey (between the two eaves): red walls plus dougong brackets
     core = (au <= a_core) & (av <= b_core)
     cr = kit.ring(core)
     p.fill(cr, e_l, g + S.up_eave - 3, M["red"])
     band(p, cr, g + S.up_eave - 2, g + S.up_eave - 1, M["bracket"], M["beam"])
-    # 匾：兩簷之間正中，藍底金框，壓在下簷的屋脊上
+    # Name board: centered between the two eaves, blue with a gold frame, resting on the
+    # lower eave's ridge
     plq = (au <= 1.6) & (V >= -b_core - 1.0) & (V < -b_core)
     for y in range(g + S.up_eave - 4, g + S.up_eave):
         edge = (y in (g + S.up_eave - 4, g + S.up_eave - 1)) | (au > 0.6)
         p.layer(plq & edge, y, M["gold"])
         p.layer(plq & ~edge, y, M["plaque"])
 
-    # ---- 上層屋頂
+    # ---- Upper roof
     a_up, b_up = S.ca + 1.0, S.cb - 4.5
     rise = S.top - S.up_eave
     up_m = (au <= a_up) & (av <= b_up)
@@ -463,10 +509,11 @@ def palace_hall(w, fr, spec, g, mat=None):
     Tu = roof(p, up_m, g + S.up_eave, hu, M["tile"], shell=2, under=M["bracket"],
               rim=M["tile"], rim_under=M["red"], ridge=M["ridge"], ridge_mask=rm & ~kit.ring(up_m))
     if gm is not None:
-        # 山花：下緣是外側小坡（四鄰裡不屬於山花那一排、最低的頂面）
+        # Gable pediment: its lower edge is the outer end slope (the lowest top among the
+        # four neighbors outside the pediment row)
         lowg = _neighbor_low(Tu, gm, up_m & ~gm & (au > S.ridge))
         gable_panel(p, gm & up_m, Tu, lowg, M["gable"], border=M["ridge"])
-    # 鴟吻：正脊兩端各一座（3 格高，金頂）
+    # Chiwen: one at each end of the main ridge (3 blocks high, gold top)
     for sgn in (-1, 1):
         x, z = fr.cell(sgn * S.ridge, 0.0)
         i, j = z - fr.z0, x - fr.x0
@@ -478,23 +525,25 @@ def palace_hall(w, fr, spec, g, mat=None):
     return dict(platform_top=y_top, top=int(Tu[up_m].max()) if up_m.any() else None)
 
 
-# ---------------------------------------------------------------- 牌樓
+# ---------------------------------------------------------------- Paifang
 #
-# 局部座標：u 沿牌樓面寬、v 是穿過門洞的方向。柱、門洞、屋頂的位置都用 u 表示。
+# Local coordinates: u runs along the paifang's width, v through the archways. Pillars,
+# archways and roofs are all positioned by u.
 
 BLUE_WHITE = dict(
-    wall="minecraft:smooth_quartz",                # 白色大理石
-    trim="minecraft:chiseled_quartz_block",        # 門洞的券面、雕花
+    wall="minecraft:smooth_quartz",                # White marble
+    trim="minecraft:chiseled_quartz_block",        # Arch faces and carving around the archways
     panel="minecraft:quartz_bricks",
-    tile="minecraft:blue_concrete",                # 寶藍色琉璃瓦
-    bracket="minecraft:blue_glazed_terracotta",    # 斗拱（藍白彩）
+    tile="minecraft:blue_concrete",                # Sapphire-blue glazed tiles
+    bracket="minecraft:blue_glazed_terracotta",    # Dougong brackets (blue and white paint)
     ridge="minecraft:blue_glazed_terracotta",
     rim="minecraft:smooth_quartz",
 )
 
 
 class Roof:
-    """牌樓的一片屋頂（歇山）：中心 du、半長 a、半深 b、簷口高 eave、升高 rise（皆為公尺）。"""
+    """One roof of a paifang (xieshan): center du, half-length a, half-depth b, eave height
+    eave and rise rise (all in meters)."""
 
     def __init__(self, du, a, b, eave, rise):
         self.du, self.a, self.b, self.eave, self.rise = du, a, b, eave, rise
@@ -502,20 +551,24 @@ class Roof:
 
 def paifang(w, fr, g, pillars, bays, roofs, pillar_w=3.5, pillar_d=5.0, wall_d=4.0,
             pedestal=None, scrolls=True, mat=None):
-    """牌樓：pillars 是柱中心 [(u, 柱頂高)]；bays 是門洞 [(中心 u, 半淨寬, 起拱高, 牆頂高)]；
-    roofs 是 [Roof]（由低往高蓋，高的蓋在上面）。pedestal=(半寬, 半深, 高) 是柱腳的須彌座，
-    scrolls 在柱腳前後加抱鼓石。所有高度是離地公尺數（方塊 y = g + 高）。"""
+    """Paifang: pillars are pillar centers [(u, pillar top height)]; bays are archways
+    [(center u, clear half-width, springing height, wall top height)]; roofs is [Roof]
+    (built from lowest to highest, so higher roofs overlap lower ones).
+    pedestal=(half-width, half-depth, height) is the Sumeru pedestal at the foot of each
+    pillar, and scrolls adds drum stones in front of and behind each pillar foot. All
+    heights are meters above the ground (block y = g + height)."""
     M = dict(BLUE_WHITE)
     M.update(mat or {})
     p = kit.Painter(w, fr)
     U, V = fr.U, fr.V
     av = np.abs(V)
 
-    # 門洞上方的牆（額枋、匾）：柱與柱之間，照各間的牆頂高
+    # Wall above the archways (architrave, name board): between the pillars, up to each
+    # bay's wall top height
     for c, half, spring, top in bays:
         m = (np.abs(U - c) <= half + 0.01) & (av <= wall_d / 2)
         p.fill(m, g + 1, g + top, M["wall"])
-    # 柱
+    # Pillars
     for u, top in pillars:
         m = (np.abs(U - u) <= pillar_w / 2) & (av <= pillar_d / 2)
         p.fill(m, g + 1, g + top, M["wall"])
@@ -525,14 +578,15 @@ def paifang(w, fr, g, pillars, bays, roofs, pillar_w=3.5, pillar_d=5.0, wall_d=4
             p.fill(pm, g + 1, g + hh, M["wall"])
             p.layer(pm & ~kit.erode(pm, 1), g + hh, M["trim"])
             if scrolls:
-                # 抱鼓石：柱腳前後各一道，側面是四分之一橢圓
+                # Drum stones: one in front of and one behind each pillar foot, a quarter
+                # ellipse in side view
                 dv = av - hb
                 sm = (np.abs(U - u) <= 1.0) & (dv > 0) & (dv <= 4.7)
                 hs = 1.5 + 3.3 * np.sqrt((1 - (dv / 4.7) ** 2).clip(0, 1))
                 p.fill(sm, g + 1, g + np.rint(hs).astype(int), M["wall"])
                 drum = sm & (dv <= 1.6)
                 p.layer(drum, g + int(round(hh)) - 1, M["trim"])
-    # 門洞：下半方、上半圓拱，整個穿透
+    # Archways: square below, semicircular arch above, cut all the way through
     for c, half, spring, top in bays:
         du = U - c
         inside = np.abs(du) <= half
@@ -547,10 +601,11 @@ def paifang(w, fr, g, pillars, bays, roofs, pillar_w=3.5, pillar_d=5.0, wall_d=4
                 m = inside & (r2 <= half * half + 0.3)
                 ring_m = (r2 > half * half + 0.3) & (r2 <= (half + 1.0) ** 2 + 0.3)
             p.layer(m & (av <= pillar_d / 2 + 0.5), y, AIR)
-            # 券面：門洞外緣一圈刻花石（牆的前後兩面）
+            # Arch faces: a ring of carved stone around each archway (on both faces of the
+            # wall)
             face = ring_m & (av <= wall_d / 2) & (av > wall_d / 2 - 1.0)
             p.layer(face, y, M["trim"])
-    # 斗拱與屋頂
+    # Dougong brackets and roofs
     for rf in sorted(roofs, key=lambda r: r.eave):
         bm = (np.abs(U - rf.du) <= rf.a - 0.8) & (av <= rf.b - 1.2)
         band(p, bm, g + rf.eave - 2, g + rf.eave - 1, M["bracket"], M["wall"])
@@ -561,7 +616,7 @@ def paifang(w, fr, g, pillars, bays, roofs, pillar_w=3.5, pillar_d=5.0, wall_d=4
                  ridge_mask=rm & ~kit.ring(mask))
         lowg = _neighbor_low(T, gm & mask, mask & ~gm & (np.abs(U - rf.du) > rf.a * 0.7))
         gable_panel(p, gm & mask, T, lowg, M["bracket"], border=M["rim"])
-        # 正脊兩端的吻獸
+        # Ridge-end beasts at both ends of the main ridge
         for sgn in (-1, 1):
             x, z = fr.cell(rf.du + sgn * rf.a * 0.7, 0.0)
             i, j = z - fr.z0, x - fr.x0
@@ -570,7 +625,8 @@ def paifang(w, fr, g, pillars, bays, roofs, pillar_w=3.5, pillar_d=5.0, wall_d=4
 
 
 def _neighbor_low(T, target, source):
-    """target 遮罩每格：四鄰裡屬於 source 的格子的最低頂面（沒有就用自己的頂面 - 1）。"""
+    """For each cell of the target mask: the lowest top among its four neighbors in source
+    (its own top - 1 where there is none)."""
     big = 10 ** 6
     S = np.where(source, T, big)
     low = np.full(T.shape, big, dtype=np.int64)

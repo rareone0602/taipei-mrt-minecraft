@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
-"""觀光景點：台北101、中正紀念堂、總統府、城門……蓋在真實位置上。
+"""Attractions: Taipei 101, the Chiang Kai-shek Memorial Hall, the Presidential Office
+Building, the city gates and others, built in their real locations.
 
-資料：data/attractions.json（mrt/adapters/osm/fetch_attractions.py 從 OSM 抓的輪廓與標籤）。
-每一筆由一個 Attraction 子類別負責蓋（kit.py 的說明）。子類別放在這個套件底下
-的各個模組裡，模組用 BUILDS = {景點 id: 類別} 登記 —— 這裡自動掃描，新增一座
-景點不必改這個檔案。沒有專屬模組的景點退回 OsmMassing：照 OSM 的 building /
-building:part 擠出量體（有 height 就照 height），至少位置與輪廓是對的。
+Data: data/attractions.json (outlines and tags fetched from OSM by
+mrt/adapters/osm/fetch_attractions.py). Each entry is built by an Attraction subclass (see
+the notes in kit.py). The subclasses live in the modules of this package, and each module
+registers them with BUILDS = {attraction id: class}. This package scans for them, so adding
+an attraction needs no change to this file. An attraction without its own module falls
+back to OsmMassing, which extrudes OSM's building / building:part (using height where
+tagged), so at least the location and outline are right.
 
-cli 的用法（cli/build_world.py）：
-    sights = AT.for_world(stations)                  # 讀資料、建物件、配最近的捷運站
-    ...每座的 bbox() 餵地形距離場、分桶...
-    AT.plan_all(sights, ground, keep)                # 定案：一樓高度、觀景點
-    ...region 迴圈裡對涵蓋到的景點呼叫 AT.build(s, w, keep)...
+Use from cli (cli/build_world.py):
+    sights = AT.for_world(stations)                  # Read data, create objects, pair with nearest station
+    ...each bbox() feeds the terrain distance field and the bucketing...
+    AT.plan_all(sights, ground, keep)                # Settle ground-floor levels and viewpoints
+    ...in the region loop, call AT.build(s, w, keep) for each attraction it covers...
     spec = RP.build_spec(..., sights=AT.datapack_entries(sights))
 """
 import importlib
@@ -26,12 +29,12 @@ from mrt.application.attractions.kit import Attraction, Frame, Guard, Painter, S
 
 ATTRACTIONS_JSON = os.path.join(config.DATA, "attractions.json")
 
-WALKABLE_M = 900           # 說明牌與路線圖寫「最近的捷運站」：這個距離以內才寫
-ROUTE_DIALOG = "sights"    # 資料包裡景點清單對話框的路徑（mrt:sights）
+WALKABLE_M = 900           # Plaques and the route map name the nearest MRT station only within this distance
+ROUTE_DIALOG = "sights"    # Path of the attraction list dialog in the datapack (mrt:sights)
 
 
 def registry():
-    """掃描套件底下的模組，收集 BUILDS。"""
+    """Scan the modules of this package and collect their BUILDS."""
     out = {}
     for m in pkgutil.iter_modules(__path__):
         if m.name in ("kit",) or m.name.startswith("_"):
@@ -39,7 +42,8 @@ def registry():
         mod = importlib.import_module(__name__ + "." + m.name)
         for aid, cls in getattr(mod, "BUILDS", {}).items():
             if aid in out:
-                raise ValueError("景點 %s 同時登記在兩個模組：%s、%s" % (aid, out[aid].__module__, cls.__module__))
+                raise ValueError("Attraction %s is registered in two modules: %s and %s"
+                                 % (aid, out[aid].__module__, cls.__module__))
             out[aid] = cls
     return out
 
@@ -52,7 +56,8 @@ def load_items(path=None):
 
 
 def nearest_station(stations, x, z):
-    """(中文站名, 站號字串, 距離 m)；stations 是 cli.load_stations() 的列。"""
+    """(Chinese station name, station code string, distance in m, English station name);
+    stations are the rows from cli.load_stations()."""
     best = None
     for refs, name, sx, sz, en, full in stations:
         d = math.hypot(sx - x, sz - z)
@@ -62,7 +67,7 @@ def nearest_station(stations, x, z):
 
 
 def for_world(stations, items=None, only=None):
-    """-> [Attraction]。only 給一組 id 就只蓋那幾座（測試用）。"""
+    """-> [Attraction]. Given a set of ids as only, builds just those (for testing)."""
     reg = registry()
     out = []
     for it in items if items is not None else load_items():
@@ -82,25 +87,28 @@ def plan_all(sights, ground, keep=None, say=print):
         a.keep = keep
         a.plan(site)
         st = a.station
-        say("  景點 %-22s %-10s 一樓 y%s%s%s" % (
+        say("  Attraction %-22s %-10s ground floor y%s%s%s" % (
             a.id, a.name_zh, a.g0,
-            ("、最高點 y%d" % a.top_y()) if a.top_y() else "",
-            ("、%s站 %.0f m" % (st[0], st[2])) if st and st[2] <= WALKABLE_M else ""))
+            (", top y%d" % a.top_y()) if a.top_y() else "",
+            (", %s station %.0f m" % (st[0], st[2])) if st and st[2] <= WALKABLE_M else ""))
 
 
 PLAQUE_STYLE = dict(wood="pale_oak", kind="standing", glow=True, color="black")
-PLAQUE_INK = "#6B4A00"      # 景點名的字色（深金，在淡色木板上對比約 7:1）
+PLAQUE_INK = "#6B4A00"      # Color of the attraction name (dark gold, about 7:1 contrast on the pale wood)
 
 
 def build(a, w, keep=None):
-    """蓋一座景點：寫入先過 Guard（禁區不寫），再交給景點自己的 build()，
-    最後在預設觀景點旁邊立說明牌（景點自己立了就設 own_plaque = True）。回傳擋掉幾格。"""
+    """Build one attraction: writes pass through a Guard (nothing is written in the keep-out
+    zone), the attraction's own build() runs, and a plaque is put up beside the default
+    viewpoint (an attraction that puts up its own sets own_plaque = True). Returns how many
+    writes were blocked."""
     g = Guard(w, keep if keep is not None else getattr(a, "keep", None))
     a.build(g)
     sp = a.spots()
     if sp and not getattr(a, "own_plaque", False):
         s0 = sp[0]
-        # 人站在觀景點面向建築；牌子立在他右手邊 2 格、轉過來面向他
+        # The player stands at the viewpoint facing the building; the plaque stands 2 blocks
+        # to their right, turned to face them.
         fx, fz = -math.sin(math.radians(s0.yaw)), math.cos(math.radians(s0.yaw))
         rx, rz = -fz, fx
         px, pz = s0.x + int(round(rx * 2)), s0.z + int(round(rz * 2))
@@ -110,7 +118,8 @@ def build(a, w, keep=None):
 
 
 def _wrap(text, width, lines=2):
-    """英文名斷成最多 lines 行（每行放得下 width px），斷不下回 None。"""
+    """Break the English name into at most `lines` lines (each fitting in width px); None if
+    it does not fit."""
     from mrt.application import signage as SG
     words, out, cur = str(text).split(), [], ""
     for wd in words:
@@ -129,15 +138,19 @@ def _wrap(text, width, lines=2):
 
 
 def plaque_lines(a):
-    """說明牌 -> (正面四行, 背面四行)。
+    """Plaque -> (four front lines, four back lines).
 
-    正面：景點名（深金、粗體）、英文名（放不下就斷成兩行）、最近的捷運站；
-    背面：景點給的事實（plaque() 的第三、四行）與資料來源。
-    第一行不准以「出口」開頭（verify_exits 靠它認出入口亭）。"""
+    Front: the attraction name (dark gold, bold), the English name (broken over two lines
+    if it does not fit on one) and the nearest MRT station.
+    Back: the facts the attraction supplies (the third and fourth lines of plaque()) and the
+    data source. With an English fact (plaque_en()), the English line takes the place of
+    the name at the top of the back, so the Chinese facts and the source still fit.
+    The first line must not start with `出口` (verify_exits recognizes exit kiosks by it)."""
     from mrt.application import signage as SG
     zh, en, fact1, fact2 = (list(a.plaque()) + ["", "", "", ""])[:4]
     if str(zh).startswith("出口"):
-        raise ValueError("說明牌第一行不准以「出口」開頭（verify_exits 靠它認出入口亭）：%r" % zh)
+        raise ValueError("A plaque's first line must not start with 出口 "
+                         "(verify_exits recognises exit kiosks by it): %r" % zh)
     st = getattr(a, "station", None)
     station = ""
     if st and st[2] <= WALKABLE_M:
@@ -149,13 +162,19 @@ def plaque_lines(a):
         front.append(SG.fit([fact1]))
     front.append(station)
     front = (front + ["", "", "", ""])[:4]
-    back = [SG.styled([zh], PLAQUE_INK), SG.fit([fact1]) if fact1 else "",
-            SG.fit([fact2]) if fact2 else "", "資料 © OpenStreetMap"]
-    return front, back
+    facts = [SG.fit([fact1]) if fact1 else "", SG.fit([fact2]) if fact2 else ""]
+    fact_en = [t for t in a.plaque_en() if t]
+    if fact_en:
+        back = facts + [SG.fit(fact_en)]
+    else:
+        back = [SG.styled([zh], PLAQUE_INK)] + facts
+    return front, back + ["資料 © OpenStreetMap"]
 
 
 def datapack_entries(sights):
-    """給 ride_plan 的純資料：每座景點的名字、最近的站、傳送點（有 spots 的才收）。"""
+    """Plain data for ride_plan: each attraction's names, nearest station and teleport
+    points (only attractions with spots are included). facts holds the first fact in
+    Chinese and, where the attraction gives one, in English."""
     out = []
     for a in sights:
         sp = a.spots()
@@ -164,16 +183,17 @@ def datapack_entries(sights):
         st = getattr(a, "station", None)
         out.append(dict(id=a.id, name_zh=a.name_zh, name_en=a.name_en,
                         station=(st[0], st[1], int(st[2]), st[3]) if st and st[2] <= WALKABLE_M else None,
-                        facts=[str(t) for t in a.plaque()[2:3] if t],
+                        facts=[str(t) for t in list(a.plaque()[2:3]) + list(a.plaque_en()[:1]) if t],
                         spots=[s._asdict() for s in sp]))
     return out
 
 
-# ---------------------------------------------------------------- 退路：照 OSM 擠出量體
+# ---------------------------------------------------------------- Fallback: extrude the OSM massing
 
 class OsmMassing(Attraction):
-    """沒有專屬模組的景點：building / building:part 照 height（或樓層 × 3.5 m）擠出，
-    外牆開窗、平頂。位置、輪廓、高度是 OSM 的；長相只是量體。"""
+    """An attraction without its own module: building / building:part extruded by height
+    (or levels × 3.5 m), with windows in the outer walls and a flat roof. Location, outline
+    and height come from OSM; the appearance is only the massing."""
 
     wall = "minecraft:light_gray_concrete"
     glass = "minecraft:light_gray_stained_glass_pane"
@@ -207,7 +227,8 @@ class OsmMassing(Attraction):
         self.mask = self.fr.polygon(pts) if len(pts) >= 3 else self.fr.box(4, 4)
         self.g0 = site.level(self.fr, self.mask)
         self.height_m = max([self._height(f["tags"]) for f in self._parts()] or [10.0])
-        # 觀景點：輪廓外南側 1.5 倍半徑處，看向量體中段
+        # Viewpoint: south of the outline at 1.5 times the radius, looking at the middle of
+        # the massing.
         vx, vz = int(cx), int(cz + ext + 4)
         vy = site.g(vx, vz) + 1
         yaw, pitch = kit.look(vx, vy, vz, cx, self.g0 + self.height_m * 0.4, cz)

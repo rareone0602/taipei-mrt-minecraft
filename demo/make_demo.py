@@ -1,29 +1,34 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""把三段原始遊戲錄影剪成 README 用的示範素材。
+"""Cut the three raw gameplay recordings into the demo material for the README.
 
-原始錄影是 macOS 的螢幕錄影，沒有進版控 —— 太大了（三段共 2.9 GB）：
-raw-1、raw-2 是 1932x1240、畫面裡有視窗外框；raw-3 是搭乘系統與觀光景點做好之後
-錄的全螢幕（3024x1898、120 fps）。這支腳本是它們與 repo 裡那幾個檔案之間的唯一連結：
-影片剪哪幾段、字幕寫什麼、圖從第幾秒抓，全部寫在這裡，不是手工調出來的。
+The raw recordings are macOS screen recordings and are not in version control:
+they are too large (2.9 GB for the three). raw-1 and raw-2 are 1932x1240 with
+the window frame in the picture; raw-3 is full screen (3024x1898, 120 fps),
+recorded after the ride system and the attractions were done. This script is
+the only link between them and the files in the repo: which segments the
+videos use, what the captions say and which second each still is taken from
+are all written here, not tuned by hand.
 
-    ./.venv/bin/python demo/make_demo.py               # 重做 demo/ 下所有素材
-    ./.venv/bin/python demo/make_demo.py --only map    # 只重畫全網圖
-    ./.venv/bin/python demo/make_demo.py --only sights # 只重做景點影片與它的特寫
+    ./.venv/bin/python demo/make_demo.py               # Rebuild everything under demo/.
+    ./.venv/bin/python demo/make_demo.py --only map    # Redraw only the network map.
+    ./.venv/bin/python demo/make_demo.py --only sights # Rebuild only the attractions video and its stills.
 
-產出：
-    hero.gif          README 最上面的動圖（日落時的隧道剖面）
-    tour.mp4          56 秒示範影片，含標題卡與字幕
-    tour-thumb.jpg    影片封面（README 上點下去會開影片）
-    sights.mp4        景點與搭乘系統的示範影片（raw-3）：景點選單、台北101、路線圖、出站
-    sights-thumb.jpg  它的封面
-    network-map.png   全網示意圖，直接畫投影後的線形資料
-    platform / sign / tunnel / concourse / cutaway / sunset .jpg   六張特寫
+Outputs:
+    hero.gif          The animation at the top of the README (tunnel cutaway at sunset).
+    tour.mp4          56-second demo video, with title cards and captions.
+    tour-thumb.jpg    The video's cover (clicking it in the README opens the video).
+    sights.mp4        Demo video of the attractions and the ride system (raw-3):
+                      attractions menu, Taipei 101, route map, leaving the station.
+    sights-thumb.jpg  Its cover.
+    network-map.png   Network diagram, drawn directly from the projected alignment data.
+    platform / sign / tunnel / concourse / cutaway / sunset .jpg   Six stills.
     taipei101 / taipei101-down / sights-menu / route-map / arrival / exit .jpg
-                      raw-3 的六張特寫
+                      Six stills from raw-3.
 
-需要 ffmpeg（這台機器的 ffmpeg 沒編 libfreetype，所以字都用 PIL 畫成
-PNG 再疊上去，不是 drawtext）與 pillow、numpy。
+Needs ffmpeg (this machine's ffmpeg is built without libfreetype, so all text is
+drawn with PIL as PNGs and overlaid, rather than with drawtext), plus pillow and
+numpy.
 """
 import argparse
 import csv
@@ -36,33 +41,34 @@ from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 
 DEMO = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(DEMO)
-WORK = os.path.join(DEMO, ".work")          # 中間檔，不進版控
+WORK = os.path.join(DEMO, ".work")          # Intermediate files, not in version control.
 RAW1 = os.path.join(DEMO, "raw-1.mov")
 RAW2 = os.path.join(DEMO, "raw-2.mov")
-RAW3 = os.path.join(DEMO, "raw-3.mov")      # 全螢幕：觀光景點與搭乘系統
+RAW3 = os.path.join(DEMO, "raw-3.mov")      # Full screen: the attractions and the ride system.
 
 TTF = "/System/Library/Fonts/STHeiti Medium.ttc"     # Heiti TC
 TTF_L = "/System/Library/Fonts/STHeiti Light.ttc"
 
-CROP = "crop=1704:956:114:133"      # raw-1/2：去掉 macOS 視窗外框，只留遊戲畫面
-# raw-3 是全螢幕 16:10：從頂端切 16:9，剛好切掉最下面的快捷列，
-# 對話框最下面那顆「返回」也整顆落在切線外，不會切一半
+CROP = "crop=1704:956:114:133"      # raw-1/2: remove the macOS window frame, keeping only the game.
+# raw-3 is full-screen 16:10. Cropping 16:9 from the top cuts off exactly the
+# hotbar at the bottom, and the dialog's Back button at the very bottom falls
+# entirely outside the crop instead of being cut in half.
 CROP3 = "crop=3024:1701:0:0"
 SCALE = "scale=1280:720:flags=lanczos,setsar=1"
 FPS = 30
 XFADE = 0.5
 
-EQ_DARK = "eq=brightness=0.05:contrast=1.10:saturation=1.12"   # 地下，偏暗
-EQ_SKY = "eq=contrast=1.06:saturation=1.10"                    # 有天空的
+EQ_DARK = "eq=brightness=0.05:contrast=1.10:saturation=1.12"   # Underground, on the dark side.
+EQ_SKY = "eq=contrast=1.06:saturation=1.10"                    # Shots with sky.
 EQ_SUNSET = "eq=contrast=1.05:saturation=1.12"
-EQ_3 = "eq=contrast=1.04:saturation=1.08"                      # raw-3 本身就亮，只輕輕調
+EQ_3 = "eq=contrast=1.04:saturation=1.08"                      # raw-3 is bright already; adjust lightly.
 EQ_3_DARK = "eq=brightness=0.06:contrast=1.08:saturation=1.10"
 
 W, H = 1280, 720
 LINE_COLORS = [(198, 132, 44), (227, 0, 44), (0, 134, 89),
                (248, 182, 28), (0, 112, 189), (255, 219, 0)]
 
-# 影片鏡頭：(來源, 起點秒, 長度秒, 調色, 字幕鍵)
+# Video shots: (source, start in seconds, length in seconds, grade, caption key).
 SHOTS = [
     (RAW2, 176.0, 11.0, EQ_SKY,  "xray"),
     (RAW1,  51.0,  7.5, EQ_SUNSET, "sunset"),
@@ -72,7 +78,7 @@ SHOTS = [
     (RAW2, 212.5,  7.5, EQ_DARK, None),
 ]
 
-# 字幕：鍵 -> (大字, 小字, 色條顏色)
+# Captions: key -> (headline, subline, accent bar color).
 CAPTIONS = {
     "xray":      (u"隧道剖面", u"把地表切掉：線形一路延伸到天際線", (255, 219, 0)),
     "sunset":    (u"1 方塊 = 1 公尺", u"482 km² 的範圍，不可能手工堆", (227, 0, 44)),
@@ -81,7 +87,7 @@ CAPTIONS = {
     "concourse": (u"穿堂層與轉乘通道", u"從街上任何一座出入口都走得到月台", (248, 182, 28)),
 }
 
-# 特寫：檔名 -> (來源, 秒數, 調色)
+# Stills: file name -> (source, second, grade).
 STILLS = {
     "platform":  (RAW2, 216.5, EQ_DARK),
     "sign":      (RAW2,  29.5, EQ_DARK),
@@ -91,21 +97,22 @@ STILLS = {
     "sunset":    (RAW1,  54.5, EQ_SUNSET),
 }
 
-# hero.gif 取的那一段：日落時的隧道剖面，5 秒剛好 2.5 MB
+# The segment for hero.gif: the tunnel cutaway at sunset; 5 seconds comes to 2.5 MB.
 HERO = (RAW1, 52.0, 5.0, EQ_SUNSET)
 
-# ---- 景點影片（raw-3）----
-# 傳送之後聊天欄左下角會留十秒「Triggered [...]」，所以這支片的字幕放左上角
+# ---- Attractions video (raw-3) ----
+# After a teleport, "Triggered [...]" stays in the chat area at the bottom left
+# for ten seconds, so this video's captions go at the top left.
 SIGHT_SHOTS = [
-    (RAW3,   0.3,  6.5, EQ_3, None),          # ★ 觀光景點選單，游標滑過去有提示
-    (RAW3,   6.9,  7.4, EQ_3, "t101"),        # 傳送到台北101 前的觀景點
-    (RAW3,  46.5,  8.5, EQ_3, "sections"),    # 貼著塔身往上：八節花斗
-    (RAW3,  95.5, 10.0, EQ_3, "spire"),       # 頂部、91 樓觀景台、塔尖
-    (RAW3, 136.5,  8.5, EQ_3, "down"),        # 從塔尖往下看
-    (RAW3, 155.8,  9.6, EQ_3, None),          # 路線圖 -> 松山新店線 -> 公館
-    (RAW3, 165.4,  4.2, EQ_3_DARK, "arrive"), # 到站：大標題站名
-    (RAW3, 201.0,  9.9, EQ_3_DARK, "exit"),   # 出站：樓梯 -> 2 號出口的牌子
-    (RAW3, 222.8,  5.6, EQ_3, None),          # 路線圖 -> 板南線 -> 西門（提示裡有附近景點）
+    (RAW3,   0.3,  6.5, EQ_3, None),          # The ★ attractions menu; hovering the cursor shows tooltips.
+    (RAW3,   6.9,  7.4, EQ_3, "t101"),        # Teleport to the viewpoint in front of Taipei 101.
+    (RAW3,  46.5,  8.5, EQ_3, "sections"),    # Up along the tower: the eight flared sections.
+    (RAW3,  95.5, 10.0, EQ_3, "spire"),       # The top, the 91st-floor observatory, the spire.
+    (RAW3, 136.5,  8.5, EQ_3, "down"),        # Looking down from the spire.
+    (RAW3, 155.8,  9.6, EQ_3, None),          # Route map -> Songshan-Xindian Line -> Gongguan.
+    (RAW3, 165.4,  4.2, EQ_3_DARK, "arrive"), # Arrival: the station name as a large title.
+    (RAW3, 201.0,  9.9, EQ_3_DARK, "exit"),   # Leaving the station: stairs -> the Exit 2 sign.
+    (RAW3, 222.8,  5.6, EQ_3, None),          # Route map -> Bannan Line -> Ximen (tooltip: nearby attractions).
 ]
 
 SIGHT_CAPTIONS = {
@@ -117,8 +124,9 @@ SIGHT_CAPTIONS = {
     "exit":     (u"走出站", u"每座出入口開在真實位置、掛真實編號", (198, 132, 44)),
 }
 
-# 特寫：檔名 -> (來源, 秒數, 調色, 裁切)。裁切 None 就是 CROP3；
-# 傳送後十秒內的畫面另外切掉最下面，聊天欄的「Triggered」才不會入鏡
+# Stills: file name -> (source, second, grade, crop). A crop of None means CROP3.
+# Frames within ten seconds of a teleport have the bottom cropped off as well,
+# so the "Triggered" line in the chat area stays out of the picture.
 CROP3_NOCHAT = "crop=2700:1519:162:0"
 SIGHT_STILLS = {
     "taipei101":      (RAW3,  12.5, EQ_3, CROP3_NOCHAT),
@@ -141,12 +149,13 @@ def font(size, light=False):
 def need_raw(paths):
     missing = [p for p in paths if not os.path.exists(p)]
     if missing:
-        raise SystemExit("缺少原始錄影：%s（沒有進版控，要跟作者要）"
-                         % "、".join(os.path.basename(p) for p in missing))
+        raise SystemExit("Missing raw recordings: %s (they are not in version control; "
+                         "ask the author for them)"
+                         % ", ".join(os.path.basename(p) for p in missing))
 
 
 # --------------------------------------------------------------------------
-# 圖層：標題卡、字幕、封面
+# Layers: title cards, captions, covers
 # --------------------------------------------------------------------------
 
 def text(d, xy, s, f, fill, off=3):
@@ -165,7 +174,7 @@ def color_bar(d, y, h):
 
 
 def backdrop(still, dim, blur):
-    """拿一張遊戲截圖當底：壓暗、輕微模糊，字才壓得住。"""
+    """Use a game screenshot as the background, darkened and slightly blurred so the text stands out."""
     im = Image.open(os.path.join(WORK, still)).convert("RGB")
     im = im.resize((W, H), Image.LANCZOS).filter(ImageFilter.GaussianBlur(blur))
     return ImageEnhance.Brightness(im).enhance(dim).convert("RGBA")
@@ -219,12 +228,14 @@ def end_card(still="still_tunnel.png", rows=TOUR_END):
 
 
 def caption_layer(head, sub, accent, top=False):
-    """左下角字幕：色條 + 大字 + 小字，底下鋪一層由下而上的暗角。
-    top=True 放左上角、暗角由上而下（聊天欄佔著左下角的時候用）。"""
+    """Draw a bottom-left caption: accent bar + headline + subline, over a vignette rising from the bottom.
+
+    top=True places it at the top left with the vignette falling from the top
+    (used when the chat area occupies the bottom left)."""
     im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     grad = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     gd = ImageDraw.Draw(grad)
-    edge = 250 if top else H - 470           # 暗角的深度
+    edge = 250 if top else H - 470           # Depth of the vignette.
     for i in range(edge):
         a = int(150 * ((edge - i) / float(edge)) ** 1.5)
         y = i if top else H - 1 - i
@@ -242,7 +253,10 @@ TOUR_THUMB = (u"台北捷運 · Minecraft 1:1 重建", u"56 秒示範影片：�
 
 
 def thumbnail(still="still_platform.png", lines=TOUR_THUMB, out="tour-thumb.jpg"):
-    """影片封面：README 上點下去會開影片，所以要一眼看得出是影片。"""
+    """Draw a video cover.
+
+    Clicking it in the README opens the video, so it must read as a video at a glance.
+    """
     im = Image.open(os.path.join(WORK, still)).convert("RGB")
     im = im.resize((W, H), Image.LANCZOS).filter(ImageFilter.GaussianBlur(1.2))
     im = ImageEnhance.Brightness(im).enhance(0.52)
@@ -262,7 +276,7 @@ def thumbnail(still="still_platform.png", lines=TOUR_THUMB, out="tour-thumb.jpg"
 
 
 # --------------------------------------------------------------------------
-# 影格
+# Frames
 # --------------------------------------------------------------------------
 
 def crop_of(src):
@@ -279,8 +293,8 @@ def grab(src, ss, eq, out, width=1280, png=False, crop=None):
 
 
 def build_stills():
-    """六張 README 特寫，順便留一份原尺寸 PNG 給標題卡當底。"""
-    print("特寫：")
+    """Grab the six README stills, and keep full-size PNGs as title-card backgrounds."""
+    print("Stills:")
     for name, (src, ss, eq) in STILLS.items():
         grab(src, ss, eq, os.path.join(DEMO, name + ".jpg"))
         print("  %s.jpg" % name)
@@ -291,17 +305,17 @@ def build_stills():
 
 
 def build_cards():
-    print("圖卡：")
+    print("Cards:")
     title_card().save(os.path.join(WORK, "title.png"))
     end_card().save(os.path.join(WORK, "end.png"))
     for key, (head, sub, accent) in CAPTIONS.items():
         caption_layer(head, sub, accent).save(os.path.join(WORK, "cap_%s.png" % key))
-    print("  title / end / %d 張字幕" % len(CAPTIONS))
+    print("  title / end / %d captions" % len(CAPTIONS))
     thumbnail()
 
 
 # --------------------------------------------------------------------------
-# 影片
+# Video
 # --------------------------------------------------------------------------
 
 def render_card(png, dur, out, fade_in=True):
@@ -331,12 +345,14 @@ def render_shot(src, ss, dur, eq, cap, out):
 
 
 def build_video():
-    print("影片：")
+    print("Video:")
     cut(SHOTS, "", "tour.mp4")
 
 
 def cut(shots, prefix, name):
-    """標題卡 + 鏡頭 + 片尾卡，交叉溶接成一支。prefix 區分各支影片在 .work/ 的中間檔。"""
+    """Cross-dissolve the title card, the shots and the end card into one video.
+
+    prefix keeps each video's intermediate files in .work/ apart."""
     parts = []
     p = os.path.join(WORK, "%s00_title.mp4" % prefix)
     render_card(os.path.join(WORK, "%stitle.png" % prefix), 2.8, p)
@@ -345,12 +361,12 @@ def cut(shots, prefix, name):
         p = os.path.join(WORK, "%s%02d_%s.mp4" % (prefix, i + 1, cap or "plain"))
         render_shot(src, ss, dur, eq, cap, p)
         parts.append((p, dur))
-        print("  鏡頭 %d：%s +%.1fs" % (i + 1, os.path.basename(src), dur))
+        print("  Shot %d: %s +%.1fs" % (i + 1, os.path.basename(src), dur))
     p = os.path.join(WORK, "%s99_end.mp4" % prefix)
     render_card(os.path.join(WORK, "%send.png" % prefix), 3.6, p, fade_in=False)
     parts.append((p, 3.6))
 
-    # 交叉溶接：每接一段，總長就少一個 XFADE
+    # Cross-dissolve: each join shortens the total by one XFADE.
     inputs = []
     for f, _ in parts:
         inputs += ["-i", f]
@@ -367,13 +383,13 @@ def cut(shots, prefix, name):
         ["-filter_complex", ";".join(fc), "-map", "[o]",
          "-c:v", "libx264", "-preset", "slow", "-crf", "25", "-tune", "animation",
          "-pix_fmt", "yuv420p", "-movflags", "+faststart", out])
-    print("  %s（%.1f 秒，%.1f MB）" % (name, acc, os.path.getsize(out) / 1e6))
+    print("  %s (%.1f s, %.1f MB)" % (name, acc, os.path.getsize(out) / 1e6))
     return acc
 
 
 def build_sights():
-    """raw-3 一條龍：特寫、圖卡、影片、封面。"""
-    print("景點特寫：")
+    """Build everything from raw-3 in one pass: stills, cards, video and cover."""
+    print("Attraction stills:")
     for name, (src, ss, eq, crop) in SIGHT_STILLS.items():
         grab(src, ss, eq, os.path.join(DEMO, name + ".jpg"), crop=crop)
         print("  %s.jpg" % name)
@@ -382,14 +398,14 @@ def build_sights():
         grab(src, ss, eq, os.path.join(WORK, "still_%s.png" % name),
              width=1704, png=True, crop=crop)
 
-    print("景點圖卡：")
+    print("Attraction cards:")
     title_card("still_taipei101.png", SIGHT_TITLE).save(os.path.join(WORK, "s_title.png"))
     end_card("still_taipei101-down.png", SIGHT_END).save(os.path.join(WORK, "s_end.png"))
     for key, (head, sub, accent) in SIGHT_CAPTIONS.items():
         caption_layer(head, sub, accent, top=True).save(os.path.join(WORK, "cap_%s.png" % key))
-    print("  title / end / %d 張字幕" % len(SIGHT_CAPTIONS))
+    print("  title / end / %d captions" % len(SIGHT_CAPTIONS))
 
-    print("景點影片：")
+    print("Attraction video:")
     acc = cut(SIGHT_SHOTS, "s_", "sights.mp4")
     thumbnail("still_taipei101.png",
               (u"台北101 與觀光景點",
@@ -398,7 +414,11 @@ def build_sights():
 
 
 def build_gif():
-    """GIF 沒有影格間壓縮，所以只給 5 秒、560 px、12 fps —— 再多就破 3 MB。"""
+    """Render hero.gif.
+
+    GIF has no inter-frame compression, so it gets only 5 seconds, 560 px and
+    12 fps; any more passes 3 MB.
+    """
     src, ss, dur, eq = HERO
     vf = ("%s,%s,fps=12,scale=560:-1:flags=lanczos,split[a][b];"
           "[a]palettegen=max_colors=200:stats_mode=diff[p];"
@@ -406,11 +426,11 @@ def build_gif():
     out = os.path.join(DEMO, "hero.gif")
     run(["ffmpeg", "-v", "error", "-y", "-ss", str(ss), "-t", str(dur), "-i", src,
          "-vf", vf, "-loop", "0", out])
-    print("hero.gif（%.1f MB）" % (os.path.getsize(out) / 1e6))
+    print("hero.gif (%.1f MB)" % (os.path.getsize(out) / 1e6))
 
 
 # --------------------------------------------------------------------------
-# 全網示意圖
+# Network diagram
 # --------------------------------------------------------------------------
 
 MAP_W, MAP_H, MAP_PAD, MAP_TOP, MAP_BOTTOM = 2000, 1500, 70, 150, 130
@@ -433,7 +453,10 @@ def rgb(c):
 
 
 def build_map():
-    """直接畫 data/mc_lines.json —— 就是拿去生成世界的那份線形，不是另外畫的。"""
+    """Draw data/mc_lines.json directly.
+
+    It is the same alignment the world is generated from, not a separate drawing.
+    """
     lines = json.load(open(os.path.join(REPO, "data/mc_lines.json"), encoding="utf-8"))
     with open(os.path.join(REPO, "data/mc_stations.csv"), encoding="utf-8") as fh:
         stations = list(csv.DictReader(fh))
@@ -442,7 +465,7 @@ def build_map():
     zs = [p[1] for vs in lines.values() for v in vs for p in v["points"]]
     x0, x1, z0, z1 = min(xs), max(xs), min(zs), max(zs)
     iw, ih = MAP_W - 2 * MAP_PAD, MAP_H - MAP_TOP - MAP_BOTTOM
-    s = min(iw / float(x1 - x0), ih / float(z1 - z0))      # 公尺 -> 像素
+    s = min(iw / float(x1 - x0), ih / float(z1 - z0))      # Meters -> pixels.
     ox = MAP_PAD + (iw - (x1 - x0) * s) / 2
     oz = MAP_TOP + (ih - (z1 - z0) * s) / 2
 
@@ -451,7 +474,7 @@ def build_map():
 
     im = Image.new("RGB", (MAP_W, MAP_H), MAP_BG)
     d = ImageDraw.Draw(im)
-    # 先鋪一層底色描邊，線交會時才分得開
+    # Lay a background-colored outline first, so lines stay distinct where they cross.
     for w, colorize in ((9, False), (5, True)):
         for variants in lines.values():
             for v in variants:
@@ -462,7 +485,7 @@ def build_map():
         px, pz = pt(int(st["mc_x"]), int(st["mc_z"]))
         d.ellipse([px - 3, pz - 3, px + 3, pz + 3], fill=(245, 245, 245), outline=MAP_BG)
     for st in stations:
-        if st["ref"].startswith("R10"):          # 台北車站＝投影原點
+        if st["ref"].startswith("R10"):          # Taipei Main Station = the projection origin.
             px, pz = pt(int(st["mc_x"]), int(st["mc_z"]))
             d.ellipse([px - 7, pz - 7, px + 7, pz + 7], outline=(255, 255, 255), width=3)
             d.text((px + 14, pz - 26), u"台北車站", font=font(20), fill=(255, 255, 255))
@@ -479,7 +502,7 @@ def build_map():
         d.rectangle([cx, cy + 6, cx + 30, cy + 12], fill=rgb(col))
         d.text((cx + 44, cy - 2), u"%s　%s" % (code, name), font=f, fill=(215, 222, 230))
 
-    bar = 5000 * s                                # 比例尺就是世界裡的 5000 格
+    bar = 5000 * s                                # The scale bar is 5000 blocks in the world.
     bx, by = MAP_W - MAP_PAD - bar, 96
     d.line([(bx, by), (bx + bar, by)], fill=(215, 222, 230), width=3)
     for e in (bx, bx + bar):
@@ -488,13 +511,13 @@ def build_map():
            fill=(215, 222, 230))
 
     im.save(os.path.join(DEMO, "network-map.png"))
-    print("network-map.png（%.2f px/m）" % s)
+    print("network-map.png (%.2f px/m)" % s)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", choices=("stills", "cards", "video", "gif", "map", "sights"),
-                    help="只做其中一項（video 需要先有 cards）")
+                    help="run only this step (video needs cards first)")
     a = ap.parse_args()
     os.makedirs(WORK, exist_ok=True)
     steps = [a.only] if a.only else ["stills", "cards", "video", "gif", "map", "sights"]

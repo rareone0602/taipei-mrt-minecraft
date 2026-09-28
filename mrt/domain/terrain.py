@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""高程網格取樣器：把 data/heightmap.npy 轉成 Minecraft 的 y 值。"""
+"""Elevation grid sampler: turns data/heightmap.npy into Minecraft y values."""
 import os, json
 import numpy as np
 
 from mrt import config
 
-SEA_Y      = 62      # 海平面對應的 y
-COMPRESS_H = 180     # 這個高度以上開始壓縮，免得陽明山頂撞到 y=319 上限
+SEA_Y      = 62      # The y that corresponds to sea level
+COMPRESS_H = 180     # Compression starts above this height, so Yangmingshan stays under y=319
 COMPRESS_K = 0.5
 Y_CAP      = 312
 
@@ -20,7 +20,7 @@ class Terrain:
         self.nz, self.nx = self.hm.shape
 
     def elev(self, x, z):
-        """雙線性內插的地面高程（公尺，海平面 = 0）"""
+        """Return the bilinearly interpolated ground elevation (meters, sea level = 0)."""
         c = (np.asarray(x, dtype=np.float64) - self.x0) / self.step
         r = (np.asarray(z, dtype=np.float64) - self.z0) / self.step
         c = np.clip(c, 0, self.nx - 1.001)
@@ -33,8 +33,9 @@ class Terrain:
         return v
 
     def y_at(self, x, z):
-        """地面的 Minecraft y。超過 COMPRESS_H 的山區做垂直壓縮 —
-        1:1 會讓陽明山 (1100 m) 直接超出 y=319 的世界上限。"""
+        """Return the Minecraft y of the ground. Mountain areas above COMPRESS_H are
+        compressed vertically: at 1:1, Yangmingshan (1100 m) would go straight past the
+        world limit of y=319."""
         e = np.asarray(self.elev(x, z), dtype=np.float64)
         hi = e > COMPRESS_H
         e = np.where(hi, COMPRESS_H + (e - COMPRESS_H) * COMPRESS_K, e)

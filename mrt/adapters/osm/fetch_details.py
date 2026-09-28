@@ -1,25 +1,34 @@
 #!/usr/bin/env python3
-"""抓取捷運車站細部資料 -> data/entrances.json、data/station_buildings.json、data/platform_levels.json
+"""Fetch detailed metro station data.
 
-沿用 fetch_stations.py 的 BBOX、鏡像與重試流程。Overpass 原始回應會快取到
-OVERPASS_CACHE 指定的暫存目錄，重跑時直接讀快取，加 --refresh 才重抓。
-座標一律轉成 Minecraft 方塊座標，原點與 to_minecraft.py 相同
-(台北車站 ref=R10 -> MC (0,0)，X = 東、Z = 南，1 方塊 = 1 公尺)。
+Writes data/entrances.json, data/station_buildings.json and data/platform_levels.json.
 
-出入口分兩段查:
-  A. railway=subway_entrance / train_station_entrance (節點與 way)，
-     以及 public_transport=stop_area 關聯底下掛的 entrance=* 節點；
-     順便把 railway/public_transport=station 節點一起撈回來當「車站種子」。
-  B. 全 BBOX 的 entrance=yes / entrance=main 節點 (約 2400 個，多半是一般
-     建物大門)，再用種子在本地做半徑過濾。
-原本想用 Overpass 的 node(around.stn:150) 一次做完，但整個大台北 BBOX 的
-around 在三個鏡像上都跑不完 (>5 分鐘沒回應)，改成本地過濾既快又好檢查。
+Uses the same BBOX, mirrors and retry flow as fetch_stations.py. The raw
+Overpass responses are cached in the temporary directory named by
+OVERPASS_CACHE; a rerun reads the cache, and --refresh fetches again.
+All coordinates are converted to Minecraft block coordinates with the same
+origin as adapters/projection.py (Taipei Main Station ref=R10 -> MC (0,0),
+X = east, Z = south, 1 block = 1 meter).
+
+Exits are queried in two parts:
+  A. railway=subway_entrance / train_station_entrance (nodes and ways), plus
+     the entrance=* nodes attached to public_transport=stop_area relations;
+     the railway/public_transport=station nodes come back in the same query
+     as "station seeds".
+  B. Every entrance=yes / entrance=main node in the BBOX (about 2400, mostly
+     ordinary building doors), filtered locally by radius around the seeds.
+The original plan was a single Overpass node(around.stn:150) query, but an
+around over the whole Greater Taipei BBOX never finished on any of the three
+mirrors (no response after more than 5 minutes). Local filtering is faster and
+easier to check.
 """
 import csv, json, math, os, re, sys, tempfile
 
-# pyproj 匯入時會讀 certifi 的 cacert.pem，被 sandbox 的 **/*.pem 規則擋下；
-# 這裡只做本地投影不需連網，先把 CA bundle 指走並關閉 PROJ 網路。
-# （overpass.py 呼叫 curl 前會把 CURL_CA_BUNDLE 拿掉，否則 curl 會 TLS 失敗）
+# Importing pyproj reads certifi's cacert.pem, which the sandbox's **/*.pem
+# rule blocks. Only local projection happens here and no network is needed, so
+# point the CA bundle elsewhere and turn off PROJ networking first.
+# (overpass.py removes CURL_CA_BUNDLE before calling curl; otherwise curl
+# fails TLS.)
 os.environ.setdefault("CURL_CA_BUNDLE", "/dev/null")
 os.environ.setdefault("PROJ_NETWORK", "OFF")
 from pyproj import Transformer
@@ -27,15 +36,15 @@ from pyproj import Transformer
 from mrt import config
 from mrt.infrastructure.overpass import BBOX, query_cached
 
-ORIGIN_REF = "R10"                 # 台北車站 (OSM ref="R10;BL12")
+ORIGIN_REF = "R10"                 # Taipei Main Station (OSM ref="R10;BL12")
 CACHE = os.environ.get("OVERPASS_CACHE") or os.path.join(
     tempfile.gettempdir(), "mrt_overpass_cache")
 TF = Transformer.from_crs("EPSG:4326", "EPSG:3826", always_xy=True)
-NEAR_M = 400          # 統計時判定「屬於某站」的半徑 (公尺 = 方塊)
-GEN_NEAR_M = 150      # 一般 entrance=yes/main 要離車站多近才收
+NEAR_M = 400          # Radius for assigning an item to a station in the summary (meters = blocks).
+GEN_NEAR_M = 150      # How close to a station a generic entrance=yes/main must be to be kept.
 CHECK_STATIONS = ["台北車站", "忠孝復興", "民權西路", "東門", "中山", "西門", "南港展覽館"]
 
-# ---------------------------------------------------------------- Overpass 查詢
+# ---------------------------------------------------------------- Overpass queries
 
 Q_ENTRANCE_A = f"""[out:json][timeout:300];
 (
@@ -90,25 +99,26 @@ out geom;"""
 
 
 def fetch(name, q):
-    """打 Overpass 並快取；快取存在就直接讀，避免重跑時再打 API。"""
+    """Query Overpass with caching; read the cache when it exists so a rerun does not call the API again."""
     return query_cached(name, q, cache_dir=CACHE,
                         refresh="--refresh" in sys.argv, timeout=500)
 
 
-# ---------------------------------------------------------------- 座標轉換
+# ---------------------------------------------------------------- Coordinate conversion
 
 def origin():
-    """與 to_minecraft.py 一致：ref=R10 的台北車站當 MC (0,0)。"""
+    """Return the origin, as in adapters/projection.py: Taipei Main Station, ref=R10, is MC (0,0)."""
     d = json.load(open(config.STATIONS_JSON, encoding="utf-8"))
     for e in d["elements"]:
         if ORIGIN_REF in (e.get("tags", {}).get("ref", "")).split(";"):
             return TF.transform(e["lon"], e["lat"])
-    raise SystemExit("找不到原點站 ref=R10；請先執行 scripts/fetch_stations.py。"
-                     "不可靜默改用別的原點，否則所有絕對座標都會偏移。")
+    raise SystemExit("Origin station ref=R10 not found. Run mrt.adapters.osm.fetch_stations first. "
+                     "Another origin must not be substituted silently: every absolute "
+                     "coordinate would shift.")
 
 
 def ring(geom, to_mc):
-    """OSM out geom 的節點串 -> MC [[x,z],...]，順手去掉連續重複點。"""
+    """Convert an OSM out-geom node list to MC [[x,z],...], dropping consecutive duplicate points."""
     out = []
     for pt in geom or []:
         if not pt:
@@ -120,7 +130,10 @@ def ring(geom, to_mc):
 
 
 def stitch(rings, tol=2):
-    """把 relation 的成員 way 依端點接成環；接不上的自成一段，不硬拉直線。"""
+    """Join a relation's member ways into rings by their endpoints.
+
+    A way that does not connect stays a separate chain; no straight line is forced between them.
+    """
     d2 = lambda a, b: (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2
     t2 = tol * tol
     remaining = [list(r) for r in rings if len(r) >= 2]
@@ -148,7 +161,7 @@ def stitch(rings, tol=2):
 
 
 def centroid(pts):
-    """封閉環用面積質心，開放線用平均點。"""
+    """Return the area centroid of a closed ring, or the mean point of an open line."""
     if not pts:
         return None, None
     if len(pts) >= 4 and pts[0] == pts[-1]:
@@ -165,7 +178,10 @@ def centroid(pts):
 
 
 def geometry_of(e, to_mc):
-    """回傳 (外環列表, 內環列表)。way 只有一個外環；relation 先把成員接起來。"""
+    """Return (outer rings, inner rings).
+
+    A way has a single outer ring; a relation's members are joined first.
+    """
     if e["type"] == "way":
         r = ring(e.get("geometry"), to_mc)
         return ([r] if r else []), []
@@ -185,17 +201,18 @@ def names(t):
 
 
 def pick(t, keys):
-    """只留有值的關鍵標籤，免得 JSON 塞一堆空字串。"""
+    """Keep only the key tags that have values, so the JSON is not filled with empty strings."""
     return {k: t[k] for k in keys if t.get(k)}
 
-# ---------------------------------------------------------------- 出入口
+# ---------------------------------------------------------------- Exits
 
 ENT_KEYS = ("railway", "entrance", "level", "layer", "highway", "wheelchair",
             "elevator", "operator", "network", "description", "note", "ref:zh")
 
-# 台北的出入口有不少只把編號寫在 name，沒有 ref (例如 name="Y11"、
-# "1號出入口"、"捷運市政府站4號出口"、"出口 3 (聯合醫院忠孝院區)")。
-# 這裡照下列樣式補出 ref，並用 ref_from_name 標記是推導出來的，不是原始標籤。
+# Many Taipei exits carry their number only in name, with no ref (for example
+# name="Y11", "1號出入口", "捷運市政府站4號出口", "出口 3 (聯合醫院忠孝院區)").
+# The patterns below fill in ref, and ref_from_name marks it as derived rather
+# than an original tag.
 REF_PATTERNS = [
     re.compile(r"^([A-Z]{1,2}\d{1,2})(?![0-9])"),      # M6出口 台北凱薩飯店 / Y11
     re.compile(r"(\d{1,2})\s*號出入?口"),               # 1號出入口 / 4號出口
@@ -232,7 +249,7 @@ def entrance_record(e, to_mc, source):
         if not outer:
             return None
         poly = outer[0]
-        x, z = centroid(poly)                     # way 取幾何中心
+        x, z = centroid(poly)                     # A way takes its geometric center.
         g = [p for p in (e.get("geometry") or []) if p]
         lat = round(sum(p["lat"] for p in g) / len(g), 7) if g else None
         lon = round(sum(p["lon"] for p in g) / len(g), 7) if g else None
@@ -251,7 +268,7 @@ def entrance_record(e, to_mc, source):
 
 
 def build_entrances(da, dg, to_mc):
-    """A 段全收；B 段 (一般大門) 只收離車站種子 GEN_NEAR_M 內的。"""
+    """Keep all of part A; keep part B (ordinary doors) only within GEN_NEAR_M of a station seed."""
     seeds, out, seen = [], [], set()
     for e in (da["elements"] if da else []):
         t = e.get("tags", {}) or {}
@@ -259,7 +276,8 @@ def build_entrances(da, dg, to_mc):
             if e["type"] == "node":
                 seeds.append(to_mc(*TF.transform(e["lon"], e["lat"])))
             continue
-        # 有 railway=*_entrance 的是直接命中；只有 entrance=* 的來自 stop_area 關聯
+        # One with railway=*_entrance is a direct hit; one with only entrance=*
+        # comes from a stop_area relation.
         src = "railway_tag" if t.get("railway", "").endswith("entrance") else "stop_area"
         r = entrance_record(e, to_mc, src)
         if r:
@@ -279,7 +297,7 @@ def build_entrances(da, dg, to_mc):
             seen.add((r["type"], r["id"]))
     return out, len(seeds), skipped
 
-# ---------------------------------------------------------------- 建物 / 月台
+# ---------------------------------------------------------------- Buildings / platforms
 
 BLD_KEYS = ("building", "building:levels", "height", "min_height",
             "building:levels:underground", "building:min_level", "layer",
@@ -324,10 +342,10 @@ def build_platforms(d, to_mc):
                         tags=pick(t, PF_KEYS)))
     return out
 
-# ---------------------------------------------------------------- 主流程
+# ---------------------------------------------------------------- Main flow
 
 def load_mc_stations():
-    """讀既有的 data/mc_stations.csv，用來做「離哪一站最近」的歸屬判斷。"""
+    """Read the existing data/mc_stations.csv, used to assign each item to its nearest station."""
     with open(config.MC_STATIONS_CSV, encoding="utf-8") as f:
         return [dict(ref=r["ref"], name=r["name_zh"],
                      x=int(r["mc_x"]), z=int(r["mc_z"]))
@@ -335,10 +353,11 @@ def load_mc_stations():
 
 
 def attach_station(items, stns):
-    """標上最近的捷運站 (超過 NEAR_M 就留空，但仍保留距離)。
+    """Label each item with its nearest metro station (left empty beyond NEAR_M, but the distance is kept).
 
-    月台在 OSM 這一帶完全沒有 line / route_ref 標籤，所以歸屬只能靠距離推，
-    station_ref 就是可用來對回路線代號的欄位。"""
+    Platforms in this area have no line / route_ref tags at all in OSM, so the
+    assignment can only be inferred from distance; station_ref is the field
+    that maps back to a line code."""
     for it in items:
         best, bd = None, None
         for s in stns:
@@ -358,7 +377,7 @@ def dump(path, kind, items, extra=None):
     if extra:
         doc.update(extra)
     json.dump(doc, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    print(f"  寫出 {path}  ({len(items)} 筆)")
+    print(f"  Wrote {path}  ({len(items)} items)")
 
 
 def bad_coords(items, limit=35000):
@@ -370,8 +389,8 @@ def bad_coords(items, limit=35000):
 def main():
     oE, oN = origin()
     to_mc = lambda E, N: (round(E - oE), round(-(N - oN)))
-    print(f"原點 台北車站 (ref={ORIGIN_REF})  TWD97 E={oE:.1f} N={oN:.1f} -> MC (0,0)")
-    print(f"快取目錄 {CACHE}\n")
+    print(f"Origin: Taipei Main Station (ref={ORIGIN_REF})  TWD97 E={oE:.1f} N={oN:.1f} -> MC (0,0)")
+    print(f"Cache directory {CACHE}\n")
 
     da = fetch("entrances_a", Q_ENTRANCE_A)
     dg = fetch("entrances_gen", Q_ENTRANCE_GEN)
@@ -393,51 +412,51 @@ def main():
     dump(config.STATION_BUILDINGS_JSON, "station building footprints", blds)
     dump(config.PLATFORM_LEVELS_JSON, "platforms with level/layer", pfs)
 
-    # ---------------------------------------------------------- 中文摘要
-    print("\n=== 摘要 ===")
+    # ---------------------------------------------------------- Summary
+    print("\n=== Summary ===")
     kinds, srcs = {}, {}
     for e in ents:
         kinds[e["kind"]] = kinds.get(e["kind"], 0) + 1
         srcs[e["source"]] = srcs.get(e["source"], 0) + 1
-    print(f"出入口       {len(ents):>5} 個   " +
+    print(f"Exits              {len(ents):>5}   " +
           "  ".join(f"{k}={v}" for k, v in sorted(kinds.items())))
-    print("             來源: " + "  ".join(f"{k}={v}" for k, v in sorted(srcs.items()))
-          + f"   (車站種子 {n_seed} 個，另有 {n_skip} 個一般大門離站太遠被剔除)")
-    print(f"             有 ref: {sum(1 for e in ents if e['ref']):>3} 個 "
-          f"(其中 {sum(1 for e in ents if e['ref_from_name'])} 個是從 name 推導)；"
-          f"無 ref {sum(1 for e in ents if not e['ref'])} 個")
-    print(f"車站建物     {len(blds):>5} 個   "
+    print("                   sources: " + "  ".join(f"{k}={v}" for k, v in sorted(srcs.items()))
+          + f"   ({n_seed} station seeds; {n_skip} ordinary doors dropped as too far from a station)")
+    print(f"                   with ref: {sum(1 for e in ents if e['ref']):>3} "
+          f"({sum(1 for e in ents if e['ref_from_name'])} derived from name); "
+          f"without ref: {sum(1 for e in ents if not e['ref'])}")
+    print(f"Station buildings  {len(blds):>5}   "
           f"way={sum(1 for b in blds if b['type'] == 'way')}  "
           f"relation={sum(1 for b in blds if b['type'] == 'relation')}  "
-          f"有樓層數={sum(1 for b in blds if b['tags'].get('building:levels'))}  "
-          f"有高度={sum(1 for b in blds if b['tags'].get('height'))}  "
-          f"有地下樓層={sum(1 for b in blds if b['tags'].get('building:levels:underground'))}")
-    print(f"月台(有層資訊){len(pfs):>4} 個   "
-          f"有 level={sum(1 for p in pfs if p['level'])}  "
-          f"有 layer={sum(1 for p in pfs if p['layer'])}  "
-          f"鐵道月台={sum(1 for p in pfs if p['tags'].get('railway') == 'platform')}  "
-          f"有 line/route_ref={sum(1 for p in pfs if p['lines'])}  "
-          f"能對到 {NEAR_M}m 內車站={sum(1 for p in pfs if p['station'])}")
+          f"with levels={sum(1 for b in blds if b['tags'].get('building:levels'))}  "
+          f"with height={sum(1 for b in blds if b['tags'].get('height'))}  "
+          f"with underground levels={sum(1 for b in blds if b['tags'].get('building:levels:underground'))}")
+    print(f"Platforms (levels) {len(pfs):>5}   "
+          f"with level={sum(1 for p in pfs if p['level'])}  "
+          f"with layer={sum(1 for p in pfs if p['layer'])}  "
+          f"railway platforms={sum(1 for p in pfs if p['tags'].get('railway') == 'platform')}  "
+          f"with line/route_ref={sum(1 for p in pfs if p['lines'])}  "
+          f"matched to a station within {NEAR_M} m={sum(1 for p in pfs if p['station'])}")
 
-    print(f"\n各站 {NEAR_M} 公尺內的出入口數:")
+    print(f"\nExits within {NEAR_M} metres of each station:")
     for nm in CHECK_STATIONS:
         pts = [(s["x"], s["z"]) for s in stns if s["name"] == nm]
         if not pts:
-            print(f"  {nm:<6} 在 mc_stations.csv 找不到此站名")
+            print(f"  {nm:<6} station name not found in mc_stations.csv")
             continue
         near = [e for e in ents
                 if any(math.dist((e["mc_x"], e["mc_z"]), p) <= NEAR_M for p in pts)]
         rw = sum(1 for e in near if e["kind"].endswith("entrance"))
-        print(f"  {nm:<6} {len(near):>3} 個 (其中 railway 出入口 {rw:>2} 個)   "
-              f"站點 {len(pts)} 處: " + ", ".join(f"({x},{z})" for x, z in pts))
+        print(f"  {nm:<6} {len(near):>3} ({rw:>2} of them railway exits)   "
+              f"{len(pts)} station points: " + ", ".join(f"({x},{z})" for x, z in pts))
 
-    # ------------------------------------- 台北車站逐筆列出 (合理性檢查)
+    # ------------------------------------- List Taipei Main Station one by one (sanity check)
     tp = [(s["x"], s["z"]) for s in stns if s["name"] == "台北車站"]
     near = sorted((e for e in ents
                    if any(math.dist((e["mc_x"], e["mc_z"]), p) <= NEAR_M for p in tp)),
                   key=lambda e: (e["ref"] or "~", e["id"]))
-    print(f"\n=== 台北車站 (MC 0,0) {NEAR_M} 公尺內出入口逐筆 ({len(near)} 個) ===")
-    print(f"  {'ref':<6}{'mc_x':>7}{'mc_z':>7}{'距離':>7}  {'種類':<24}{'名稱'}")
+    print(f"\n=== Exits within {NEAR_M} metres of Taipei Main Station (MC 0,0), one by one ({len(near)}) ===")
+    print(f"  {'ref':<6}{'mc_x':>7}{'mc_z':>7}{'dist':>7}  {'kind':<24}{'name'}")
     for e in near:
         d = min(math.dist((e["mc_x"], e["mc_z"]), p) for p in tp)
         nm = e["name"] or e["name_zh"] or e["name_en"] or e["tags"].get("description", "")
@@ -445,20 +464,21 @@ def main():
               f"{e['kind']:<24}{nm}")
     rw_near = [e for e in near if e["kind"].endswith("entrance")]
     if len(rw_near) < 20:
-        print(f"  ※ 台北車站實際有 20 個以上編號出口 (M1-M8、Z1-Z10、K 區、Y 區等)，"
-              f"這裡只找到 {len(rw_near)} 個 railway 出入口 —— OSM 資料不完整，"
-              f"不要當成全集使用。")
+        print(f"  warning: Taipei Main Station has more than 20 numbered exits in reality "
+              f"(M1-M8, Z1-Z10, the K area, the Y area and others), but only {len(rw_near)} "
+              f"railway exits were found here. The OSM data is incomplete; "
+              f"do not treat it as the full set.")
 
-    # ------------------------------------- 座標範圍檢查
+    # ------------------------------------- Coordinate range check
     bad = bad_coords(ents) + bad_coords(blds) + bad_coords(pfs)
     allx = [i["mc_x"] for i in ents + blds + pfs if i.get("mc_x") is not None]
     allz = [i["mc_z"] for i in ents + blds + pfs if i.get("mc_z") is not None]
     if bad:
-        print(f"\n※ 有 {len(bad)} 筆座標缺值或超出 ±35000，需檢查: "
+        print(f"\nwarning: {len(bad)} items have missing coordinates or lie beyond ±35000; check: "
               + ", ".join(f"{b['type']}/{b['id']}" for b in bad[:5]))
     else:
-        print(f"\n座標範圍檢查通過: X {min(allx)}~{max(allx)}, Z {min(allz)}~{max(allz)}"
-              f" (皆在 ±35000 內)")
+        print(f"\nCoordinate range check passed: X {min(allx)}~{max(allx)}, Z {min(allz)}~{max(allz)}"
+              f" (all within ±35000)")
 
 
 if __name__ == "__main__":

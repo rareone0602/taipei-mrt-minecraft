@@ -1,36 +1,55 @@
 #!/usr/bin/env python3
-"""美麗華摩天輪：大直美麗華百樂園屋頂上的摩天輪（2004）。
+"""The Miramar Ferris Wheel: the Ferris wheel on the roof of Miramar Entertainment Park in
+Dazhi (2004).
 
-公開的事實（只取數字與形制，文字與圖片都沒有抄進來）：
-  · 輪徑 70 m、總高 100 m；基座架在建築物屋頂（5 樓，30 m 高）—— 維基百科「美麗華摩天輪」
-  · 48 個車廂（編號 1–52，跳過 4、13、14、44），其中 2 個透明車廂、2 個無障礙車廂；
-    每廂 6 人、繞一圈約 17 分鐘；日本泉陽興業製造、總重約 600 公噸 —— 同上
-  · 美麗華百樂園：地上 9 層、地下 3 層，2004 年 11 月開幕；IMAX 影廳在 6–9 樓
-    —— 維基百科「美麗華百樂園」
-  · 長相（Wikimedia Commons 的照片：Miramar Ferris Wheel, Taipei, 2024、
-    Miramar Entertainment Park 20090905、West Side of Miramar Entertainment Park）：
-    白色鋼構輪圈、密密的鋼索輻條、兩側各一座 A 字形支腳；車廂掛在輪圈外，
-    顏色一圈漸層（頂上紅、左邊橙黃、底下綠、右邊藍）；商場是米色石材外牆、
-    每層一道褐色橫紋、淡綠色的斜屋頂，西側是一道從北往南升高的楔形山牆
+Public facts (only numbers and forms are taken; no text or images are copied):
+  · Wheel diameter 70 m, total height 100 m; the base stands on the building's roof
+    (5th floor, 30 m up). Source: Chinese Wikipedia "Miramar Ferris Wheel".
+  · 48 gondolas (numbered 1–52, skipping 4, 13, 14 and 44), of which 2 are transparent
+    and 2 are wheelchair accessible; 6 people per gondola, about 17 minutes per
+    revolution; made by Senyo Kogyo of Japan, total weight about 600 metric tons. Same
+    source.
+  · Miramar Entertainment Park: 9 floors above ground and 3 below, opened in November
+    2004; the IMAX theater is on floors 6 to 9. Source: Chinese Wikipedia "Miramar
+    Entertainment Park".
+  · Appearance (photos on Wikimedia Commons: "Miramar Ferris Wheel, Taipei, 2024",
+    "Miramar Entertainment Park 20090905", "West Side of Miramar Entertainment Park"):
+    a white steel rim, dense steel-cable spokes and an A-frame support leg on each
+    side; the gondolas hang outside the rim, their colors graded around the wheel (red
+    at the top, orange and yellow on the left, green at the bottom, blue on the right).
+    The mall has beige stone walls with a brown horizontal band on every floor and a
+    pale green pitched roof; on the west side is a wedge-shaped gable wall that rises
+    from north to south.
 
-位置：摩天輪中心照 OSM node/5121602758（attraction=big_wheel、height=100），
-商場照 way/155816458 的輪廓。輪面的方向：從北邊山上往南拍的照片裡，輪子是正圓、
-台北101 正好在輪軸後方 —— 輪軸大致南北向、輪面東西向，跟商場的長邊（東西向）一致，
-所以輪面沿商場南緣的方向擺。
+Position: the wheel's center follows OSM node/5121602758 (attraction=big_wheel,
+height=100), and the mall follows the outline of way/155816458. Orientation of the
+wheel plane: in photos taken southward from the hills to the north, the wheel is a
+perfect circle and Taipei 101 sits right behind the axle. The axle therefore runs
+roughly north-south and the wheel plane east-west, matching the mall's long (east-west)
+side, so the wheel plane is set along the direction of the mall's south edge.
 
-垂直分配（從地面 g0 起算）：屋頂甲板 30（5 樓頂，上下車的月台）、輪軸 67；
-車廂的樞軸在半徑 33 m 的圓上、車廂高 4 m 往下掛 —— 最低的車廂底 31、
-最高的車廂頂 100，上下一共 70 m，跟公開的「輪徑 70 m、總高 100 m」對得起來。
-輪圈半徑 28.3 m，車廂在輪圈外（照片上頂端的車廂在輪圈上方）。
+Vertical allocation (measured from the ground g0): roof deck at 30 (top of the 5th
+floor, the boarding platform), axle at 67. The gondola pivots lie on a circle of radius
+33 m and the gondolas, 4 m tall, hang below them: the lowest gondola floor is at 31 and
+the highest gondola roof at 100, 70 m from bottom to top, which agrees with the public
+"wheel diameter 70 m, total height 100 m". The rim has a radius of 28.3 m and the
+gondolas sit outside it (in photos the top gondola is above the rim).
 
-商場是簡化的量體（不是逐層重建）：
-  · 整個輪廓：外牆米色、每 5 m 一道褐色橫紋，一樓一圈店面玻璃與淡綠雨庇
-  · 摩天輪周圍（輪軸東西 34 m、南緣往北 34 m）：5 樓頂 30 m 的甲板；輪子的南側支腳
-    落在 OSM 輪廓外 3～4 m，甲板往南多蓋一小塊（上下車月台）把支腳接住
-  · 東北：9 層的 IMAX 大樓 48 m，東牆上一圈圓形標誌、西牆一道大拱窗
-  · 西翼：楔形屋頂，北端 16 m 往南升到 36 m，南端再斜下來；西牆一道紅色大拱門
-  · 其餘：波浪形的淡綠屋頂 19～26 m
-觀景點在輪子正南方 90 m 的街上（面向輪面），另一個在最頂上的車廂裡。
+The mall is a simplified massing (not a floor-by-floor reconstruction):
+  · The whole outline: beige outer walls with a brown band every 5 m, shop windows
+    around the ground floor and a pale green canopy.
+  · Around the wheel (34 m east and west of the axle, 34 m north of the south edge):
+    a deck on top of the 5th floor at 30 m. The wheel's south legs land 3 to 4 m
+    outside the OSM outline, so the deck extends a little further south (the
+    boarding platform) to carry them.
+  · Northeast: the 9-story IMAX building, 48 m, with a circular emblem on its east
+    wall and a large arched window on its west wall.
+  · West wing: a wedge-shaped roof rising from 16 m at the north end to 36 m toward
+    the south, then sloping down again at the south end; a large red arched gateway
+    in the west wall.
+  · Everything else: a wavy pale green roof at 19 to 26 m.
+One viewpoint is on the street 90 m due south of the wheel (facing the wheel plane);
+the other is inside the top gondola.
 """
 import math
 
@@ -39,13 +58,14 @@ import numpy as np
 from mrt.application.attractions import kit
 from mrt.application.attractions.kit import AIR, Attraction, Frame, Painter, Spot, dilate, erode, ring
 
-# ---- 材質 ----
-STONE_WALL = "minecraft:white_terracotta"           # 米色石材外牆
-STRIPE = "minecraft:terracotta"                     # 褐色橫紋
-SHOP_GLASS = "minecraft:light_blue_stained_glass"   # 一樓店面
+# ---- Materials ----
+STONE_WALL = "minecraft:white_terracotta"           # Beige stone outer wall
+STRIPE = "minecraft:terracotta"                     # Brown horizontal band
+SHOP_GLASS = "minecraft:light_blue_stained_glass"   # Ground-floor shop windows
 GLASS = "minecraft:light_gray_stained_glass"
-GLASS_ARCH = "minecraft:light_blue_stained_glass"   # IMAX 大樓的大拱窗
-COPPER = "minecraft:waxed_weathered_cut_copper"     # 淡綠色金屬屋頂（上蠟，不會再繼續氧化）
+GLASS_ARCH = "minecraft:light_blue_stained_glass"   # Large arched window of the IMAX building
+# Pale green metal roof (waxed, so it does not oxidize further)
+COPPER = "minecraft:waxed_weathered_cut_copper"
 COPPER_SLAB = "minecraft:waxed_weathered_cut_copper_slab[type=bottom]"
 DECK = "minecraft:smooth_stone"
 FLOOR = "minecraft:polished_andesite"
@@ -54,47 +74,58 @@ ARCH_GLASS = "minecraft:orange_stained_glass"
 PAVE = "minecraft:smooth_stone"
 EMBLEM = "minecraft:white_concrete"
 
-RIM = "minecraft:white_concrete"                    # 輪圈
-RING2 = "minecraft:red_terracotta"                  # 輪圈外那一圈細的暗紅色圈
-STEEL = "minecraft:iron_block"                      # 輪軸、支腳、車廂吊臂
+RIM = "minecraft:white_concrete"                    # Rim
+RING2 = "minecraft:red_terracotta"                  # The thin dark red ring outside the rim
+STEEL = "minecraft:iron_block"                      # Axle, legs, gondola hangers
 AXLE = "minecraft:light_gray_concrete"
-SPOKE = "minecraft:iron_bars"                       # 鋼索輻條（沒有連接狀態就是一根細柱）
+# Steel-cable spokes (unconnected iron bars are a thin post)
+SPOKE = "minecraft:iron_bars"
 COLOURS = ("red", "orange", "yellow", "lime", "green", "cyan", "light_blue", "blue")
-CLEAR = ("minecraft:white_stained_glass", "minecraft:glass")   # 透明車廂
+CLEAR = ("minecraft:white_stained_glass", "minecraft:glass")   # Transparent gondolas
 
-# ---- 摩天輪（公尺 = 格）----
-DECK_Y = 30          # 5 樓頂（上下車月台）
-HUB = 67             # 輪軸
-RP = 33.0            # 車廂樞軸的半徑
-GH = 4               # 車廂高（地板、兩層窗、頂）
+# ---- Ferris wheel (meters = blocks) ----
+DECK_Y = 30          # Top of the 5th floor (boarding platform)
+HUB = 67             # Axle
+RP = 33.0            # Radius of the gondola pivots
+GH = 4               # Gondola height (floor, two rows of windows, roof)
 RIM_IN, RIM_OUT = 27.6, 29.0
-RIM_W = 2.0          # 前後兩道輪圈在輪軸方向 ±2 m
+RIM_W = 2.0          # The front and rear rims sit ±2 m along the axle
 HUB_R, HUB_W, AXLE_W = 3.5, 4.5, 6.5
 N_GONDOLA = 48
-N_SPOKE = 32         # 每一面的輻條數（前後兩面錯開半格，正面看是 64 根）
-RINGS = (10.0, 19.0) # 內圈
+# Spokes per face (the front and rear faces are offset by half
+# a step, so 64 are seen from the front)
+N_SPOKE = 32
+RINGS = (10.0, 19.0) # Inner rings
 LEG_U, LEG_W, LEG_R = 16.0, 5.5, 1.1
-TIE_Y = 44           # 支腳之間的橫撐
-TRANSPARENT = (8, 32)    # 兩個透明車廂（十點鐘、四點鐘方向）
-VIEW_M = 90.0        # 觀景點在輪子南邊多遠：退到這裡，商場一樓到輪頂都框得進畫面
+TIE_Y = 44           # Cross-brace between the legs
+# The two transparent gondolas (at the ten o'clock and four o'clock positions)
+TRANSPARENT = (8, 32)
+# How far south of the wheel the viewpoint is: from here the frame holds everything from the
+# mall's ground floor to the top of the wheel
+VIEW_M = 90.0
 
 
 def axis_angle(poly):
-    """輪廓主要的方向（弧度，折到 ±45°）：邊長加權的平均方向。
-    principal_angle 取整數度，這裡要的是摩天輪輪面的準確方向。"""
+    """Return the outline's dominant direction (radians, folded into ±45°).
+
+    It is the length-weighted mean direction of the edges. principal_angle rounds to
+    whole degrees; the wheel plane needs the exact direction."""
     sx = sy = 0.0
     for i in range(len(poly)):
         x1, z1 = poly[i]
         x2, z2 = poly[(i + 1) % len(poly)]
         L = math.hypot(x2 - x1, z2 - z1)
-        a = math.atan2(z2 - z1, x2 - x1) * 4          # 四倍角：互相垂直的邊落在同一個方向
+        # Quadruple angle: perpendicular edges fall on the same direction
+        a = math.atan2(z2 - z1, x2 - x1) * 4
         sx += L * math.cos(a)
         sy += L * math.sin(a)
     return math.atan2(sy, sx) / 4
 
 
 def _seg_dist(U, Y, W, p0, p1):
-    """每格到三維線段 p0-p1 的距離（U, Y, W 是同形陣列）。"""
+    """Return the distance from every cell to the 3D line segment p0-p1.
+
+    U, Y and W are arrays of the same shape."""
     d = np.array(p1, dtype=float) - np.array(p0, dtype=float)
     L2 = float((d * d).sum()) or 1.0
     t = (((U - p0[0]) * d[0] + (Y - p0[1]) * d[1] + (W - p0[2]) * d[2]) / L2).clip(0, 1)
@@ -102,7 +133,8 @@ def _seg_dist(U, Y, W, p0, p1):
 
 
 def gondola_colour(k):
-    """第 k 個車廂（k=0 在頂上，往左、逆時針數）的顏色：頂紅、左橙黃、底綠、右藍。"""
+    """Return the color of gondola k (k=0 at the top, counted counterclockwise toward the left):
+    red at the top, orange and yellow on the left, green at the bottom, blue on the right."""
     if k in TRANSPARENT:
         return CLEAR
     c = COLOURS[int(k * len(COLOURS) / N_GONDOLA) % len(COLOURS)]
@@ -123,7 +155,7 @@ class MiramarWheel(Attraction):
         ang = axis_angle(self.mall) if self.mall else 0.0
         self.angle = ang
         c, s = math.cos(ang), math.sin(ang)
-        # 觀景點：輪子南邊（+v）VIEW_M 公尺的街上
+        # Viewpoint: on the street VIEW_M meters south (+v) of the wheel
         self.view_xz = (self.hub_xz[0] - VIEW_M * s, self.hub_xz[1] + VIEW_M * c)
 
     def outline(self):
@@ -134,7 +166,7 @@ class MiramarWheel(Attraction):
         vx, vz = self.view_xz
         return (min(x0, int(vx) - 8), min(z0, int(vz) - 8), max(x1, int(vx) + 8), max(z1, int(vz) + 8))
 
-    # ---------------------------------------------------------------- 規劃
+    # ---------------------------------------------------------------- Planning
     def plan(self, site):
         hx, hz = self.hub_xz
         ang = self.angle
@@ -148,19 +180,21 @@ class MiramarWheel(Attraction):
         self.fr = fr = Frame(mx, mz, ang, ext)
         self.mask = fr.polygon(self.mall) if self.mall else fr.box(70, 50, *fr.local(int(hx), int(hz) - 45))
         self.g0 = site.level(fr, self.mask)
-        self.wf = Frame(hx, hz, ang, 40)                  # 摩天輪自己的座標：u 沿輪面、v 沿輪軸
+        # The wheel's own coordinates: u along the wheel plane, v along the axle
+        self.wf = Frame(hx, hz, ang, 40)
         self._zones()
-        # build() 裡整地要查地面；cli 在 plan_all 之後就把地形距離場丟掉了，
-        # 所以要在這裡先把會用到的格子查一遍（Site 會快取），build 時才查得到
+        # Grading in build() looks up the ground, and cli discards the terrain distance
+        # field after plan_all, so every cell needed is looked up here first (Site caches
+        # them) to be available at build time.
         site.grid(self.fr, self.mask)
         self.site = site
         g0 = self.g0
-        # 預設觀景點：南邊街上，看輪子中段
+        # Default viewpoint: on the street to the south, looking at the middle of the wheel
         vx, vz = (int(math.floor(c)) for c in self.view_xz)
         vy = site.g(vx, vz) + 1
         self.view_ground = vy - 1
         yaw, pitch = kit.look(vx, vy, vz, hx, g0 + HUB - 8, hz)
-        # 頂上：最高那個車廂裡面
+        # Top: inside the highest gondola
         top = self._gondolas()[0]
         gx, gy, gz = top["cell"][0], top["y_top"] - 2, top["cell"][1]
         self._spots = [
@@ -169,7 +203,7 @@ class MiramarWheel(Attraction):
         ]
 
     def _zones(self):
-        """商場量體：每格的屋頂高度（相對 g0）與屋頂材質。"""
+        """Mall massing: the roof height of every cell (relative to g0) and its roof material."""
         fr, m = self.fr, self.mask
         U, V = fr.U, fr.V
         hu, hv = fr.local(int(math.floor(self.hub_xz[0])), int(math.floor(self.hub_xz[1])))
@@ -177,19 +211,22 @@ class MiramarWheel(Attraction):
         vm = V[m]
         u0, u1, v0, v1 = float(um.min()), float(um.max()), float(vm.min()), float(vm.max())
         H = np.zeros(fr.shape)
-        roof = np.zeros(fr.shape, dtype=np.int8)          # 0 平頂、1 銅皮斜頂
+        roof = np.zeros(fr.shape, dtype=np.int8)          # 0 flat roof, 1 pitched copper roof
         H[m] = 20
-        west = m & (U < hu - 40)                          # 西翼：楔形屋頂
+        west = m & (U < hu - 40)                          # West wing: wedge-shaped roof
         north = m & (V < v0 + 50)
-        tower = north & (U > hu + 12)                     # 東北 IMAX 大樓
-        deck = m & ~west & ~tower & (np.abs(U - hu) <= 34) & (V >= v1 - 34)   # 摩天輪底下的 5 樓甲板
-        # 上下車月台：輪子的支腳落在輪廓外，甲板往南多蓋一塊
+        tower = north & (U > hu + 12)                     # Northeast IMAX building
+        # 5th-floor deck under the wheel
+        deck = m & ~west & ~tower & (np.abs(U - hu) <= 34) & (V >= v1 - 34)
+        # Boarding platform: the wheel's legs land outside the
+        # outline, so the deck extends further south
         wu, wv = self.wf.U, self.wf.V
         st = self._on(self.wf, (np.abs(wu) <= LEG_U + 3) & (wv >= -LEG_W - 3) & (wv <= LEG_W + 2))
         deck |= st
         self.mask = m = m | st
-        wave = m & ~west & ~tower & ~deck                 # 其餘：波浪形的淡綠屋頂
-        vs = v1 - 10                                      # 楔形的屋脊在南端往北 10 m
+        wave = m & ~west & ~tower & ~deck                 # Everything else: wavy pale green roof
+        # The ridge of the wedge is 10 m north of the south end
+        vs = v1 - 10
         t = ((V - v0) / max(1.0, vs - v0)).clip(0, 1)
         wedge = np.where(V <= vs, 16 + 20 * t, 36 - 6 * ((V - vs) / 10.0).clip(0, 1))
         H[west] = wedge[west]
@@ -203,7 +240,7 @@ class MiramarWheel(Attraction):
         self.u_west, self.v_south = u0, v1
 
     def _on(self, other, mask2):
-        """另一個 Frame 上的遮罩 -> 商場 Frame 上的遮罩（同一批世界格子）。"""
+        """Map a mask on another Frame to a mask on the mall Frame (the same world cells)."""
         out = self.fr.empty()
         fr = self.fr
         for x, z in other.cells(mask2):
@@ -213,18 +250,20 @@ class MiramarWheel(Attraction):
         return out
 
     def _gondolas(self):
-        """48 個車廂：樞軸的位置、落在哪一格、車廂頂的 y、顏色。k=0 在正上方，逆時針（往西）數。"""
+        """Return the 48 gondolas: pivot position, the cell it falls in, the y of the gondola roof,
+        and color. k=0 is at the top, counted counterclockwise (toward the west)."""
         wf, hub = self.wf, self.g0 + HUB
         out = []
         for k in range(N_GONDOLA):
             th = math.pi / 2 + 2 * math.pi * k / N_GONDOLA
-            pu = RP * math.cos(th)                        # 從南邊看逆時針：k=1 在頂上偏西（-u）
+            # Counterclockwise as seen from the south: k=1 is at the top, slightly west (-u)
+            pu = RP * math.cos(th)
             py = RP * math.sin(th)
             out.append(dict(k=k, th=th, cell=wf.cell(pu, 0.0), y_top=hub + int(round(py)),
                             colour=gondola_colour(k), pu=pu))
         return out
 
-    # ---------------------------------------------------------------- 蓋
+    # ---------------------------------------------------------------- Build
     def build(self, w):
         p = Painter(w, self.fr)
         self._mall(p, w)
@@ -232,15 +271,17 @@ class MiramarWheel(Attraction):
         self._wheel(w)
         self._view(w)
 
-    # ---- 商場 ----
+    # ---- Mall ----
     def _mall(self, p, w):
         fr, g0, m, H = self.fr, self.g0, self.mask, self.H
         Hi = np.rint(H).astype(int)
         self.site.prepare(w, fr, m, g0, top=FLOOR, clear=4)
         inner = erode(m, 1)
-        for y in range(6, 48, 6):                         # 樓板（每 6 m 一層，到各自的屋頂下）
+        # Floor slabs every 6 m, up to just below each roof
+        for y in range(6, 48, 6):
             p.layer(inner & (Hi > y + 1), g0 + y, FLOOR)
-        # 各區的外牆：自己的外圈從地面疊到自己的屋頂下；褐色橫紋每 5 m 一道
+        # Outer walls of each zone: its own perimeter from the ground up to just below its own roof;
+        # a brown band every 5 m
         X, Z = fr.X, fr.Z
         s = w.set
         outer_ring = ring(m)
@@ -251,12 +292,13 @@ class MiramarWheel(Attraction):
                 for y in range(1, top):
                     blk = STRIPE if y % 5 == 0 else STONE_WALL
                     s(x, g0 + y, z, blk)
-        # 一樓店面：外圈 1～4 m 開玻璃，5 m 一圈淡綠雨庇伸出 2 m
+        # Ground-floor shops: glass in the perimeter from 1 to
+        # 4 m, and a pale green canopy at 5 m projecting 2 m
         shop = outer_ring & ((fr.X + fr.Z) % 7 != 0)
         p.fill(shop, g0 + 1, g0 + 4, SHOP_GLASS)
         canopy = dilate(m, 2) & ~m
         p.layer(canopy, g0 + 5, COPPER_SLAB)
-        # 屋頂：平頂鋪面加女兒牆，斜頂與波浪頂是淡綠金屬
+        # Roofs: flat roofs are paved with a parapet; pitched and wavy roofs are pale green metal
         flat = m & (self.roof == 0)
         p.fill(flat, g0 + Hi, g0 + Hi, DECK)
         for part in ("tower",):
@@ -265,7 +307,7 @@ class MiramarWheel(Attraction):
         slope = m & (self.roof == 1)
         p.heightfield(slope, g0, H, COPPER, shell=2)
         p.heightfield(slope, g0, H, COPPER, shell=1, slab=COPPER_SLAB)
-        # 西牆的紅色大拱門（南端屋脊底下）
+        # Large red arched gateway in the west wall (under the ridge at the south end)
         U, V = fr.U, fr.V
         wr = ring(m) & (U < self.u_west + 1.5)
         vc = self.v_south - 22
@@ -278,7 +320,8 @@ class MiramarWheel(Attraction):
                     s(x, g0 + y, z, ARCH_GLASS)
                 elif r <= 8.8:
                     s(x, g0 + y, z, ARCH)
-        # IMAX 大樓西牆的大拱窗（照片上從西北邊看得到的那一面）
+        # Large arched window in the west wall of the IMAX building (the face seen from the
+        # northwest in the photos)
         tw = self.parts["tower"]
         wr2 = ring(tw) & (U < U[tw].min() + 1.5)
         if wr2.any():
@@ -292,7 +335,7 @@ class MiramarWheel(Attraction):
                         s(x, g0 + y, z, GLASS_ARCH)
                     elif r <= 8.5:
                         s(x, g0 + y, z, EMBLEM)
-        # IMAX 大樓東牆的圓形標誌
+        # Circular emblem on the east wall of the IMAX building
         er = ring(tw) & (U > U[tw].max() - 1.5)
         if er.any():
             vc2 = float(V[er].mean())
@@ -302,13 +345,13 @@ class MiramarWheel(Attraction):
                     r = math.hypot(float(V[i, j]) - vc2, y - 34.0)
                     if 8.0 <= r <= 9.2:
                         s(x, g0 + y, z, EMBLEM)
-        # 招牌
+        # Signboard
         sx, sz = fr.cell(self.u_west - 1.0, vc - 11)
         fx, fz = _vec(fr.facing(-1, 0))
         w.sign(sx, g0 + 3, sz, ["美麗華百樂園", "Miramar", "Entertainment Park", ""],
                facing=(fx, fz), wood="birch", kind="wall", glow=True, color="red")
 
-    # ---- 上下車月台 ----
+    # ---- Boarding platform ----
     def _station(self, w):
         wf, g0 = self.wf, self.g0
         p = Painter(w, wf)
@@ -324,7 +367,7 @@ class MiramarWheel(Attraction):
                     for yy in range(y + 1, y + 5):
                         w.set(x, yy, z, STEEL)
 
-    # ---- 摩天輪 ----
+    # ---- Ferris wheel ----
     def _wheel(self, w):
         wf, hub = self.wf, self.g0 + HUB
         U, W = wf.U, wf.V
@@ -347,10 +390,10 @@ class MiramarWheel(Attraction):
             TH = np.arctan2(dy, U)
             aw = np.abs(W)
             blk = np.full(U.shape, "", dtype=object)
-            # 支腳與橫撐
+            # Legs and cross-braces
             for (p0, p1), rad in [(l, LEG_R) for l in legs] + [(t, 0.7) for t in ties]:
                 blk[near & (_seg_dist(U, dy, W, p0, p1) <= rad)] = STEEL
-            # 輻條：前後兩面，從輪軸（±4.5）斜到輪圈（±2）
+            # Spokes: front and rear faces, slanting from the axle (±4.5) to the rim (±2)
             for f, off in ((1, 0.0), (-1, step / 2)):
                 ws = f * (HUB_W - (HUB_W - RIM_W) * ((R - HUB_R) / (RIM_IN - HUB_R)).clip(0, 1))
                 dth = (TH - off + step / 2) % step - step / 2
@@ -359,19 +402,21 @@ class MiramarWheel(Attraction):
                 blk[near & on_face & (R >= HUB_R) & (R <= RIM_IN + 0.2) & (lat <= 0.5)] = SPOKE
                 for rr in RINGS:
                     blk[near & on_face & (np.abs(R - rr) <= 0.5)] = RIM
-            # 輪圈（前後兩道）、外圈的細紅圈、車廂位置的橫樑與吊臂
+            # Rims (front and rear), the thin red outer ring, and the cross-beams and hangers at the
+            # gondola positions
             blk[(R >= RIM_IN) & (R <= RIM_OUT) & (np.abs(aw - RIM_W) <= 0.55)] = RIM
             blk[(R > RIM_OUT) & (R <= RIM_OUT + 1.0) & (aw <= 0.55)] = RING2
             gd = (TH - math.pi / 2 + gstep / 2) % gstep - gstep / 2
             glat = R * np.abs(np.sin(gd))
             blk[(glat <= 0.5) & (R >= RIM_IN) & (R <= RIM_OUT) & (aw <= RIM_W + 0.5)] = RIM
             blk[(glat <= 0.5) & (R > RIM_OUT) & (R <= RP + 0.3) & (np.abs(aw - RIM_W) <= 0.55)] = STEEL
-            # 輪軸
+            # Axle
             blk[(R <= HUB_R) & (aw <= HUB_W)] = STEEL
             blk[(R <= 1.6) & (aw <= AXLE_W)] = AXLE
             for i, j in zip(*np.nonzero(blk != "")):
                 s(int(X[i, j]), y, int(Z[i, j]), blk[i, j])
-        # 車廂：掛在樞軸下，3 × 3 × 4（地板、兩層窗、頂），中間那一格是空的
+        # Gondolas: hanging below the pivots, 3 × 3 × 4 (floor, two rows of windows, roof), with the
+        # center cell empty
         eu = _vec(kit.cardinal(*wf.dir(1, 0)))
         ev = _vec(kit.cardinal(*wf.dir(0, 1)))
         for g in self._gondolas():
@@ -385,7 +430,7 @@ class MiramarWheel(Attraction):
                     for yy in range(yt - GH + 2, yt):
                         s(x, yy, z, AIR if (a, b) == (0, 0) else glass)
 
-    # ---- 觀景點腳下的一小塊人行鋪面 ----
+    # ---- A small patch of sidewalk paving under the viewpoint ----
     def _view(self, w):
         vx, vz = (int(math.floor(c)) for c in self.view_xz)
         gy = self.view_ground
@@ -395,9 +440,12 @@ class MiramarWheel(Attraction):
                 for yy in range(gy + 1, gy + 4):
                     w.set(vx + dx, yy, vz + dz, AIR)
 
-    # ---------------------------------------------------------------- 說明牌
+    # ---------------------------------------------------------------- Plaque
     def plaque(self):
         return [self.name_zh, self.name_en, "2004 年啟用 頂高 100 m", "輪徑 70 m 48 個車廂"]
+
+    def plaque_en(self):
+        return ["Opened in 2004, 100 m high", "2004, 100 m high"]
 
 
 def _vec(name):

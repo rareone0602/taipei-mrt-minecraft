@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""抓取捷運車站節點 (含中英文名、代碼、樓層/深度提示) -> data/stations.json"""
+"""Fetch the metro station nodes -> data/stations.json.
+
+The nodes carry Chinese and English names, codes and level/depth hints.
+"""
 import json, os
 
 from mrt import config
@@ -17,10 +20,10 @@ out body;"""
 def main():
     d = query(Q, label="stations")
     if d is None:
-        print("失敗"); return
+        print("Failed"); return
     os.makedirs(config.DATA, exist_ok=True)
     json.dump(d, open(config.STATIONS_JSON, "w", encoding="utf-8"), ensure_ascii=False)
-    print(f"車站節點: {len(d['elements'])}")
+    print(f"Station nodes: {len(d['elements'])}")
 
 
 if __name__ == "__main__":

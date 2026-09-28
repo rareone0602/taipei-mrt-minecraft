@@ -1,20 +1,28 @@
 #!/usr/bin/env python3
-"""抓取觀光景點的建物輪廓 -> data/attractions.json
+"""Fetch the building footprints of the attractions -> data/attractions.json.
 
-景點建築（application/attractions/）的位置、方位與平面輪廓一律照 OSM：
-台北101 的 way 標了 height=508、國家戲劇院標了 roof:shape=hipped、總統府是
-一個帶內環的 relation。長相（八節斗狀、重簷、中央塔）是照公開的建築事實
-（高度、樓層、開間）寫成參數化的程式；輪廓與方位不是估的。
+The position, orientation and footprint of each attraction building
+(application/attractions/) always follow OSM: Taipei 101's way is tagged
+height=508, the National Theater is tagged roof:shape=hipped, and the
+Presidential Office Building is a relation with an inner ring. The appearance
+(eight flared sections, double eaves, a central tower) is written as
+parametric code from public architectural facts (height, floors, bays); the
+footprints and orientations are not estimated.
 
-每個景點打一次 Overpass：中心點半徑內的所有 building、building:part、
-historic、man_made 與 attraction，外加目錄裡指名的 OSM 元素（有些景點的主體
-沒掛 building，例如自由廣場的牌樓）。半徑內的鄰棟也留著 —— 蓋廣場、圍牆、
-避開真實的鄰棟都用得到。座標照 fetch_details 的原點（台北車站 R10 -> MC (0,0)，
-X = 東、Z = 南），但保留到 0.1 m：城門只有十幾公尺寬，四捨五入到整數公尺會歪。
+One Overpass query per attraction: every building, building:part, historic,
+man_made and attraction within a radius of the center point, plus the OSM
+elements the catalog names (the main structure of some attractions has no
+building tag, for example the Liberty Square gate). Neighboring buildings
+within the radius are kept as well; they are needed to build plazas and walls
+and to avoid the real neighbors. Coordinates use the fetch_details origin
+(Taipei Main Station R10 -> MC (0,0), X = east, Z = south), but are kept to
+0.1 m: a city gate is only a dozen or so meters wide, and rounding to whole
+meters would skew it.
 
-Overpass 原始回應快取在 OVERPASS_CACHE（預設系統暫存目錄），加 --refresh 重抓。
+The raw Overpass responses are cached in OVERPASS_CACHE (the system temporary
+directory by default); --refresh fetches again.
 
-用法: ./.venv/bin/python -m mrt.adapters.osm.fetch_attractions [--only taipei101 ...] [--refresh]
+Usage: ./.venv/bin/python -m mrt.adapters.osm.fetch_attractions [--only taipei101 ...] [--refresh]
 """
 import argparse
 import json
@@ -35,11 +43,14 @@ ORIGIN_REF = "R10"
 CACHE = os.environ.get("OVERPASS_CACHE") or os.path.join(tempfile.gettempdir(), "mrt_overpass_cache")
 ATTRACTIONS_JSON = os.path.join(config.DATA, "attractions.json")
 
-# 景點目錄：(id, 中文名, 英文名, 中心緯度, 中心經度, 半徑 m, 指名的 OSM 元素)
-# id 是 ASCII（資料包的函式路徑、application 的建築模組都用它）。
-# 中心點取自 OSM 上該景點的節點或建物質心；指名的元素是主體（其餘是鄰棟）。
+# Attraction catalog: (id, Chinese name, English name, center latitude,
+# center longitude, radius m, named OSM elements).
+# The id is ASCII (the datapack's function paths and the application's
+# building modules both use it).
+# The center point is the attraction's node or building centroid in OSM; the
+# named elements are the main structure (the rest are neighbors).
 CATALOG = [
-    # ---- 台北車站一帶（出生點走得到）----
+    # ---- Around Taipei Main Station (within walking distance of the spawn point) ----
     ("shin_kong_tower", "新光摩天大樓", "Shin Kong Life Tower", 25.04605, 121.51510, 90,
      ("way/204711206",)),
     ("beimen", "北門（承恩門）", "North Gate (Beimen)", 25.04775, 121.51123, 45,
@@ -49,8 +60,11 @@ CATALOG = [
     ("presidential_office", "總統府", "Presidential Office Building", 25.04000, 121.51198, 160,
      ("relation/206817",)),
     ("red_house", "西門紅樓", "Red House", 25.04213, 121.50650, 70, ("way/222080307",)),
-    # 三座城門原本的中心點是憑印象估的，差了 146～348 m，抓回來的只是附近別的房子
-    # （城門與廟那一組代理人讀回世界才發現）；改成 OSM 上城門 way 的位置並指名
+    # The three gates' center points were originally estimated from memory and
+    # were off by 146 to 348 m, so the fetch returned only other buildings nearby
+    # (the agent working on the gates and the temple found this by reading the
+    # world back). They now use the positions of the gate ways in OSM, named
+    # explicitly.
     ("dongmen", "東門（景福門）", "East Gate (Jingfu Gate)", 25.03902, 121.51767, 45,
      ("way/209580573",)),
     ("nanmen", "南門（麗正門）", "South Gate (Lizheng Gate)", 25.03511, 121.51499, 45,
@@ -59,7 +73,7 @@ CATALOG = [
      ("way/246651384",)),
     ("cks_memorial", "中正紀念堂", "Chiang Kai-shek Memorial Hall", 25.03550, 121.51980, 420,
      ("way/1052759757", "way/1052759775", "way/1052759776", "way/1053359244")),
-    # ---- 捷運沿線的其他代表性景點 ----
+    # ---- Other landmark attractions along the metro ----
     ("taipei101", "台北101", "Taipei 101", 25.03395, 121.56450, 220,
      ("way/1159328965", "relation/11551064", "way/248210267")),
     ("sun_yat_sen_memorial", "國父紀念館", "Sun Yat-sen Memorial Hall", 25.04001, 121.56029, 170,
@@ -85,7 +99,7 @@ def origin():
     for e in d["elements"]:
         if ORIGIN_REF in (e.get("tags", {}).get("ref", "")).split(";"):
             return TF.transform(e["lon"], e["lat"])
-    raise SystemExit("找不到原點站 ref=R10；請先執行 fetch_stations。")
+    raise SystemExit("Origin station ref=R10 not found. Run fetch_stations first.")
 
 
 def query_for(lat, lon, r, named):
@@ -114,7 +128,10 @@ def ring(geom, to_mc):
 
 
 def stitch(rings, tol=1.0):
-    """relation 的成員 way 依端點接成環；接不上的自成一段。"""
+    """Join a relation's member ways into rings by their endpoints.
+
+    A way that does not connect stays a separate chain.
+    """
     d2 = lambda a, b: (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2
     remaining = [list(r) for r in rings if len(r) >= 2]
     chains = []
@@ -141,7 +158,7 @@ def stitch(rings, tol=1.0):
 
 
 def area_centroid(pts):
-    """封閉環 -> (面積 m2, 質心)。"""
+    """Return (area in m2, centroid) of a closed ring."""
     if len(pts) < 3:
         return 0.0, (pts[0] if pts else [0, 0])
     a = cx = cz = 0.0
@@ -178,7 +195,7 @@ def feature(e, to_mc):
             if len(r) >= 2:
                 (inner if m.get("role") == "inner" else outer).append(r)
         outer, inner = stitch(outer), stitch(inner)
-    # 封閉環去掉重複的終點
+    # Drop the repeated end point of a closed ring.
     outer = [r[:-1] if len(r) > 3 and r[0] == r[-1] else r for r in outer]
     inner = [r[:-1] if len(r) > 3 and r[0] == r[-1] else r for r in inner]
     if not outer:
@@ -234,8 +251,8 @@ def main():
                           radius=r, main=list(named), features=feats))
         nb = sum(1 for f in feats if "building" in f["tags"])
         npart = sum(1 for f in feats if "building:part" in f["tags"])
-        print(f"{aid:<24} {zh:<12} 中心 ({cx:>7.0f},{cz:>6.0f})  建物 {nb:>3}  building:part {npart:>3}  "
-              f"指名 {sum(1 for f in feats if f['main'])}/{len(named)}")
+        print(f"{aid:<24} {zh:<12} centre ({cx:>7.0f},{cz:>6.0f})  buildings {nb:>3}  building:part {npart:>3}  "
+              f"named {sum(1 for f in feats if f['main'])}/{len(named)}")
 
     order = {c[0]: i for i, c in enumerate(CATALOG)}
     items.sort(key=lambda it: order.get(it["id"], 999))
@@ -243,7 +260,7 @@ def main():
                    "X=東 Z=南，1 方塊 = 1 公尺（保留到 0.1 m）",
                    origin="台北車站 ref=R10 -> MC (0,0)", count=len(items), items=items),
               open(ATTRACTIONS_JSON, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    print(f"\n寫出 {ATTRACTIONS_JSON}：{len(items)} 個景點" + (f"；抓不到 {failed}" if failed else ""))
+    print(f"\nWrote {ATTRACTIONS_JSON}: {len(items)} attractions" + (f"; failed to fetch {failed}" if failed else ""))
     if failed:
         sys.exit(1)
 

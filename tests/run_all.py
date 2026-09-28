@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""跑完所有不需要產生世界的測試。
+"""Run every test that does not need a generated world.
 
-不含 tools/ 底下那幾支 —— 它們要先有存檔才驗得了，見 README「驗證」。
+The scripts under tools/ are not included: they need a world save before they can check
+anything; see docs/verification.md.
 
-用法: ./.venv/bin/python tests/run_all.py
+Usage: ./.venv/bin/python tests/run_all.py
 """
 import glob
 import os
@@ -18,16 +19,17 @@ TESTS = ["test_architecture.py", "test_geometry.py", "test_alignment.py",
          "test_ground_gate.py", "test_stacked.py", "test_network.py",
          "test_heightmap.py", "test_spawn.py", "test_datapack.py",
          "test_signage.py", "test_attractions.py"]
-# 各景點自己的測試（application/attractions/ 底下一個模組一支）自動收進來，
-# 新增景點不必改這份清單
+# Each attraction's own test (one per module under application/attractions/) is collected
+# automatically, so adding an attraction does not require editing this list
 TESTS += sorted(os.path.basename(p) for p in glob.glob(os.path.join(HERE, "test_attr_*.py")))
 
 
 def main():
     failed = []
     for t in TESTS:
-        # flush 是必要的：接管道時父行程是 block buffered、子行程直接寫，
-        # 少了它 CI log 裡標題會跟該支測試的輸出對不起來。
+        # The flush is required: when piped, the parent process is block-buffered while the
+        # child writes directly, and without it the headings in the CI log do not line up
+        # with each test's output.
         print(f"\n{'=' * 60}\n{t}\n{'=' * 60}", flush=True)
         r = subprocess.run([sys.executable, os.path.join(HERE, t)])
         if r.returncode != 0:
@@ -35,9 +37,9 @@ def main():
 
     print(f"\n{'=' * 60}", flush=True)
     if failed:
-        print(f"{len(failed)} 支失敗: {', '.join(failed)}")
+        print(f"{len(failed)} failed: {', '.join(failed)}")
         return 1
-    print(f"{len(TESTS)} 支測試全部通過")
+    print(f"All {len(TESTS)} tests passed")
     return 0
 
 

@@ -1,23 +1,29 @@
 #!/usr/bin/env python3
-"""隧道分層：決定每一段地下線要走在哪個深度帶。
+"""Tunnel layering: decides which depth band each underground segment runs in.
 
-原本的做法是每條線一個固定深度（build_world.TUNNEL_DEPTH 常數）。
-兩個問題：
+The original approach gave each line one fixed depth (the build_world.TUNNEL_DEPTH
+constant). It had two problems:
 
-  1. 判斷「要不要分帶」時看的是兩條線目前的垂直間距 —— 可是垂直間距正是
-     分帶自己造成的，循環論證。BL-O 與 A-G 就是這樣被漏掉，實際疊在一起，
-     後蓋的線把先蓋的鐵軌覆寫掉，驗軌報「對面沒接回來」。
-  2. 就算改成只看水平距離，BL / G / O / R 四條線在市中心兩兩都會交會
-     （K4 完全圖），每線一個固定深度就需要四層，最深那條要挖到地下 60 m。
-     北捷實際最深約 30 m。
+  1. Whether two lines needed separate bands was decided from their current vertical
+     separation, but that separation is itself produced by the banding: circular
+     reasoning. BL-O and A-G were missed this way and actually overlapped; the line
+     built later overwrote the rails of the one built earlier, and the rail check
+     reported "the other side does not connect back".
+  2. Even judged by horizontal distance alone, the four lines BL / G / O / R all cross
+     one another downtown (the complete graph K4), so one fixed depth per line needs
+     four layers, and the deepest line would be dug 60 m underground. The real Taipei
+     Metro is at most about 30 m deep.
 
-真實的捷運不是整條線挑一個深度，而是**平常走淺層，只在真的要穿越別條線的
-地方才潛下去**。所以這裡改成逐取樣點指派：沿線掃過去，只有在目前的深度帶被
-別條線占用時才換帶，並且用前瞻挑一個「可以撐最久」的帶，免得一直上上下下。
+A real metro line does not pick one depth for its whole length: **it normally runs
+shallow and dives only where it really has to cross another line**. So bands are
+assigned per sample instead: sweeping along the line, it changes band only when the
+current depth band is taken by another line, and it looks ahead to pick the band that
+lasts longest, so as not to keep going up and down.
 
-縱斷面的 4% 坡度限制會自動把換帶處拉成一段斜坡，不需要另外處理。
+The 4% grade limit of the vertical profile automatically stretches each band change
+into a ramp; no separate handling is needed.
 
-用法（分析報告）: ./.venv/bin/python -m mrt.domain.tunnel_layers
+Usage (analysis report): ./.venv/bin/python -m mrt.domain.tunnel_layers
 """
 import os, json, math
 import numpy as np
@@ -25,50 +31,60 @@ import numpy as np
 from mrt import config
 from mrt.domain import alignment as AL
 
-CELL_M   = 30      # 空間雜湊格邊長（公尺）；連同 8 個鄰格 = 至少 30 m 的水平淨距
-BAND0    = 15      # 第 0 帶的埋深（公尺）
-BAND_DY  = 15      # 帶距。站體斷面 dy -2..10 共 13 格，15 m 才咬不到
-LOOK_M   = 1500    # 換帶時往前看多遠，挑撐得最久的帶
+CELL_M   = 30      # Spatial hash cell size (meters); with the 8 neighboring cells this gives at
+                   # least 30 m of horizontal clearance
+BAND0    = 15      # Depth of band 0 (meters)
+BAND_DY  = 15      # Band spacing. A station box cross-section spans dy -2..10, 13 blocks, so it
+                   # takes 15 m to keep them from overlapping
+LOOK_M   = 1500    # How far ahead to look when changing band, to pick the one that lasts longest
 MAXBAND  = 8
-RAMP_M   = BAND_DY / AL.MAX_GRADE   # 換一帶要走的斜坡長度：15 m / 4% = 375 m
-PRE_EVERY = 20     # 每幾個取樣點往前探一次要不要提前換帶（10 m 一次就夠）
+RAMP_M   = BAND_DY / AL.MAX_GRADE   # Ramp length to change by one band: 15 m / 4% = 375 m
+PRE_EVERY = 20     # Samples between look-aheads for an early band change (every 10 m is enough)
 
 
 def band_depth(band):
-    """帶號 -> 隧道偏移量（負值，公尺）"""
+    """Map a depth band to a tunnel offset (negative, meters)."""
     return -(BAND0 + BAND_DY * np.maximum(np.asarray(band), 0))
 
 
 def assign_bands(raw, cell=CELL_M, look_m=LOOK_M, pins=(), shared=()):
-    """raw: [(ref, samples), ...]，samples 是 AL.resample 的輸出。
+    """raw: [(ref, samples), ...], where samples is the output of AL.resample.
 
-    回傳與 raw 等長的 list，每個元素是該段的 per-sample 帶號 int 陣列
-    （非地下段為 -1）。長的先指派，短的讓路。
+    Return a list as long as raw; each element is that segment's per-sample int array
+    of depth bands (-1 where it is not underground). Longer segments are assigned first,
+    and shorter ones give way.
 
-    pins 是 [(x, z, 半徑, ref, band)]，用來釘死已知的真實上下關係。
-    貪婪演算法只知道「不能撞在一起」，不知道現實中誰在上面 —— 例如台北車站
-    的板南線在 B3、淡水信義線在 B4，演算法卻可能給出相反的結果。
-    釘樁會先把該範圍內的帶預留給指定路線，其他線只能繞開。
+    pins is [(x, z, radius, ref, band)], used to fix known real vertical relationships.
+    The greedy algorithm only knows that lines must not collide, not which one is on top
+    in reality. For example, at Taipei Main Station the Bannan Line is at B3 and the
+    Tamsui-Xinyi Line at B4, yet the algorithm may produce the opposite. A pin first
+    reserves the band within its range for the given line, and other lines must go around.
 
-    **換帶要提前一段斜坡的距離。** 帶號只是目標深度，真正的高程由縱斷面的
-    4% 坡度包絡線決定，換一帶要走 375 m 的斜坡。原本走到「目前的帶被占用」
-    那一格才換，斜坡從衝突點才開始下潛，衝突點本身還在半路上 ——
-    松江南京的松山新店線就這樣停在地下 27 m，與地下 30 m 的中和新蘆線站體
-    上下只差 3 m，兩座箱涵直接交疊。所以往前探一段斜坡：目前的帶在前方
-    375 m 內會被占用，就現在換；換掉的舊帶在斜坡走完之前也繼續算占用，
-    免得別條線鑽進斜坡底下。
+    **A band change must start one ramp length early.** A depth band is only a target
+    depth; the real elevation comes from the 4% grade envelope of the vertical profile,
+    and changing by one band takes a 375 m ramp. Originally the change happened only at
+    the cell where the current band became taken, so the ramp began its descent at the
+    conflict point, and the conflict point itself was still partway down. That is how the
+    Songshan-Xindian Line at Songjiang Nanjing stopped at 27 m underground, only 3 m above
+    the Zhonghe-Xinlu Line's station box at 30 m, and the two box structures overlapped.
+    So it looks one ramp length ahead: if the current band will be taken within 375 m,
+    it changes now; and the old band stays counted as taken until the ramp is complete,
+    so that no other line slips in under the ramp.
 
-    shared 是 [(x, z, 半徑, {ref, ...})]：共用一座站體的幾條線（西門的板南線與
-    松山新店線）在那一帶本來就疊在同一帶裡，彼此不算占用。少了這一條，
-    松山新店線的釘樁會把板南線嚇跑：板南線往前探到「帶 0 在西門被 G 占了」，
-    就在台北車站與西門之間潛到帶 2，再被自己的釘樁拉回帶 0 —— 縱斷面因此把
-    西門與台北車站都拖低 13 m，台北車站的板南線直接撞進淡水信義線的站體。
+    shared is [(x, z, radius, {ref, ...})]: lines that share one station box (the Bannan
+    Line and the Songshan-Xindian Line at Ximen) sit in the same band there by design, and
+    do not count as taking it from one another. Without this, the Songshan-Xindian Line's
+    pin scares the Bannan Line away: looking ahead, the Bannan Line sees band 0 taken by G
+    at Ximen, dives to band 2 between Taipei Main Station and Ximen, and is then pulled back
+    to band 0 by its own pin. The vertical profile therefore drags both Ximen and Taipei
+    Main Station 13 m lower, and the Bannan Line at Taipei Main Station runs straight into
+    the Tamsui-Xinyi Line's station box.
     """
     look = int(look_m / AL.STEP)
     ramp = int(RAMP_M / AL.STEP)
     occ = {}                       # cell -> {band: ref}
 
-    ally = {}                      # cell -> 在這一格彼此不算占用的路線
+    ally = {}                      # cell -> lines that do not take bands from one another here
     for sx, sz, sr, refs in shared:
         c0 = int(math.floor((sx - sr) / cell)); c1 = int(math.floor((sx + sr) / cell))
         d0 = int(math.floor((sz - sr) / cell)); d1 = int(math.floor((sz + sr) / cell))
@@ -107,18 +123,18 @@ def assign_bands(raw, cell=CELL_M, look_m=LOOK_M, pins=(), shared=()):
             if s[4] == "tunnel":
                 cks[i] = (int(math.floor(s[0] / cell)), int(math.floor(s[1] / cell)))
         def taken_within(i0, band, span):
-            """band 在 i0..i0+span 之間有沒有被別條線占用（每 20 點看一次）"""
+            """Tell whether another line takes band in i0..i0+span (checked every 20 samples)."""
             for j in range(i0, min(n, i0 + span + 1), PRE_EVERY):
                 if cks[j] is not None and band in taken_at(cks[j], ref):
                     return True
             return False
 
         cur = None
-        hold = {}                               # 舊帶 -> 斜坡走完的取樣索引
+        hold = {}                               # old band -> sample index where its ramp ends
         for i in range(n):
             s = samples[i]
             ck = cks[i]
-            if ck is None:                      # 出洞了，下次進洞重新挑
+            if ck is None:                      # Out of the tunnel; pick again at the next one
                 cur = None
                 hold = {}
                 continue
@@ -133,7 +149,7 @@ def assign_bands(raw, cell=CELL_M, look_m=LOOK_M, pins=(), shared=()):
                 cur = forced
             elif cur is None or cur in t or (
                     i % PRE_EVERY == 0 and taken_within(i, cur, ramp)):
-                # 前瞻：每個候選帶能撐到哪裡，挑最遠的（平手取最淺）
+                # Look ahead: how far each candidate band lasts; take the farthest (shallowest on a tie)
                 best, best_d = 0, -1
                 for b in range(MAXBAND):
                     if b in t:
@@ -152,7 +168,7 @@ def assign_bands(raw, cell=CELL_M, look_m=LOOK_M, pins=(), shared=()):
                 hold[prev] = i + ramp * abs(cur - prev)
             arr[i] = cur
             occ.setdefault(ck, {})[cur] = ref
-            for b in list(hold):                # 斜坡還沒走完，舊帶也占著
+            for b in list(hold):                # Ramp not complete: the old band stays taken
                 if i <= hold[b]:
                     occ.setdefault(ck, {})[b] = ref
                 else:
@@ -161,28 +177,37 @@ def assign_bands(raw, cell=CELL_M, look_m=LOOK_M, pins=(), shared=()):
     return out
 
 
-# 箱涵上下緣各有幾排是襯砌／底板，不是走得到的空間。兩座箱涵交疊到這個深度
-# 以內，磚頭疊出來就是一道共用的牆 —— 西門北側板南線與松山新店線實地切過剖面：
-# 兩座箱涵水平只差 11 m、垂直疊了 2 格，板南線的底板與正在下潛的松山新店線的
-# 頂板咬在同一排上，各自的淨空都是完整的，兩邊的空氣沒有連通。
+# The top and bottom edges of a box structure are each a few rows of lining or base slab,
+# not walkable space. Two box structures that overlap by no more than this depth simply
+# share a wall of bricks. A cross-section cut through the Bannan Line and the
+# Songshan-Xindian Line north of Ximen showed it: the two box structures are only 11 m apart
+# horizontally and overlap by 2 blocks vertically, the Bannan Line's base slab and the roof
+# slab of the descending Songshan-Xindian Line share the same row, each keeps its full
+# clearance, and the air on the two sides does not connect.
 LINING_DY = 2
 
 
 def check_clearance(segs, shared=(), cell=16, every=4, shared_r=None):
-    """實際幾何的跨線淨距檢查：任兩條不同路線的地下結構不准在空間裡交疊。
+    """Check cross-line clearance on the actual geometry: the underground structures of two
+    different lines must never overlap in space.
 
-    帶號的驗算只知道「帶號不同」；疊式站的雙層箱涵比一帶還高、釘平的縱斷面
-    又可能離開帶的深度，所以另外拿每一點真正的箱涵範圍（半寬與上下緣）算一次。
-    segs 是 cli 規劃完的路段（samples / ys / ground / stn / hw，可有 frames /
-    stacked / y_side）。shared 是 [(x, z, ref_a, ref_b)]：共用一座站體的兩條線
-    在 shared_r 內本來就疊在一起，不算衝突；預設就是雙層箱涵加上分層過渡段的
-    長度（半座站體 + SPLIT_M）—— 只豁免真的是同一座結構的那一段，出了這個
-    範圍兩條線就是兩條各自的隧道，撞到要看得見。深度帶的同盟半徑
-    （stacked.ALLY_M）比這個大一點，那是因為它還要留空間雜湊的餘裕。
+    The depth band check only knows that bands differ. The two-level box structure of a
+    stacked station is taller than one band, and a flattened (pinned) vertical profile may
+    leave its band's depth, so this computes it again from the real extent of the box
+    structure at each point (half-width and top and bottom edges).
+    segs are the segments planned by cli (samples / ys / ground / stn / hw, optionally
+    frames / stacked / y_side). shared is [(x, z, ref_a, ref_b)]: two lines that share
+    one station box overlap there by design within shared_r, which is not a conflict. The
+    default is the length of the two-level box structure plus the layer transition (half
+    a station box + SPLIT_M). Only the stretch that really is one structure is exempt;
+    beyond it the two lines are two separate tunnels, and a collision must show. The ally
+    radius of the depth bands (stacked.ALLY_M) is slightly larger than this because it
+    also needs a margin for the spatial hash.
 
-    回傳 [(ref_a, ref_b, x, z, ya0, ya1, yb0, yb1, 交疊格數), ...]，
-    每個格子每對路線最多一筆。交疊格數 <= LINING_DY 的只咬到襯砌，呼叫端
-    可以當成「貼著過」；再深就是真的撞進對方的空間了。
+    Return [(ref_a, ref_b, x, z, ya0, ya1, yb0, yb1, overlap in blocks), ...], at most
+    one entry per cell per pair of lines. An overlap of <= LINING_DY blocks only touches
+    the lining, and the caller may treat it as passing flush; anything deeper really does
+    run into the other line's space.
     """
     from mrt.domain.stacked import BOX_BOTTOM_DY, SPLIT_M
     if shared_r is None:
@@ -228,8 +253,9 @@ def check_clearance(segs, shared=(), cell=16, every=4, shared_r=None):
             for rb, xb, zb, rrb, b0, b1 in near:
                 if rb <= ra or (ra, rb, cx, cz) in seen:
                     continue
-                # 上下緣都是襯砌那一排；兩座箱涵共用一排襯砌不算交疊（西門北側
-                # 板南線與松山新店線的箱涵就是這樣貼著過）
+                # The top and bottom edges are both lining rows; two box structures sharing one
+                # row of lining do not count as overlapping (the box structures of the Bannan Line
+                # and the Songshan-Xindian Line pass flush like this north of Ximen)
                 if math.hypot(xa - xb, za - zb) < rra + rrb and a0 < b1 and b0 < a1 \
                         and not exempt(ra, rb, xa, za):
                     seen.add((ra, rb, cx, cz))
@@ -238,22 +264,24 @@ def check_clearance(segs, shared=(), cell=16, every=4, shared_r=None):
     return bad
 
 
-# ---------- 以下只是分析報告 ----------
+# ---------- Everything below is only the analysis report ----------
 
 PIN_RADIUS = AL.PLATFORM_LEN / 2 + RAMP_M     # 35 + 375 = 410 m
 
 
 def station_pins(min_margin=15.0, ratio=2.0, radius=PIN_RADIUS, verbose=False):
-    """從 OSM 月台的 level 標籤推出真實的上下關係，轉成釘樁。
+    """Infer the real vertical order from the level tags of OSM platforms and turn it into pins.
 
-    釘樁半徑要涵蓋半個站體再加一段斜坡：帶號一離開釘樁範圍就可以換，
-    換帶的斜坡有 375 m，半徑只給 120 m 的話斜坡會伸進站體，把釘在 B2 的
-    站體拉到地下 21 m（中山站的淡水信義線實測正是如此）。
+    A pin's radius must cover half a station box plus one ramp: the depth band may change
+    as soon as it leaves the pin's range, and a band change takes a 375 m ramp. With a
+    radius of only 120 m, the ramp reaches into the station box and pulls a station box
+    pinned at B2 down to 21 m underground (measured on the Tamsui-Xinyi Line at Zhongshan).
 
-    只處理「同一座車站有兩條以上路線、而且 level 不同」的轉乘站 ——
-    那正是貪婪演算法可能猜反、而現實有明確答案的地方。月台屬於哪條線
-    要用幾何判斷（OSM 的 station_ref 只給車站代碼，不給月台屬於哪線），
-    判不準的就跳過，不硬猜。
+    Only transfer stations where one station has two or more lines at different levels
+    are handled: that is exactly where the greedy algorithm may guess wrong while reality
+    has a clear answer. Which line a platform belongs to is decided by geometry (OSM's
+    station_ref gives only the station code, not the platform's line); platforms that
+    cannot be decided reliably are skipped rather than guessed.
     """
     import re, collections
     pf = config.PLATFORM_LEVELS_JSON
@@ -292,7 +320,7 @@ def station_pins(min_margin=15.0, ratio=2.0, radius=PIN_RADIUS, verbose=False):
         cx, cz = p["mc_x"], p["mc_z"]
         ds = sorted((dist_to(c, cx, cz), c) for c in cands)
         if ds[0][0] > min_margin or ds[1][0] < ratio * max(ds[0][0], 1.0):
-            continue                       # 判不準，跳過
+            continue                       # Cannot be decided reliably; skip
         st = p["station"]
         prev = byst[st].get(ds[0][1])
         if prev is None or lv < prev[0]:
@@ -301,12 +329,12 @@ def station_pins(min_margin=15.0, ratio=2.0, radius=PIN_RADIUS, verbose=False):
     pins = []
     for st, d in sorted(byst.items()):
         if len(d) < 2 or len({v[0] for v in d.values()}) < 2:
-            continue                       # 只有一條線、或深度相同，不必釘
-        order = sorted(d.items(), key=lambda kv: -kv[1][0])   # level 大的在上
+            continue                       # Only one line, or equal depths; no pin needed
+        order = sorted(d.items(), key=lambda kv: -kv[1][0])   # Higher level on top
         for band, (ref, (lv, cx, cz)) in enumerate(order):
             pins.append((cx, cz, radius, ref, band))
             if verbose:
-                print(f"  釘樁 {st:<8} {ref:<3} level {lv} -> 帶{band}  ({cx},{cz})")
+                print(f"  pin {st:<8} {ref:<3} level {lv} -> band {band}  ({cx},{cz})")
     return pins
 
 
@@ -327,10 +355,10 @@ def _plan_raw():
 def main():
     raw = _plan_raw()
     nu = sum(int((np.array([s[4] for s in sm]) == "tunnel").sum()) for _, sm in raw)
-    print(f"{len(raw)} 個路段，地下取樣點 {nu:,} 個（{nu*AL.STEP/1000:.1f} km）")
+    print(f"{len(raw)} segments, {nu:,} underground samples ({nu*AL.STEP/1000:.1f} km)")
 
     pins = station_pins(verbose=True)
-    print(f"釘樁 {len(pins)} 根")
+    print(f"{len(pins)} pins")
     bands = assign_bands(raw, pins=pins)
 
     per_ref = {}
@@ -340,24 +368,25 @@ def main():
             continue
         e = per_ref.setdefault(ref, [])
         e.append(u)
-    print(f"\n每條線的深度帶分布（帶 k 的埋深 = {BAND0} + {BAND_DY}k m）：")
+    print(f"\nDepth bands by line (band k lies {BAND0} + {BAND_DY}k m deep):")
     tot = np.zeros(MAXBAND, dtype=np.int64)
     for ref in sorted(per_ref):
         u = np.concatenate(per_ref[ref])
         cnt = np.bincount(u, minlength=MAXBAND)
         tot += cnt
-        share = " ".join(f"帶{k} {100*c/len(u):>4.0f}%" for k, c in enumerate(cnt) if c)
-        print(f"  {ref:<3} 地下 {len(u)*AL.STEP/1000:>5.1f} km   {share}")
-    print("\n全網:")
+        share = " ".join(f"band {k} {100*c/len(u):>4.0f}%" for k, c in enumerate(cnt) if c)
+        print(f"  {ref:<3} underground {len(u)*AL.STEP/1000:>5.1f} km   {share}")
+    print("\nWhole network:")
     for k, c in enumerate(tot):
         if c:
-            print(f"  帶{k}（地下 {BAND0+BAND_DY*k:>2} m）{c*AL.STEP/1000:>7.1f} km"
+            print(f"  band {k} ({BAND0+BAND_DY*k:>2} m deep) {c*AL.STEP/1000:>7.1f} km"
                   f"  {100*c/tot.sum():>5.1f}%")
     deepest = int(np.nonzero(tot)[0].max())
-    print(f"最深 {BAND0+BAND_DY*deepest} m（北捷實際最深約 30 m）")
+    print(f"Deepest: {BAND0+BAND_DY*deepest} m (the real Taipei Metro is about 30 m at most)")
 
-    # 驗算：任兩條不同線的地下點，若水平 <30 m 則垂直必須 >= 15 m
-    print("\n驗算同格衝突 …")
+    # Check: underground points of two different lines less than 30 m apart horizontally must be
+    # >= 15 m apart vertically
+    print("\nChecking for same-cell conflicts …")
     occ = {}
     bad = 0
     for (ref, sm), b in zip(raw, bands):
@@ -373,7 +402,8 @@ def main():
                     o = occ.get((ck[0]+dx, ck[1]+dz), {}).get(band, set())
                     if o - refs:
                         bad += 1
-    print(f"  同帶又相鄰的異線格數：{bad}" + ("  ← 仍有衝突" if bad else "  （無衝突）"))
+    print(f"  Adjacent cells of different lines in the same band: {bad}"
+          + ("  ← conflicts remain" if bad else "  (no conflicts)"))
 
 
 if __name__ == "__main__":

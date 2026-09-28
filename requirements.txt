@@ -1,29 +1,32 @@
-# 台北捷運 Minecraft 1:1 重建 —— 直接相依套件
+# Taipei Metro 1:1 Minecraft rebuild: direct dependencies
 #
-# 只列專案原始碼（mrt/、cli/、tools/、tests/）自己 import 的套件，
-# 版本鎖成目前開發環境實際跑得動的那一組。affine、certifi、click、
-# attrs 這些是 rasterio 底下帶進來的，不列在這裡，交給 pip 自己解。
+# Lists only the packages the project's own source (mrt/, cli/, tools/, tests/)
+# imports, pinned to the versions that run in the current development
+# environment. affine, certifi, click and attrs come in under rasterio; they are
+# not listed here and are left to pip to resolve.
 #
-# 建立環境（venv 是 Python 3.9，程式沒有用 3.10+ 的語法）：
+# Set up the environment (the venv is Python 3.9; the code uses no 3.10+ syntax):
 #
 #     python3 -m venv .venv
 #     ./.venv/bin/pip install -r requirements.txt
 #
-# 之後所有指令一律用 ./.venv/bin/python，別用系統 python。
+# After that, always run commands with ./.venv/bin/python, never the system python.
 
-# --- 生成世界的核心 ---
-numpy==2.0.2          # 高程網格、方塊陣列、線形運算，幾乎每一層都在用
-nbtlib==2.0.4         # 讀寫 Anvil 存檔的 NBT（infrastructure/mcworld.py 與 tools/ 三支驗證工具）
+# --- World generation core ---
+numpy==2.0.2          # Elevation grid, block arrays and alignment math; used in almost every layer
+nbtlib==2.0.4         # Reads and writes the NBT in Anvil world saves (infrastructure/mcworld.py and three verifiers in tools/)
 
-# --- 資料管線 ---
-pyproj==3.6.1         # WGS84 -> TWD97 投影，adapters/projection.py 與 fetch_details、make_heightmap 都要
+# --- Data pipeline ---
+pyproj==3.6.1         # WGS84 -> TWD97 projection; needed by adapters/projection.py, fetch_details and make_heightmap
 
-# --- 只有 DEM 階段要 ---
-# 從內政部 GeoTIFF 產生 data/heightmap.npy（mrt.adapters.dem.make_heightmap）。
-# 高程網格算過一次就存成 .npy，後面生成世界只用 numpy 讀回來，
-# 不重跑這一步的話可以不裝。
+# --- DEM stage only ---
+# Builds data/heightmap.npy from the Ministry of the Interior GeoTIFF
+# (mrt.adapters.dem.make_heightmap). The elevation grid is computed once and
+# saved as .npy; world generation afterwards only reads it back with numpy, so
+# this package can be skipped if you don't rerun this step.
 rasterio==1.4.3
 
-# --- 只有驗證工具要 ---
-# tools/verify_render.py 把讀回來的存檔畫成俯視 PNG。生成本身用不到。
+# --- Verifiers only ---
+# tools/verify_render.py draws a read-back world save as a top-down PNG.
+# Generation itself does not use it.
 pillow==11.3.0

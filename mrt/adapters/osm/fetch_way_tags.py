@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""抓每條路線所屬 way 的標籤 -> data/way_tags.json
+"""Fetch the tags of the ways that belong to each route -> data/way_tags.json.
 
-relation 的 out geom 不含成員 way 自己的標籤，但成員有 way id。
-這裡另外查一次「只要標籤」（回應很小），之後用 id join 回去，
-就能知道每一段是 tunnel / bridge / 平面。
+A relation's `out geom` does not include the member ways' own tags, but the
+members carry their way ids. This makes a second, tags-only query (the response
+is small) and joins it back by id, so each segment can be told apart as tunnel,
+bridge or at-grade.
 """
 import json, os, time
 
@@ -30,11 +31,11 @@ def main():
     tags = {}
     if os.path.exists(OUT):
         tags = json.load(open(OUT, encoding="utf-8"))
-        print(f"已有 {len(tags)} 筆，繼續補齊")
+        print(f"{len(tags)} entries already present, filling in the rest")
     for ref in REFS:
         d = fetch(ref)
         if d is None:
-            print(f"{ref:<3} 失敗")
+            print(f"{ref:<3} failed")
             continue
         n = 0
         for e in d["elements"]:
@@ -44,17 +45,17 @@ def main():
             tags[str(e["id"])] = t
             n += 1
         json.dump(tags, open(OUT, "w", encoding="utf-8"), ensure_ascii=False)
-        print(f"{ref:<3} OK  way={n:<5} 累計 {len(tags)}")
+        print(f"{ref:<3} OK  way={n:<5} total {len(tags)}")
         time.sleep(2)
 
-    # 摘要：看看隧道/橋樑的比例
+    # Summary: the share of tunnels and bridges.
     from collections import Counter
     c = Counter()
     for t in tags.values():
         if t.get("tunnel"): c["tunnel"] += 1
         elif t.get("bridge"): c["bridge"] += 1
-        else: c["平面/未標"] += 1
-    print("\n標籤分布:", dict(c))
+        else: c["at-grade/untagged"] += 1
+    print("\nTag distribution:", dict(c))
 
 
 if __name__ == "__main__":

@@ -1,21 +1,29 @@
 #!/usr/bin/env python3
-"""讀回每座觀光景點：蓋出來的高度、輪廓、傳送點、說明牌，跟獨立的資料比。
+"""Read back every attraction and compare its built height, outline, teleport points
+and plaques with independent data.
 
-生成器說台北101 有 508 m，不算數。這支工具只看磁碟：
+The generator saying that Taipei 101 is 508 m tall does not count. This tool looks only
+at the disk:
 
-  · 高度：輪廓範圍內最高的方塊，減掉輪廓外一圈地面的中位數，跟下面 FACTS
-    表的公開數字比（誤差 max(2 m, 3%)）。FACTS 是這支工具自己帶的，
-    不從生成器拿 —— 生成器寫錯了這裡才抓得到
-  · 輪廓：OSM 的主體輪廓（data/attractions.json）裡，頂上有高過地面 3 格的東西的
-    比例（蓋在哪裡、有沒有轉錯方向；大廳挖空不影響）；輪廓外擴 FACTS 容許的距離以外、地面 6 格
-    以上還有建築的柱子比例（蓋歪、蓋出界）
-  · 傳送點：資料包 sight/<id>*.mcfunction 那一行 tp（約定見 ride_plan）落在站得住
-    的格子（domain/walk 的規則）；預設觀景點要面向輪廓（偏差 60° 以內）
-  · 說明牌：預設觀景點 4 格內有一面牌，第一行是景點中文名、不以「出口」開頭
-  · 景點範圍內每面有點擊動作的告示牌，指到的函式都真的在資料包裡
+  · Height: the highest block within the outline, minus the median ground level in a
+    ring outside the outline, compared with the public figure in the FACTS table below
+    (tolerance max(2 m, 3%)). FACTS belongs to this tool and is not taken from the
+    generator, so that a mistake in the generator is caught here.
+  · Outline: the share of the main OSM outline (data/attractions.json) that has
+    something 3 blocks above the ground on top (where it was built, and whether it was
+    turned the wrong way; a hollow hall does not matter), and the share of columns
+    beyond the distance FACTS allows outside the outline that still hold building 6 or
+    more blocks above the ground (built askew or out of bounds).
+  · Teleport points: the single tp line in the datapack's sight/<id>*.mcfunction (the
+    convention is in ride_plan) lands on a standable cell (the rules in domain/walk).
+    The default viewpoint must face the outline, within 60°.
+  · Plaque: a sign within 4 blocks of the default viewpoint whose first line is the
+    attraction's Chinese name and does not start with `出口` ("Exit").
+  · Every sign with a click action within the attraction's area points to a function
+    that really exists in the datapack.
 
-用法:
-    ./.venv/bin/python tools/verify_attractions.py <存檔> [--only taipei101 cks_memorial ...]
+Usage:
+    ./.venv/bin/python tools/verify_attractions.py <save> [--only taipei101 cks_memorial ...]
 """
 import argparse
 import glob
@@ -34,23 +42,26 @@ from mrt.domain import geometry as shapes
 from mrt.domain import walk
 from mrt.infrastructure import savereader as SR
 
-# 公開資料的高度（公尺，地面到最高點）與輪廓檢查的容許值。
-# height=None：不驗高度（沒有可靠的公開數字）。cover：輪廓內地面層至少要有多少比例
-# 蓋了東西（有中庭、廣場的景點低一點）。spill：輪廓外擴多少公尺以外不該再有建築
-# （含台階、廣場、屋簷就大一點）。
+# Published heights (meters, from the ground to the highest point) and tolerances for the
+# outline checks. height=None: the height is not checked (no reliable public figure).
+# cover: the minimum share of the outline that must be built on at ground level (lower for
+# attractions with courtyards or plazas). spill: the distance in meters beyond the outline
+# past which there should be no building (larger where steps, plazas or eaves count).
 FACTS = {
-    "taipei101":              dict(height=508.0, cover=0.6, spill=30),   # 塔尖頂端 508 m（2004）
-    "shin_kong_tower":        dict(height=244.15, cover=0.6, spill=15),  # 244.15 m（1993）
-    "cks_memorial":           dict(height=70.0, cover=0.25, spill=60),   # 紀念堂本體 70 m
-    "presidential_office":    dict(height=60.0, cover=0.4, spill=20),    # 中央塔樓 60 m
-    # 圓山大飯店指名的是整片飯店用地；主體是主樓加沿山坡往上的後棟
-    "grand_hotel":            dict(height=87.0, cover=0.4, spill=40,     # 87 m（1973）
+    "taipei101":              dict(height=508.0, cover=0.6, spill=30),   # Top of the spire 508 m (2004)
+    "shin_kong_tower":        dict(height=244.15, cover=0.6, spill=15),  # 244.15 m (1993)
+    "cks_memorial":           dict(height=70.0, cover=0.25, spill=60),   # Main hall 70 m
+    "presidential_office":    dict(height=60.0, cover=0.4, spill=20),    # Central tower 60 m
+    # The element named for The Grand Hotel is the whole hotel site. The main body is the
+    # main building plus the rear wing that climbs the hillside.
+    "grand_hotel":            dict(height=87.0, cover=0.4, spill=40,     # 87 m (1973)
                                    outline=["way/25202548", "relation/10098399"]),
     "sun_yat_sen_memorial":   dict(height=30.4, cover=0.5, spill=40),    # 30.4 m
-    "miramar_wheel":          dict(height=100.0, cover=0.2, spill=40),   # 摩天輪頂離地 100 m
-    "national_taiwan_museum": dict(height=30.0, cover=0.5, spill=20),   # 圓頂頂端近 30 m（1915）
+    "miramar_wheel":          dict(height=100.0, cover=0.2, spill=40),   # Wheel top 100 m above the ground
+    "national_taiwan_museum": dict(height=30.0, cover=0.5, spill=20),   # Top of the dome nearly 30 m (1915)
     "red_house":              dict(height=None, cover=0.5, spill=15),
-    # 指名的 way 只是正殿；三川殿在前面 28 m、山門牌樓 48 m（OSM 上就是這樣）
+    # The named way is only the main hall. The front hall is 28 m in front of it and the
+    # gate arch 48 m (that is how OSM maps it).
     "longshan_temple":        dict(height=None, cover=0.4, spill=50),
     "beimen":                 dict(height=None, cover=0.5, spill=15),
     "dongmen":                dict(height=None, cover=0.5, spill=25),
@@ -60,7 +71,8 @@ FACTS = {
 DEFAULT = dict(height=None, cover=0.4, spill=25)
 
 AIRS = ("minecraft:air", "minecraft:cave_air", "minecraft:void_air")
-# 地形生成器（application/build_world.terrain_chunk）與超平坦背景會用到的方塊
+# Blocks used by the terrain generator (application/build_world.terrain_chunk) and the
+# superflat background.
 NATURAL = {"minecraft:" + n for n in ("grass_block", "dirt", "stone", "sand", "water", "bedrock",
                                       "gravel", "coarse_dirt")}
 TP_RE = re.compile(r"^tp @s (-?[\d.]+) (-?\d+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)$")
@@ -71,7 +83,7 @@ def is_air(b):
 
 
 def load_sight_fns(save):
-    """資料包裡的 sight 函式：{路徑: (x, y, z, yaw, pitch)}。"""
+    """The datapack's sight functions: {path: (x, y, z, yaw, pitch)}."""
     root = os.path.join(save, "datapacks", config.DATAPACK_NAME, "data", config.DATAPACK_NS, "function")
     out = {}
     for f in glob.glob(os.path.join(root, "sight", "*.mcfunction")):
@@ -93,13 +105,16 @@ def all_functions(save):
 
 
 def main_outlines(item, osm_ids=None):
-    """主體的外環：指名元素裡有 building / building:part 標籤的。
+    """Outer rings of the main body: the named elements with a building or building:part
+    tag.
 
-    指名元素不一定是房子 —— 圓山大飯店指名的是整片飯店用地（tourism=hotel，4 萬 m2），
-    拿它當輪廓的話，外圍一圈是山下的河岸平地，高度與出界都會算錯。
-    指名的都不是房子，就取離中心最近、面積大的那棟。"""
+    A named element is not always a building. The element named for The Grand Hotel is the
+    whole hotel site (tourism=hotel, 40,000 m2). Used as the outline, its surrounding ring
+    would be the flat riverbank below the hill, and both the height and the spill would come
+    out wrong. When no named element is a building, take the building nearest the center
+    with a large area."""
     rings = []
-    if osm_ids:                        # FACTS 指定了主體由哪幾棟組成
+    if osm_ids:                        # FACTS names the buildings that make up the main body.
         for f in item["features"]:
             if f["osm"] in osm_ids and f.get("outer"):
                 rings += [r for r in f["outer"] if len(r) >= 3]
@@ -124,7 +139,7 @@ def check(save, item, fns, funcs, say):
     probs = []
     rings = main_outlines(item, fact.get("outline"))
     if not rings:
-        return ["資料裡沒有主體輪廓"]
+        return ["the data has no main outline"]
     cells = set()
     for r in rings:
         cells |= shapes.poly_cells(r)
@@ -142,23 +157,28 @@ def check(save, item, fns, funcs, say):
     def T(x, z):
         return int(top[z - z0, x - x0])
 
-    # 地面：輪廓外擴 spill+8 ~ spill+20 那一圈的柱頂中位數（那裡只該是地形）。
-    # 山坡上的建築（圓山大飯店在劍潭山腰）那一圈是山下的河岸平地，高度要從建築自己的
-    # 基地量起：輪廓內最低的人造方塊（一樓樓板）比遠圈高 2 格以上，就改用它
+    # Ground: the median column top in the ring from spill+8 to spill+20 beyond the outline
+    # (there should be only terrain there). For a building on a hillside (The Grand Hotel
+    # stands halfway up Jiantan Mountain) that ring is the flat riverbank below, so the
+    # height has to be measured from the building's own base: if the lowest man-made block
+    # within the outline (the ground-floor slab) is 2 or more blocks above the far ring,
+    # use it instead.
     fp = np.zeros(top.shape, dtype=bool)
     for x, z in cells:
         fp[z - z0, x - x0] = True
     dist = _chebyshev_from(fp)
     band = (dist > fact["spill"] + 8) & (dist <= fact["spill"] + 20) & col_any
     if not band.any():
-        return probs + ["讀不到輪廓外的地面（範圍外沒有區塊？）"]
+        return probs + ["cannot read the ground outside the outline (no chunks beyond the area?)"]
     natural = np.array([n.split("[")[0] in NATURAL for n in vol.names])
     iy = np.clip(top - vol.y0, 0, vol.ny - 1)
     zz, xx = np.indices(top.shape)
     top_natural = natural[data[iy, zz, xx]] & col_any
     far_g = int(np.median(top[band]))
-    # 建築自己的基地：輪廓內每一柱從遠圈地面下 3 格往上第一個人造方塊，取下四分位數
-    # （主樓的一樓樓板；沿山坡往上蓋的後棟樓板比較高，不能讓它把基地抬上去）
+    # The building's own base: in each column within the outline, the first man-made block
+    # upward from 3 blocks below the far-ring ground, taking the lower quartile (the main
+    # building's ground-floor slab; the rear wing up the hillside has higher floors and must
+    # not raise the base).
     lo = max(0, far_g - 3 - vol.y0)
     man = solid[lo:] & ~natural[data[lo:]]
     has_man = man.any(axis=0) & fp
@@ -166,72 +186,81 @@ def check(save, item, fns, funcs, say):
               if has_man.any() else far_g)
     ground = base_g if base_g > far_g + 2 else far_g
 
-    # 高度
+    # Height
     near = dist <= 3
     peak = int(top[near].max()) if near.any() else -999
     h = peak - ground
     if fact["height"] is not None:
         tol = max(2.0, 0.03 * fact["height"])
         ok = abs(h - fact["height"]) <= tol
-        say("  %s 高度：最高點 y%d − 地面 y%d = %d m（公開資料 %.1f m，容許 ±%.0f）%s"
+        say("  %s Height: top y%d − ground y%d = %d m (published %.1f m, tolerance ±%.0f m)%s"
             % ("ok  " if ok else "FAIL", peak, ground, h, fact["height"], tol,
-               "" if ground == far_g else "（山坡上：地面取建築基地 y%d，遠處地形 y%d）" % (base_g, far_g)))
+               "" if ground == far_g else
+               " (on a hillside: ground taken from the building base y%d, distant terrain y%d)"
+               % (base_g, far_g)))
         if not ok:
-            probs.append("高度 %d m，公開資料 %.1f m" % (h, fact["height"]))
+            probs.append("height %d m, published %.1f m" % (h, fact["height"]))
     else:
-        say("  --   高度：最高點 y%d − 地面 y%d = %d m（沒有公開數字可比）" % (peak, ground, h))
+        say("  --   Height: top y%d − ground y%d = %d m (no published figure to compare)"
+            % (peak, ground, h))
         if h < 4:
-            probs.append("輪廓上幾乎沒有東西（高 %d m）" % h)
+            probs.append("almost nothing on the outline (%d m tall)" % h)
 
-    # 輪廓覆蓋：從上面看，輪廓裡有多少格頂上有東西（高過地面 3 格；大廳挖空不影響）
+    # Outline cover: seen from above, how many cells within the outline have something on
+    # top (3 blocks above the ground; a hollow hall does not matter).
     cover = float((top[fp] >= ground + 3).mean())
     ok = cover >= fact["cover"]
-    say("  %s 輪廓覆蓋：OSM 輪廓 %d 格裡 %.0f%% 頂上有高過地面 3 格的東西（至少 %.0f%%）"
+    say("  %s Outline cover: of %d cells in the OSM outline, %.0f%% have something 3 blocks "
+        "above the ground (minimum %.0f%%)"
         % ("ok  " if ok else "FAIL", len(cells), cover * 100, fact["cover"] * 100))
     if not ok:
-        probs.append("輪廓覆蓋只有 %.0f%%" % (cover * 100))
+        probs.append("outline cover only %.0f%%" % (cover * 100))
 
-    # 出界：外擴 spill 以外，地面 6 格以上還有東西的柱子。柱頂是天然地形（山坡）的不算
+    # Spill: columns farther than spill from the outline that still have something 6 or more
+    # blocks above the ground. Columns topped by natural terrain (a hillside) do not count.
     tall = (top >= ground + 6) & ~top_natural
     out = tall & (dist > fact["spill"]) & (dist <= fact["spill"] + 20)
     n_out, n_in = int(out.sum()), int((tall & fp).sum())
     spill = n_out / max(1, n_in + n_out)
     ok = spill <= 0.10
-    say("  %s 出界：輪廓外 %d m 以外還有 %d 根高過地面 6 格的柱子（%.0f%%，上限 10%%）"
+    say("  %s Spill: beyond %d m outside the outline, %d columns stand 6 blocks above the "
+        "ground (%.0f%%, limit 10%%)"
         % ("ok  " if ok else "FAIL", fact["spill"], n_out, spill * 100))
     if not ok:
-        probs.append("輪廓外 %d m 以外有 %d 根柱子（蓋歪或出界）" % (fact["spill"], n_out))
+        probs.append("beyond %d m outside the outline, %d columns (built askew or out of bounds)"
+                     % (fact["spill"], n_out))
 
-    # 傳送點
+    # Teleport points
     mine = {p: v for p, v in fns.items() if p == "sight/" + aid or p.startswith("sight/%s_" % aid)}
     if "sight/" + aid not in mine:
-        probs.append("資料包裡沒有 sight/%s" % aid)
-        say("  FAIL 資料包裡沒有 sight/%s" % aid)
+        probs.append("no sight/%s in the datapack" % aid)
+        say("  FAIL No sight/%s in the datapack" % aid)
     cx, cz = sum(xs) / len(xs), sum(zs) / len(zs)
     for path, tp in sorted(mine.items()):
         if tp is None:
-            probs.append("%s 不是恰好一行 tp" % path)
+            probs.append("%s is not exactly one tp line" % path)
             continue
         x, y, z, yaw, pitch = tp
         bx, bz = int(math.floor(x)), int(math.floor(z))
         get = vol.get
         if not (x0 <= bx <= x1 and z0 <= bz <= z1):
-            # 高的建築要退遠一點才看得全：觀景點可能在讀回範圍外，另外讀它那一小塊
+            # A tall building must be viewed from farther away to fit in view, so the
+            # viewpoint may lie outside the area read back. Read its small patch separately.
             get = SR.read_volume(save, bx - 1, y - 2, bz - 1, bx + 1, y + 3, bz + 1, verbose=False).get
         stand = walk.standable(get, bx, y, bz)
-        msg = "站得住" if stand else "站不住（腳 %s、頭 %s、腳下 %s）" % (
+        msg = "standable" if stand else "not standable (feet %s, head %s, below %s)" % (
             get(bx, y, bz), get(bx, y + 1, bz), get(bx, y - 1, bz))
         ok = stand
         if path == "sight/" + aid:
             want = math.degrees(math.atan2(-(cx + 0.5 - x), cz + 0.5 - z))
             dev = abs((yaw - want + 180) % 360 - 180)
             ok = ok and dev <= 60
-            msg += "、朝向偏離輪廓中心 %.0f°" % dev
-        say("  %s 傳送點 %s (%.1f, %d, %.1f)：%s" % ("ok  " if ok else "FAIL", path, x, y, z, msg))
+            msg += ", facing %.0f° off the outline centre" % dev
+        say("  %s Teleport point %s (%.1f, %d, %.1f): %s" % ("ok  " if ok else "FAIL", path, x, y, z, msg))
         if not ok:
-            probs.append("%s：%s" % (path, msg))
+            probs.append("%s: %s" % (path, msg))
 
-    # 說明牌與點擊指令
+    # Plaques and click commands
     signs = SR.read_sign_entities(save, x0, z0, x1, z1)
     tp = mine.get("sight/" + aid)
     if tp and not (x0 <= tp[0] <= x1 and z0 <= tp[2] <= z1):
@@ -241,26 +270,26 @@ def check(save, item, fns, funcs, say):
         pl = [s for s in signs if abs(s["x"] - x) <= 4.5 and abs(s["z"] - z) <= 4.5 and abs(s["y"] - y) <= 2]
         named = [s for s in pl if s["front"] and s["front"][0].strip() == item["name_zh"]]
         ok = bool(named)
-        say("  %s 說明牌：觀景點 4 格內 %d 面牌%s" % (
-            "ok  " if ok else "FAIL", len(pl), ("，第一行「%s」" % named[0]["front"][0]) if named else ""))
+        say("  %s Plaque: signs within 4 blocks of the viewpoint %d%s" % (
+            "ok  " if ok else "FAIL", len(pl), (", first line '%s'" % named[0]["front"][0]) if named else ""))
         if not ok:
-            probs.append("觀景點旁沒有寫著「%s」的說明牌" % item["name_zh"])
+            probs.append("no plaque reading '%s' next to the viewpoint" % item["name_zh"])
     ns = config.DATAPACK_NS + ":"
     for s in signs:
         if s["front"] and s["front"][0].startswith("出口") and (x0 + 20 < s["x"] < x1 - 20):
-            pass                                         # 範圍內的捷運出口牌，不歸這裡管
+            pass                                         # Metro exit signs are not this tool's concern.
         c = s.get("click")
         if not c or c.get("action") != "run_command":
             continue
         cmd = c.get("command", "").lstrip("/")
         mm = re.match(r"^function %s(\S+)$" % re.escape(ns), cmd)
         if mm and mm.group(1) not in funcs:
-            probs.append("告示牌 (%d,%d,%d) 指到不存在的函式 %s" % (s["x"], s["y"], s["z"], cmd))
+            probs.append("sign (%d,%d,%d) runs a missing function: %s" % (s["x"], s["y"], s["z"], cmd))
     return probs
 
 
 def _chebyshev_from(mask):
-    """每格到遮罩的切比雪夫距離（遮罩內 = 0）。"""
+    """Chebyshev distance from each cell to the mask (0 inside the mask)."""
     d = np.where(mask, 0, 10 ** 6).astype(np.int64)
     cur = mask.copy()
     k = 0
@@ -302,11 +331,11 @@ def main():
             bad[it["id"]] = p
     print()
     if bad:
-        print("有問題的景點 %d / %d：" % (len(bad), n))
+        print("Attractions with problems: %d of %d" % (len(bad), n))
         for k, v in bad.items():
-            print("  %s：%s" % (k, "；".join(v)))
+            print("  %s: %s" % (k, "; ".join(v)))
         sys.exit(1)
-    print("全部 %d 座景點通過" % n)
+    print("Attractions passed: %d of %d" % (n, n))
 
 
 if __name__ == "__main__":

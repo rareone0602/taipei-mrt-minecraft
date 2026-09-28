@@ -1,21 +1,21 @@
-"""在 Blender 中重建台北捷運路網（3D 檢視／線形驗證用）
+"""Rebuild the Taipei Metro network in Blender, for 3D viewing and alignment checks.
 
-用法:
+Usage:
   /Applications/Blender.app/Contents/MacOS/Blender --background \
       --python tools/blender_import.py -- [--render out.png]
 
-座標: Blender X = 東, Y = 北, Z = 上。與 Minecraft 的 (x, z) 對應為 y = -z。
-單位 1 = 1 公尺 = 1 個 Minecraft 方塊。
+Coordinates: Blender X = east, Y = north, Z = up. Minecraft (x, z) maps to y = -z.
+One unit = 1 meter = one Minecraft block.
 """
 import bpy, bmesh, json, csv, sys, os
 
-# 這支跑在 Blender 內建的 Python 底下，看不到 .venv 也 import 不到 mrt 套件，
-# 所以路徑自己算，不用 mrt.config。
+# This script runs under Blender's bundled Python, which cannot see .venv or import the
+# mrt package, so it computes its own paths instead of using mrt.config.
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LINES = os.path.join(ROOT, "data", "mc_lines.json")
 STNS  = os.path.join(ROOT, "data", "mc_stations.csv")
 
-# OSM colour 標籤不一定是 hex，補上北捷官方色
+# The OSM colour tag is not always hex, so fall back to Taipei Metro's official colors.
 FALLBACK = {"R": "#E3002C", "G": "#008659", "O": "#F8B61C", "BL": "#0070BD",
             "BR": "#C48C31", "Y": "#FFDB00", "A": "#8246AF", "V": "#F5A9BC",
             "K": "#C3B091", "LB": "#6DB7D0"}
@@ -29,7 +29,7 @@ def hex_rgb(h, fallback=(0.5, 0.5, 0.5)):
         r, g, b = (int(h[i:i+2], 16) / 255 for i in (1, 3, 5))
     except ValueError:
         return fallback
-    # sRGB -> linear，Blender 內部用 linear
+    # sRGB -> linear; Blender works in linear internally.
     lin = lambda c: c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
     return (lin(r), lin(g), lin(b))
 
@@ -49,11 +49,11 @@ def make_mat(name, rgb, emit=1.5):
     if "Emission Color" in bsdf.inputs:      # Blender 4.x+
         bsdf.inputs["Emission Color"].default_value = (*rgb, 1)
         bsdf.inputs["Emission Strength"].default_value = emit
-    m.diffuse_color = (*rgb, 1)              # 視窗實體著色用
+    m.diffuse_color = (*rgb, 1)              # For solid shading in the viewport.
     return m
 
 def add_line(ref, variant, mat, radius=8.0):
-    """把一條路線的折線做成有厚度的曲線"""
+    """Turn a line's polyline into a curve with thickness."""
     cu = bpy.data.curves.new(f"{ref}_curve", type="CURVE")
     cu.dimensions = "3D"
     cu.bevel_depth = radius
@@ -62,14 +62,14 @@ def add_line(ref, variant, mat, radius=8.0):
     pts = variant["points"]
     sp.points.add(len(pts) - 1)
     for i, (x, z) in enumerate(pts):
-        sp.points[i].co = (x, -z, 0.0, 1.0)   # MC z(南+) -> Blender y(北+)
+        sp.points[i].co = (x, -z, 0.0, 1.0)   # MC z (south +) -> Blender y (north +)
     ob = bpy.data.objects.new(f"line_{ref}", cu)
     ob.data.materials.append(mat)
     bpy.context.collection.objects.link(ob)
     return ob
 
 def add_stations(rows, mat, radius=22.0):
-    """所有車站合併成單一 mesh，避免上百個物件"""
+    """Merge all stations into a single mesh to avoid hundreds of objects."""
     bm = bmesh.new()
     for x, z in rows:
         m = bmesh.new()
@@ -88,7 +88,7 @@ def main():
     render_to = argv[argv.index("--render") + 1] if "--render" in argv else None
 
     if not os.path.exists(LINES):
-        raise SystemExit(f"找不到 {LINES}，請先跑 scripts/to_minecraft.py")
+        raise SystemExit(f"{LINES} not found. Run scripts/to_minecraft.py first.")
 
     clear_scene()
     lines = json.load(open(LINES, encoding="utf-8"))
@@ -98,16 +98,17 @@ def main():
     for ref, variants in sorted(lines.items()):
         v = max(variants, key=lambda v: len(v["points"]))
         if not v["points"]:
-            print(f"  線 {ref:<3} 無幾何資料，略過")
+            print(f"  Line {ref:<3} has no geometry; skipped")
             continue
         picked.append((ref, v))
         all_pts += v["points"]
 
     if not all_pts:
-        raise SystemExit("所有路線都沒有點位，請先確認 data/lines/*.json")
+        raise SystemExit("No line has any points. Check data/lines/*.json first.")
 
-    # 線寬與站點半徑必須隨場景跨距縮放：23km 的路網算成 1400px 時
-    # 固定 8m 的線寬只有 0.5 像素，會整條看不見。
+    # Line width and station radius must scale with the scene's span: when a 23 km network
+    # is rendered at 1400 px, a fixed 8 m line width is only 0.5 pixels and the whole line
+    # disappears.
     _xs = [p[0] for p in all_pts]; _zs = [p[1] for p in all_pts]
     scene_span = max(max(_xs) - min(_xs), max(_zs) - min(_zs))
     line_r = max(8.0, scene_span / 900)
@@ -116,7 +117,7 @@ def main():
     for ref, v in picked:
         rgb = hex_rgb(v.get("colour"), hex_rgb(FALLBACK.get(ref, ""), (0.5, 0.5, 0.5)))
         add_line(ref, v, make_mat(f"mat_{ref}", rgb), radius=line_r)
-        print(f"  線 {ref:<3} {len(v['points']):>5} 點")
+        print(f"  Line {ref:<3} {len(v['points']):>5} points")
 
     stn_rows = []
     if os.path.exists(STNS):
@@ -125,7 +126,7 @@ def main():
                 stn_rows.append((int(r["mc_x"]), int(r["mc_z"])))
         add_stations(stn_rows, make_mat("mat_station", (0.9, 0.9, 0.9), emit=2.0), radius=stn_r)
 
-    # 相機：正射投影俯視，框住整個路網
+    # Camera: an orthographic top-down view framing the whole network.
     if all_pts:
         xs = [p[0] for p in all_pts]; zs = [p[1] for p in all_pts]
         cx, cy = (min(xs)+max(xs))/2, -(min(zs)+max(zs))/2
@@ -133,13 +134,14 @@ def main():
         cam_d = bpy.data.cameras.new("cam"); cam_d.type = "ORTHO"
         cam_d.ortho_scale = span
         cam_d.clip_start = 1.0
-        cam_d.clip_end = 100000.0     # 相機在 z=20000，預設 clip_end=100 會把場景全裁掉
+        cam_d.clip_end = 100000.0     # The camera is at z=20000, and the default
+                                      # clip_end=100 would clip the whole scene.
         cam = bpy.data.objects.new("cam", cam_d)
         cam.location = (cx, cy, 20000); cam.rotation_euler = (0, 0, 0)
         bpy.context.collection.objects.link(cam)
         bpy.context.scene.camera = cam
-        print(f"\n路網範圍 X[{min(xs)},{max(xs)}] Z[{min(zs)},{max(zs)}]  "
-              f"跨距 {max(xs)-min(xs)} x {max(zs)-min(zs)} 方塊")
+        print(f"\nNetwork extent X[{min(xs)},{max(xs)}] Z[{min(zs)},{max(zs)}]  "
+              f"span {max(xs)-min(xs)} x {max(zs)-min(zs)} blocks")
 
     sc = bpy.context.scene
     sc.render.engine = "BLENDER_WORKBENCH"
@@ -152,11 +154,11 @@ def main():
 
     out_blend = os.path.join(ROOT, "data", "taipei_mrt.blend")
     bpy.ops.wm.save_as_mainfile(filepath=out_blend)
-    print(f"\n已存檔 {out_blend}  ({len(lines)} 條線, {len(stn_rows)} 站)")
+    print(f"\nSaved {out_blend}  ({len(lines)} lines, {len(stn_rows)} stations)")
 
     if render_to:
         sc.render.filepath = os.path.abspath(render_to)
         bpy.ops.render.render(write_still=True)
-        print(f"已算圖 {sc.render.filepath}")
+        print(f"Rendered {sc.render.filepath}")
 
 main()

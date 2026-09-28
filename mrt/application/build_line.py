@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""路線斷面生成器：把算好的線形掃成地下、高架、平面三種結構的方塊。
+"""Line cross-section generator: sweeps a computed alignment into blocks for
+three structure types: underground, elevated and at-grade.
 
-線形本身（取樣、縱斷面、離線位、變體挑選）在 domain/alignment.py。
-這裡只負責「把方塊放進去」—— 每個 build_* / sec_* 的第一個參數 w 是
-ports.block_sink.BlockSink，不是特定的存檔實作，所以測試可以塞 DictSink 進來。
+The alignment itself (sampling, vertical profile, track offsets, variant
+selection) lives in domain/alignment.py. This module only places the blocks.
+The first parameter w of every build_* / sec_* function is a
+ports.block_sink.BlockSink, not a specific world-save implementation, so tests
+can pass in a DictSink.
 
-比例 1 方塊 = 1 公尺。用法見 cli/build_line.py。
+Scale: 1 block = 1 meter. See cli/build_line.py for usage.
 """
 import math
 
@@ -16,29 +19,31 @@ from mrt.domain.alignment import (
     station_kind,
 )
 
-# ---- 方塊配色 ----
-# 這些是「蓋成什麼樣子」的決定，屬於這一層；線形不需要知道月台是什麼材質。
+# ---- Block palette ----
+# These decide how things look, so they belong in this layer; the alignment
+# does not need to know what the platform is made of.
 CONC   = "minecraft:light_gray_concrete"
 DECK   = "minecraft:smooth_stone"
 WALL   = "minecraft:gray_concrete"
 PIER   = "minecraft:polished_andesite"
 PLAT   = "minecraft:polished_diorite"
 BALLAST= "minecraft:gravel"
-LINING = "minecraft:deepslate_bricks"        # 隧道襯砌
-PSD    = "minecraft:glass_pane"              # 月台門
+LINING = "minecraft:deepslate_bricks"        # Tunnel lining.
+PSD    = "minecraft:glass_pane"              # Platform screen doors.
 GLASS  = "minecraft:light_gray_stained_glass_pane"
 STAIR  = "minecraft:smooth_stone"
 SLAB   = "minecraft:smooth_stone_slab[type=bottom]"
 BARS   = "minecraft:iron_bars"
-GATE   = "minecraft:polished_andesite"       # 閘門機箱
-LANE   = "minecraft:lime_concrete"           # 閘門通道地坪
+GATE   = "minecraft:polished_andesite"       # Fare gate cabinet.
+LANE   = "minecraft:lime_concrete"           # Paving of a fare gate lane.
 YELLOW = "minecraft:yellow_concrete"
 AIR    = "minecraft:air"
-LAMP   = "minecraft:sea_lantern"             # 照明：地下段不點燈會全黑且刷怪
+# Lighting: an unlit underground section is pitch dark and spawns mobs.
+LAMP   = "minecraft:sea_lantern"
 
 
 
-# ---------- 三種斷面 ----------
+# ---------- The three cross-sections ----------
 
 def sec_bridge(w, x, z, nx, nz, y, ground=GROUND, pier=False, hw=5):
     for off in range(-hw, hw + 1):
@@ -50,7 +55,7 @@ def sec_bridge(w, x, z, nx, nz, y, ground=GROUND, pier=False, hw=5):
             w.set(bx, y, bz, CONC); w.set(bx, y + 1, bz, WALL)
         else:
             w.set(bx, y, bz, DECK)
-        for dy in range(1, 5):                  # 橋面上方淨空
+        for dy in range(1, 5):                  # Clearance above the deck.
             w.set(bx, y + 3 + dy, bz, AIR)
     if pier and y - 2 > ground:
         cx, cz = round(x), round(z)
@@ -63,7 +68,9 @@ def sec_bridge(w, x, z, nx, nz, y, ground=GROUND, pier=False, hw=5):
 
 
 def sec_ground(w, x, z, nx, nz, y, ground=GROUND, hw=5):
-    """平面段：高於地面填路堤，低於地面開挖成塹道，上方一律淨空。"""
+    """At-grade section: fills an embankment where the track is above the
+    ground and cuts a trench where it is below; the space above is always
+    cleared."""
     for off in range(-(hw + 1), hw + 2):
         bx, bz = round(x + nx * off), round(z + nz * off)
         for yy in range(min(y - 1, ground - 1), y):
@@ -81,7 +88,8 @@ def sec_ground(w, x, z, nx, nz, y, ground=GROUND, hw=5):
 
 
 def sec_tunnel(w, x, z, nx, nz, y, light=False, hw=5, toff=TUN_TRACK_OFF):
-    # 先挖出襯砌好的箱涵，再鋪走行面。hw 進站前會張開，讓軌道移到 ±8
+    # Dig the lined box structure first, then lay the track bed. hw widens
+    # before a station so that the tracks can move out to ±8.
     for off in range(-(hw + 2), hw + 3):
         bx, bz = round(x + nx * off), round(z + nz * off)
         for dy in range(-2, 8):
@@ -95,23 +103,30 @@ def sec_tunnel(w, x, z, nx, nz, y, light=False, hw=5, toff=TUN_TRACK_OFF):
         else:
             w.set(bx, y, bz, DECK)
     if light:
-        for off in (-toff, toff):                     # 兩股道上方各一盞
+        for off in (-toff, toff):                     # One lamp above each track.
             w.set(round(x + nx * off), y + 6, round(z + nz * off), LAMP)
 
 
 def sec_multi(w, x, z, nx, nz, tracks, light=False, half=2):
-    """多股道或上下分層的隧道斷面。tracks = [(離線位, 軌面 y), ...]。
+    """Tunnel cross-section for several tracks, or for tracks on stacked
+    levels. tracks = [(offset, rail-top y), ...].
 
-    同高的股道併成一個箱涵：內部從最外側股道再往外 half 格，股道之間立分隔矮牆
-    （跟 sec_tunnel 一樣：兩股道在 ±3 時內部是 ±5、矮牆在 0；袋狀軌三股道
-    −6/0/6 時內部 ±8、矮牆在 ±3）。不同高的股道各開各的箱涵，交疊處取聯集，
-    襯砌只砌在聯集的外圈 —— 分層過渡段裡下潛那股道的箱涵一路從隔壁滑到正下方，
-    襯砌逐點算才不會把對方的淨空砌死。上層先鋪，下層的淨空不會把上層的樓板挖掉。
+    Tracks at the same height share one box structure: the interior extends
+    half blocks beyond the outermost tracks, with a low dividing wall between
+    adjacent tracks (as in sec_tunnel: with two tracks at ±3 the interior is ±5
+    and the wall is at 0; with three pocket tracks at −6/0/6 the interior is
+    ±8 and the walls are at ±3). Tracks at different heights each get their own
+    box structure, the overlap is merged into a union, and the lining is laid
+    only around the outside of the union. In a level-transition section the box
+    of the descending track slides from beside the other track to directly
+    beneath it, so the lining has to be computed point by point, or it would
+    seal off the other track's clearance. The upper level is laid first, so
+    the lower level's clearance does not dig out the upper level's floor slab.
     """
     groups = {}
     for off, y in tracks:
         groups.setdefault(int(y), []).append(int(round(off)))
-    interior = {}                                   # (off, y) -> 方塊
+    interior = {}                                   # (off, y) -> block
     for y in sorted(groups, reverse=True):
         offs = sorted(groups[y])
         o0, o1 = offs[0] - half, offs[-1] + half
@@ -154,19 +169,23 @@ def build_alignment(w, samples, ys):
     return counts
 
 
-# ---------- 樓梯 ----------
+# ---------- Stairs ----------
 
 def _stair_run(w, samples, ys, s0, d, per_m, y_from, y_to, off_lo, off_hi,
                head=4, clear_dy=None, wall_offs=(), wall_ground=None,
                clear_max_dy=None):
-    """鋪一段直梯，每公尺升降 0.5 m（整塊與半磚交替）。
+    """Lay a straight stair run that rises or falls 0.5 m per meter (full
+    blocks alternating with slabs).
 
-    y_from / y_to 是「可站立的表面高度」，也就是方塊上緣。
-    交替順序一定要跟行進方向對上：下坡先放整塊再放半磚，
-    反過來的話每兩公尺會出現 1.5 m 落差 —— 走得下去卻爬不上來。
+    y_from / y_to are standing-surface heights, that is, the top faces of
+    blocks. The alternation must match the direction of travel: going down,
+    place the full block first and then the slab. The other way round leaves a
+    1.5 m drop every two meters, which you can walk down but not climb up.
 
-    頭部淨空預設挖到踏面上方 head 格；clear_dy 改成挖到「軌面 + clear_dy」，
-    clear_max_dy 則是上限 —— 梯頂緊貼著頂板時，最後幾階的淨空會把頂板挖穿。
+    By default, headroom is cleared to head blocks above the tread. clear_dy
+    clears to rail top + clear_dy instead, and clear_max_dy is an upper limit:
+    when the top of the stair sits right under the roof slab, the headroom of
+    the last few steps would dig through the slab.
     """
     n = int(round(abs(y_to - y_from) * 2))
     sgn = 1.0 if y_to > y_from else -1.0
@@ -186,11 +205,15 @@ def _stair_run(w, samples, ys, s0, d, per_m, y_from, y_to, off_lo, off_hi,
         nx, nz = -uz, ux
         return [(round(x + nx * off), round(z + nz * off)) for off in range(off_lo, off_hi + 1)]
 
-    # 線形斜 45 度時，相鄰兩階的格子只有斜角相接：取樣點每公尺走 (0.7, 0.7)，
-    # 四捨五入後兩階的格子集合可能沒有任何一對四鄰相接（六張犁、淡水的
-    # 兩格寬月台樓梯就是這樣，從剖面看每一階都在，走起來卻在半路斷掉）。
-    # 補法：每一階順便鋪「上一階與這一階之間那個半公尺取樣點」的格子，只補
-    # 沒被任何一階用到的格子，原本的踏面一格都不動。
+    # When the alignment runs at 45 degrees, the cells of two adjacent treads
+    # may touch only at a corner: the sample point advances (0.7, 0.7) per
+    # meter, and after rounding the two treads' cell sets may share no
+    # edge-adjacent pair. (The two-block-wide platform stairs at Liuzhangli and
+    # Tamsui were like this: in cross-section every tread is there, but the
+    # stair breaks off halfway when you walk it.)
+    # Fix: each tread also paves the cells of the half-meter sample point
+    # between the previous tread and this one, but only cells that no tread
+    # uses; the original treads do not change by a single cell.
     main = set()
     for si, yb, blk in treads:
         main.update(cells_at(si))
@@ -205,9 +228,12 @@ def _stair_run(w, samples, ys, s0, d, per_m, y_from, y_to, off_lo, off_hi,
                     filled.add(c)
                     cells.append(c)
         per_tread.append(cells)
-    # 半公尺取樣點的格子也可能剛好落在原本的踏面上（線形接近 45 度時常常如此），
-    # 那就沒補到。再逐階檢查一次：相鄰兩階仍然沒有任何一對四鄰相接的話，
-    # 在斜角相接的那一對之間補一格（跟下一階同高），保證整段樓梯四鄰連通。
+    # The cells of the half-meter sample point may also land exactly on an
+    # existing tread (common when the alignment is close to 45 degrees), in
+    # which case nothing is added. So check each pair of adjacent treads
+    # again: if they still share no edge-adjacent pair, add one cell between
+    # the diagonally touching pair (at the height of the first of the two), which
+    # guarantees that the whole stair is 4-connected.
     for t in range(len(per_tread) - 1):
         a, b = per_tread[t], set(per_tread[t + 1])
         if any((ax + ddx, az + ddz) in b for ax, az in a
@@ -240,22 +266,28 @@ def _stair_run(w, samples, ys, s0, d, per_m, y_from, y_to, off_lo, off_hi,
     return out
 
 
-# ---------- 車站 ----------
+# ---------- Stations ----------
 
 def build_station(w, samples, ys, idx, underground, label=None, grounds=None,
                   access=True, stacked=None, name_signs=False):
-    """access=False 時不蓋樣板的出入口樓梯 —— 有真實出入口
-    （application/build_exits.py）的車站用那些，樣板的那座只會多出一個
-    誰也不會走的洞。地下站與側式月台站都適用。
+    """With access=False the template exit stair is not built: stations with
+    real exits (application/build_exits.py) use those, and the template one
+    would only add a hole that nobody walks through. This applies to both
+    underground stations and side-platform stations.
 
-    stacked 是 domain/stacked.layout() 的版面：兩股道分到上下兩層的地下站
-    （府中的側式疊式、西門那種兩線共用的島式疊式）。samples 這時是站體座標系
-    （共用站體的是兩線中線的 frame，見 stacked.station_samples）。
+    stacked is the layout from domain/stacked.layout(), for underground
+    stations whose two tracks are split across an upper and a lower level
+    (Fuzhong's stacked side platforms, and a stacked island shared by two
+    lines, as at Ximen). samples are then in the station-box frame (for a
+    shared station box, the frame of the centerline between the two lines; see
+    stacked.station_samples).
 
-    name_signs=True 才在月台上立舊式的純文字站名牌（_plat_signs / place_signs）。
-    全網生成時月台門那一排改立搭車告示牌（application/signage.py，照
-    domain/network.py 的上車位置），同一格不該再有一面站名牌；只有不規劃路網的
-    cli/build_line 還用得到它。"""
+    Only with name_signs=True are the old text-only station name signs placed
+    on the platform (_plat_signs / place_signs). In a full-network build the
+    row of platform screen doors carries ride signs instead
+    (application/signage.py, following the berths from domain/network.py), and
+    the same cell must not get a station name sign as well; only
+    cli/build_line, which does not plan the network, still uses them."""
     n = len(samples)
     half = int(PLATFORM_LEN / 2 / STEP)
     lo, hi = max(0, idx - half), min(n - 1, idx + half)
@@ -271,20 +303,25 @@ def build_station(w, samples, ys, idx, underground, label=None, grounds=None,
                       plat_label=plat_label)
 
 
-# ===== 地下站：島式月台 + 穿堂層 =====
+# ===== Underground stations: island platform + concourse =====
 
 def _station_island(w, samples, ys, grounds, lo, hi, label, access=True, plat_label=None):
-    """地下島式月台車站。
+    """Underground island-platform station.
 
-    北捷地下站幾乎都是島式：軌道分到兩側、月台居中，上面再疊一層穿堂。
-    側式月台的話中間的軌道會把穿堂動線切成兩半，每側都得再來一組樓梯。
+    Almost every underground Taipei Metro station has an island platform: the
+    tracks run on the two sides, the platform sits in the middle, and a
+    concourse is stacked on top. With side platforms, the tracks in the middle
+    would cut the concourse circulation in two, and each side would need its
+    own set of stairs.
 
-    分兩趟做：先把整段站體挖乾淨，再安裝設備。取樣間距只有 STEP 公尺，
-    若邊挖邊裝，下一個取樣點的挖空會把剛裝好的月台門和燈具抹掉。
+    This is done in two passes: first the whole station box is dug out, then
+    the fittings are installed. Samples are only STEP meters apart, so digging
+    and installing in one pass would let the next sample's excavation erase
+    the platform screen doors and lamps just installed.
     """
     per_m = max(1, int(round(1.0 / STEP)))
 
-    # ---- 第一趟：挖空 ----
+    # ---- Pass 1: excavate ----
     for i in range(lo, hi + 1):
         x, z, ux, uz, _ = samples[i]
         nx, nz = -uz, ux
@@ -293,14 +330,16 @@ def _station_island(w, samples, ys, grounds, lo, hi, label, access=True, plat_la
         for off in range(-BOX_HALF, BOX_HALF + 1):
             bx, bz = round(x + nx * off), round(z + nz * off)
             for dy in range(-2, BOX_TOP_DY + 1):
-                # 端面只在隧道斷面（張開後的 ±10）開洞。整面填實會把站體封死，
-                # 全開又會讓上層的穿堂直接通進隧道裡。
+                # The end walls are opened only across the tunnel
+                # cross-section (±10 after widening). A solid end wall would
+                # seal the station box off; a fully open one would let the
+                # concourse above open straight into the tunnel.
                 portal = abs(off) <= BOX_HALF - 2 and -1 <= dy <= 6
                 solid = (abs(off) >= BOX_HALF - 1 or dy in (-2, BOX_TOP_DY)
                          or (end and not portal))
                 w.set(bx, y + dy, bz, LINING if solid else AIR)
 
-    # ---- 第二趟：安裝 ----
+    # ---- Pass 2: install ----
     for i in range(lo, hi + 1):
         x, z, ux, uz, _ = samples[i]
         nx, nz = -uz, ux
@@ -311,15 +350,15 @@ def _station_island(w, samples, ys, grounds, lo, hi, label, access=True, plat_la
         for off in list(range(-10, -PLAT_HALF)) + list(range(PLAT_HALF + 1, 11)):
             bx, bz = round(x + nx * off), round(z + nz * off)
             w.set(bx, y - 1, bz, CONC)
-            w.set(bx, y, bz, DECK)                      # 兩側軌道走行面
+            w.set(bx, y, bz, DECK)                      # Track bed on both sides.
 
-        for off in range(-PLAT_HALF, PLAT_HALF + 1):    # 島式月台
+        for off in range(-PLAT_HALF, PLAT_HALF + 1):    # Island platform.
             bx, bz = round(x + nx * off), round(z + nz * off)
             w.set(bx, y - 1, bz, CONC)
             w.set(bx, y, bz, CONC)
             w.set(bx, y + 1, bz, YELLOW if abs(off) == PLAT_HALF - 1 else PLAT)
 
-        for off in (-PLAT_HALF, PLAT_HALF):             # 月台門
+        for off in (-PLAT_HALF, PLAT_HALF):             # Platform screen doors.
             bx, bz = round(x + nx * off), round(z + nz * off)
             for yy in range(y + 2, y + MEZZ_DY):
                 w.set(bx, yy, bz, AIR if door else PSD)
@@ -327,7 +366,7 @@ def _station_island(w, samples, ys, grounds, lo, hi, label, access=True, plat_la
         for off in range(-(BOX_HALF - 2), BOX_HALF - 1):
             w.set(round(x + nx * off), y + MEZZ_DY, round(z + nz * off), CONC)
 
-        if (along % 8.0) < STEP:                        # 照明
+        if (along % 8.0) < STEP:                        # Lighting.
             for off in (-10, -3, 3, 10):
                 w.set(round(x + nx * off), y + MEZZ_DY - 1, round(z + nz * off), LAMP)
             for off in (-7, 0, 7):
@@ -343,13 +382,17 @@ def _station_island(w, samples, ys, grounds, lo, hi, label, access=True, plat_la
 
 
 def _gates(w, samples, ys, s0, per_m, floor_dy=MEZZ_DY, half=BOX_HALF - 2):
-    """驗票閘門：橫跨整個穿堂層，把付費區與非付費區隔開。
+    """Fare gates: a row across the whole concourse that separates the paid
+    area from the unpaid area.
 
-    出入口在 lo+6 一端、月台樓梯在另一端，閘門橫在中間才擋得住 ——
-    只擺一小段的話旁邊就繞過去了。
+    The exit is at the lo+6 end and the platform stairs are at the other end,
+    so only a row across the middle blocks the way; a short row would simply
+    be walked around.
 
-    floor_dy 是穿堂樓板相對軌面的高差（預設是地下站的 MEZZ_DY），
-    half 是閘門列的半寬；側式月台站的穿堂層用同一組閘門，只是樓板高度不同。
+    floor_dy is the height of the concourse floor slab relative to the rail
+    top (MEZZ_DY, as in underground stations, by default), and half is the
+    half-width of the gate row. The concourse of a side-platform station uses
+    the same gates with a different floor height.
     """
     for t in range(2 * per_m):
         si = s0 + t
@@ -360,7 +403,7 @@ def _gates(w, samples, ys, s0, per_m, floor_dy=MEZZ_DY, half=BOX_HALF - 2):
         ym = int(ys[si]) + floor_dy
         for off in range(-half, half + 1):
             bx, bz = round(x + nx * off), round(z + nz * off)
-            if off % 3 == 0:                            # 通行閘道
+            if off % 3 == 0:                            # Gate lane.
                 w.set(bx, ym, bz, LANE)
                 for yy in range(ym + 1, ym + 4):
                     w.set(bx, yy, bz, AIR)
@@ -371,13 +414,15 @@ def _gates(w, samples, ys, s0, per_m, floor_dy=MEZZ_DY, half=BOX_HALF - 2):
 
 
 def _plat_stair(w, samples, ys, s0, per_m, off_lo=-3, off_hi=3):
-    """穿堂層下到月台的樓梯，順便在樓板上開口。off_lo..off_hi 是踏面的離線位
-    （島式月台放在正中央 −3..3，側式疊式的放在月台上）。"""
+    """Stair from the concourse down to the platform, which also opens the
+    hole in the floor slab. off_lo..off_hi are the tread offsets (−3..3,
+    centered, for an island platform; on the platform for stacked side
+    platforms)."""
     y0 = int(ys[min(s0, len(ys) - 1)])
     steps = _stair_run(w, samples, ys, s0, 1, per_m,
                        y0 + MEZZ_DY + 1, y0 + 2, off_lo, off_hi,
                        clear_dy=BOX_TOP_DY - 1)
-    for si, yb in steps:                                # 開口兩側加欄杆
+    for si, yb in steps:                                # Railings on both sides of the opening.
         x, z, ux, uz, _ = samples[si]
         nx, nz = -uz, ux
         ym = int(ys[si]) + MEZZ_DY
@@ -388,18 +433,23 @@ def _plat_stair(w, samples, ys, s0, per_m, off_lo=-3, off_hi=3):
 
 
 def _level_stair(w, samples, ys, s0, per_m, drop, off_lo, off_hi):
-    """疊式站上層月台下到下層月台的樓梯（站立面從軌面 +2 降到 +2 − drop）。
+    """Stair in a stacked station from the upper platform down to the lower
+    platform (the standing surface falls from rail top +2 to +2 − drop).
 
-    頭部淨空最多挖到軌面 +5：梯頂就在上層月台上，四格淨空會把 +6 的穿堂樓板
-    挖穿。上層月台被挖開的那幾階兩側圍欄杆，洞的盡頭橫著再圍一排 —— 從月台
-    另一頭走過來的人，不圍的話一步就踩進四格深的洞。
+    Headroom is cleared to rail top +5 at most: the top of the stair is on the
+    upper platform, and four blocks of headroom would dig through the
+    concourse floor slab at +6. The treads that cut into the upper platform
+    get railings on both sides, and another row runs across the far end of the
+    hole: without it, someone walking over from the other end of the platform
+    would step straight into a four-block-deep hole.
     """
     y0 = int(ys[min(s0, len(ys) - 1)])
     steps = _stair_run(w, samples, ys, s0, 1, per_m, y0 + 2, y0 + 2 - drop,
                        off_lo, off_hi, head=4, clear_max_dy=5)
     opened = []
     for si, yb in steps:
-        opened.append(yb + 4 >= int(ys[si]) + 1)      # 淨空挖到上層月台面（+1）
+        # The headroom reaches the upper platform surface (+1).
+        opened.append(yb + 4 >= int(ys[si]) + 1)
     for k, (si, yb) in enumerate(steps):
         x, z, ux, uz, _ = samples[si]
         nx, nz = -uz, ux
@@ -414,19 +464,23 @@ def _level_stair(w, samples, ys, s0, per_m, drop, off_lo, off_hi):
 
 
 def _station_access(w, samples, ys, grounds, lo, hi, label):
-    """穿堂層 -> 地面的樓梯與地面出入口建築。
+    """Stair from the concourse to the ground, and the at-grade exit building.
 
-    樓梯走在站體外側 off 13~17，深站要 2 公尺水平才降 1 公尺，
-    最深的那條線一段就要 76 公尺 —— 所以不能夾在月台長度裡。
+    The stair runs outside the station box at offsets 13 to 17. A deep station
+    needs 2 meters of horizontal run per meter of descent, and on the deepest
+    line one flight is 76 meters long, so it cannot fit within the platform
+    length.
     """
     per_m = max(1, int(round(1.0 / STEP)))
     sd = min(lo + 6 * per_m, len(samples) - 1)
     y0 = int(ys[sd])
-    ym = y0 + MEZZ_DY + 1                               # 穿堂層可站立高度
+    ym = y0 + MEZZ_DY + 1                               # Standing height on the concourse.
     g0 = int(grounds[sd]) if grounds is not None else GROUND
-    # g0 是地表最上面那塊方塊，人站在它上面時腳在 g0+1；樓梯要爬到 g0+1
-    # 才接得平站屋的地坪（_hall 把地坪墊到 g0）。原本爬到 g0 就停，
-    # 梯頂到站屋差一格 —— 走得下去，上來要跳。
+    # g0 is the topmost ground block; a person standing on it has their feet
+    # at g0+1. The stair has to climb to g0+1 to meet the station building's
+    # paving flush (_hall raises the paving to g0). It used to stop at g0,
+    # which left the top of the stair one block below the building: you could
+    # walk down, but coming up took a jump.
     n = g0 + 1 - ym
     if n < 2:
         return
@@ -435,7 +489,7 @@ def _station_access(w, samples, ys, grounds, lo, hi, label):
     if not (0 <= sd + d * need < len(samples)):
         return
 
-    for t in range(-2 * per_m, 2 * per_m + 1):          # 穿出站體側牆的通道
+    for t in range(-2 * per_m, 2 * per_m + 1):          # Passage through the station box side wall.
         si = sd + t
         if not (0 <= si < len(samples)):
             continue
@@ -451,17 +505,20 @@ def _station_access(w, samples, ys, grounds, lo, hi, label):
 
     _stair_run(w, samples, ys, sd + d * 2 * per_m, d, per_m, ym, g0 + 1, 13, 17,
                head=4, wall_offs=(12, 18), wall_ground=g0)
-    # 樓梯最後幾階的頭部淨空會把地表挖穿，站屋要往回罩到 t=-9，
-    # 否則出入口前面會留一條沒有蓋子的壕溝。
+    # The headroom of the last few steps digs through the ground surface, so
+    # the station building has to reach back to t=-9; otherwise an uncovered
+    # trench is left in front of the exit.
     _hall(w, samples, ys, sd + d * (2 + 2 * n) * per_m, d, per_m, g0, label,
           t0=-9, t1=6, o0=12, o1=18, floor_t0=1, door_t=6)
 
 
 def _hall(w, samples, ys, s0, d, per_m, g0, label, t0, t1, o0, o1,
           floor_t0, door_t, open_end=None, gate_t=None):
-    """地面站屋：t0..t1 是沿線範圍、o0/o1 是兩側牆的離線位（皆相對 s0）。
+    """Ground-level station building: t0..t1 is the range along the line, and
+    o0/o1 are the offsets of the two side walls (all relative to s0).
 
-    open_end 那一端不封（樓梯從那裡進出），door_t 那一端開門通到街上。
+    The open_end end is left open (the stair enters there), and the door_t end
+    has a door to the street.
     """
     mid = (o0 + o1) // 2
     for t in range(t0, t1 + 1):
@@ -476,7 +533,7 @@ def _hall(w, samples, ys, s0, d, per_m, g0, label, t0, t1, o0, o1,
             if o0 <= off <= o1:
                 if t >= floor_t0:
                     for yy in range(g0 - 3, g0 + 1):
-                        w.set(bx, yy, bz, CONC)         # 墊平地坪
+                        w.set(bx, yy, bz, CONC)         # Level the paving.
                 side = off in (o0, o1) or cap
                 for yy in range(g0 + 1, g0 + 5):
                     door = (t == door_t and mid - 1 <= off <= mid + 1
@@ -487,7 +544,7 @@ def _hall(w, samples, ys, s0, d, per_m, g0, label, t0, t1, o0, o1,
                         w.set(bx, yy, bz, AIR)
                 if t % 4 == 0 and off == mid:
                     w.set(bx, g0 + 4, bz, LAMP)
-            w.set(bx, g0 + 5, bz, CONC)                 # 屋頂（含出簷）
+            w.set(bx, g0 + 5, bz, CONC)                 # Roof, including the eaves.
         if gate_t is not None and t in (gate_t, gate_t + 1):
             for off in range(o0 + 1, o1):
                 bx, bz = round(x + nx * off), round(z + nz * off)
@@ -512,8 +569,10 @@ def _hall(w, samples, ys, s0, d, per_m, g0, label, t0, t1, o0, o1,
 
 
 def _plat_signs(w, samples, ys, lo, hi, label, offs=(PLAT_HALF, -PLAT_HALF), dy0=0):
-    """月台門上每 20 m 一面站名牌，牌面朝月台內側。offs 是月台門的離線位，
-    dy0 是這一層軌面相對線形軌面的高差（疊式站的下層是 −LEVEL_H）。"""
+    """A station name sign every 20 m on the platform screen doors, facing
+    into the platform. offs are the offsets of the platform screen doors, and
+    dy0 is this level's rail top relative to the alignment's rail top
+    (−LEVEL_H for the lower level of a stacked station)."""
     ref, zh, en = label
     per_m = max(1, int(round(1.0 / STEP)))
     for i in range(lo + 20 * per_m, hi - 8 * per_m, 20 * per_m):
@@ -526,22 +585,28 @@ def _plat_signs(w, samples, ys, lo, hi, label, offs=(PLAT_HALF, -PLAT_HALF), dy0
             w.sign(bx, y + 2, bz, [ref, zh, en, ""], facing=face)
 
 
-# ===== 疊式地下站：兩股道分到上下兩層 =====
+# ===== Stacked underground stations: two tracks on an upper and a lower level =====
 
 def _station_stacked(w, samples, ys, grounds, lo, hi, label, lay, access=True,
                      plat_label=None):
-    """雙層地下站（domain/stacked.py）。上層與島式站同一套尺寸 —— 穿堂仍在
-    軌面 +7，出入口、轉乘通道與驗證工具全部不必改；下層整層複製到 LEVEL_H
-    格底下，頂板就是上層的底板。lay 是 stacked.layout() 的版面：側式疊式
-    （府中）每層一股道、月台在同一側；共用島式（西門）每層兩股道各屬一條線。
+    """Two-level underground station (domain/stacked.py). The upper level has
+    the same dimensions as an island station: the concourse stays at rail top
+    +7, so exits, transfer passages and verification tools need no changes.
+    The lower level is a full copy placed LEVEL_H blocks below, and its roof
+    slab is the upper level's floor slab. lay is the layout from
+    stacked.layout(): stacked side platforms (Fuzhong) have one track per
+    level with the platforms on the same side; a shared island (Ximen) has two
+    tracks per level, one for each line.
 
-    跟島式站一樣分兩趟：先把 21 格高的箱涵挖乾淨，再安裝兩層的設備。
-    端面在每一層的隧道斷面高度各開一個洞（上層 dy −1..6、下層 dy −9..−3）。
+    As with an island station, this is done in two passes: first the
+    21-block-tall box structure is dug out, then both levels are fitted out.
+    Each end wall gets one opening at the tunnel cross-section height of each
+    level (upper dy −1..6, lower dy −9..−3).
     """
     per_m = max(1, int(round(1.0 / STEP)))
     H, bot = SK.LEVEL_H, SK.BOX_BOTTOM_DY
 
-    for i in range(lo, hi + 1):                         # ---- 第一趟：挖空 ----
+    for i in range(lo, hi + 1):                         # ---- Pass 1: excavate ----
         x, z, ux, uz, _ = samples[i]
         nx, nz = -uz, ux
         y = int(ys[i])
@@ -554,10 +619,10 @@ def _station_stacked(w, samples, ys, grounds, lo, hi, label, lay, access=True,
                          or (end and not portal))
                 w.set(bx, y + dy, bz, LINING if solid else AIR)
 
-    for dy0 in (0, -H):                                 # ---- 第二趟：兩層月台 ----
+    for dy0 in (0, -H):                                 # ---- Pass 2: both platform levels ----
         _stacked_level(w, samples, ys, lo, hi, dy0, lay)
 
-    for i in range(lo, hi + 1):                         # 穿堂樓板與照明
+    for i in range(lo, hi + 1):                         # Concourse floor slab and lighting.
         x, z, ux, uz, _ = samples[i]
         nx, nz = -uz, ux
         y = int(ys[i])
@@ -581,8 +646,10 @@ def _station_stacked(w, samples, ys, grounds, lo, hi, label, lay, access=True,
 
 
 def _stacked_level(w, samples, ys, lo, hi, dy0, lay):
-    """疊式站的一層：軌面在線形軌面 + dy0。月台鋪面（含月台門那一排）、
-    警示帶、月台門、其餘都是走行面；燈掛在這一層頂板底下。"""
+    """One level of a stacked station, with its rail top at the alignment's
+    rail top + dy0. Lays the platform paving (including the platform screen
+    door row), the warning strip and the platform screen doors; everything
+    else is track bed. Lamps hang under this level's roof slab."""
     p0, p1 = lay["plat"]
     plat = set(range(p0, p1 + 1)) | set(lay["psd"])
     for i in range(lo, hi + 1):
@@ -608,17 +675,20 @@ def _stacked_level(w, samples, ys, lo, hi, dy0, lay):
                 w.set(round(x + nx * off), y + MEZZ_DY - 1, round(z + nz * off), LAMP)
 
 
-# ===== 高架／平面站：側式月台 =====
+# ===== Elevated and at-grade stations: side platforms =====
 
 def _station_side(w, samples, ys, grounds, lo, hi, label, access=True, plat_label=None):
-    """側式月台車站：軌道走行面與區間同高，月台面再高 1 m。
+    """Side-platform station: the track bed is level with the line between
+    stations, and the platform surface is 1 m higher.
 
-    兩座月台各自封閉，靠一層穿堂（_side_concourse）串起來：閘門在穿堂層，
-    每座月台一座樓梯。真實出入口也接到穿堂層；access=False 時不蓋樣板的
-    地面樓梯（它只通到 + 側月台，有真實出入口的站用不到）。
+    The two platforms are enclosed separately and joined by a concourse
+    (_side_concourse): the fare gates are on the concourse, with one stair per
+    platform. Real exits also connect to the concourse. With access=False the
+    template ground-level stair is not built (it only reaches the + side
+    platform, and stations with real exits do not need it).
     """
     roof_h = 6
-    for i in range(lo, hi + 1):                         # 第一趟：清出站體
+    for i in range(lo, hi + 1):                         # Pass 1: clear the station box.
         x, z, ux, uz, _ = samples[i]
         nx, nz = -uz, ux
         y = int(ys[i])
@@ -627,7 +697,7 @@ def _station_side(w, samples, ys, grounds, lo, hi, label, access=True, plat_labe
             for dy in range(1, roof_h + 1):
                 w.set(bx, y + dy, bz, AIR)
 
-    for i in range(lo, hi + 1):                         # 第二趟：安裝
+    for i in range(lo, hi + 1):                         # Pass 2: install.
         x, z, ux, uz, _ = samples[i]
         nx, nz = -uz, ux
         y = int(ys[i])
@@ -640,7 +710,7 @@ def _station_side(w, samples, ys, grounds, lo, hi, label, access=True, plat_labe
             w.set(bx, y - 1, bz, CONC)
             w.set(bx, y, bz, DECK)
 
-        for off in (-5, 5):                             # 月台門
+        for off in (-5, 5):                             # Platform screen doors.
             bx, bz = round(x + nx * off), round(z + nz * off)
             for yy in range(y + 1, y + 5):
                 w.set(bx, yy, bz, AIR if door else PSD)
@@ -656,7 +726,7 @@ def _station_side(w, samples, ys, grounds, lo, hi, label, access=True, plat_labe
         for off in range(-10, 11):
             w.set(round(x + nx * off), y + roof_h, round(z + nz * off), CONC)
 
-        if (along % 8.0) < STEP:                        # 照明
+        if (along % 8.0) < STEP:                        # Lighting.
             for off in (-8, 0, 8):
                 w.set(round(x + nx * off), y + roof_h - 1, round(z + nz * off), LAMP)
 
@@ -668,38 +738,48 @@ def _station_side(w, samples, ys, grounds, lo, hi, label, access=True, plat_labe
 
 
 def _side_concourse(w, samples, ys, grounds, lo, hi):
-    """側式月台車站的穿堂層：閘門與往兩座月台的樓梯都在這一層，真實出入口
-    （application/build_exits.py）也接到這裡。
+    """Concourse of a side-platform station: the fare gates and the stairs to
+    both platforms are on this level, and real exits
+    (application/build_exits.py) connect here too.
 
-    放哪一層由 domain/alignment.py 的 station_kind 決定 —— 整站只看中心
-    取樣點判斷一次，各處的高度再以「int(ys[i]) + LEVEL_DY[型態]」逐點算，
-    站內軌面有坡時樓板跟著走（與地下站的穿堂層同一套規則）：
-      "under"  橋下穿堂：樓板在軌面 -7，橋面板（-1）就是它的頂板；
-               淨空 5 格，側牆玻璃，橋墩穿過大廳
-      "over"   天橋式穿堂：樓板在軌面 +7，疊在站屋屋頂（+6）上，
-               頂板在 +11，側牆玻璃
+    Which level it is on is decided by station_kind in domain/alignment.py:
+    the whole station is judged once, from the center sample only, and every
+    height is then computed point by point as int(ys[i]) + LEVEL_DY[kind], so
+    the floor slab follows any grade in the station's rail top (the same rule
+    as the concourse of an underground station):
+      "under"  concourse under the viaduct: floor slab at rail top -7, and
+               the bridge deck (-1) is its roof slab; 5 blocks of clearance,
+               glass side walls, and the piers pass through the hall
+      "over"   footbridge concourse: floor slab at rail top +7, stacked on the
+               station building roof (+6), roof slab at +11, glass side walls
 
-    閘門在 lo+14 m（與地下站相同，出入口的側牆開洞在 lo+7）。兩座月台樓梯
-    都擺在 hi 端、月台最外側兩排（|off| 8..9），梯底落在付費區：
-      · 擺在 lo 端的話，"over" 的樓梯會在穿堂樓板上開一條 lo+1..lo+11 的洞，
-        正好貼著出入口在 lo+5..lo+9 開的門 —— 出門一步就是三格深的梯井；
-      · "under" 的樓梯 16 m 長，從 lo 端起算梯底會踩進 lo+14 的閘門列。
-    月台最外側兩排給了樓梯，警戒帶（|off| 6）與內側一排仍走得通。
+    The fare gates are at lo+14 m (as in underground stations; the side-wall
+    opening for exits is at lo+7). Both platform stairs are at the hi end, in
+    the two outermost rows of each platform (|off| 8..9), with the foot of
+    each stair in the paid area:
+      · At the lo end, the "over" stair would open a hole at lo+1..lo+11 in
+        the concourse floor slab, right against the door the exit opens at
+        lo+5..lo+9: one step out of the door would be a three-block-deep
+        stairwell.
+      · The "under" stair is 16 m long; measured from the lo end, its foot
+        would land in the gate row at lo+14.
+    The two outermost rows of each platform go to the stairs; the warning
+    strip (|off| 6) and the inner row remain walkable.
     """
     per_m = max(1, int(round(1.0 / STEP)))
     mid = (lo + hi) // 2
     g_mid = int(grounds[mid]) if grounds is not None else GROUND
     kind = station_kind(int(ys[mid]), g_mid)
-    if kind == "tunnel":                                # 地下站不會走到這裡
+    if kind == "tunnel":                                # Underground stations never get here.
         return
-    dy = LEVEL_DY[kind]                                 # 站立面相對軌面
+    dy = LEVEL_DY[kind]                                 # Standing surface relative to the rail top.
     under = kind == "under"
 
     def levels(y):
-        """(樓板方塊, 頂板方塊)"""
+        """(floor slab block, roof slab block)"""
         return y + dy - 1, (y - 1 if under else y + dy + 3)
 
-    # ---- 樓板、淨空、側牆、端牆、照明 ----
+    # ---- Floor slab, clearance, side walls, end walls, lighting ----
     for i in range(lo, hi + 1):
         x, z, ux, uz, _ = samples[i]
         nx, nz = -uz, ux
@@ -710,19 +790,22 @@ def _side_concourse(w, samples, ys, grounds, lo, hi):
             bx, bz = round(x + nx * off), round(z + nz * off)
             side = abs(off) == 11
             w.set(bx, fl, bz, CONC)
-            w.set(bx, ceil, bz, CONC)                   # "under" 的 |off|<=10 就是橋面板
+            w.set(bx, ceil, bz, CONC)                   # For "under", |off|<=10 is the bridge deck.
             for yy in range(fl + 1, ceil):
                 w.set(bx, yy, bz, CONC if end else (GLASS if side else AIR))
-        if not end and (((i - lo) * STEP) % 8.0) < STEP:  # 端牆不嵌燈
+        if not end and (((i - lo) * STEP) % 8.0) < STEP:  # No lamps in the end walls.
             for off in (-7, 0, 7):
                 w.set(round(x + nx * off), ceil - 1, round(z + nz * off), LAMP)
 
     _gates(w, samples, ys, lo + 14 * per_m, per_m, floor_dy=dy - 1)
 
-    # ---- 橋墩 ----
-    # 區間的 sec_bridge 在車站之前就蓋了，上面的掏空會把大廳裡那一截切掉；
-    # 照 sec_bridge 的位置（同一個取樣條件、同樣以中心點取整的 3x3）補回來，
-    # 橋面板在大廳裡才有東西撐著。樓板那一格維持 CONC，柱子像是穿樓板而過。
+    # ---- Piers ----
+    # sec_bridge built the line between stations before the station, and the
+    # excavation above cuts away the part of each pier inside the hall. Put the
+    # piers back at the sec_bridge positions (the same sampling condition, and
+    # the same 3x3 rounded at the center point) so that the bridge deck has
+    # support inside the hall. The floor slab cell stays CONC, so the pier
+    # appears to pass through the floor slab.
     if under:
         for i in range(lo, hi + 1):
             if abs((i * STEP) % PIER_EVERY) >= STEP / 2:
@@ -739,10 +822,12 @@ def _side_concourse(w, samples, ys, grounds, lo, hi):
                     for yy in range(fl + 1, y - 1):
                         w.set(cx + ddx, yy, cz + ddz, PIER)
 
-    # ---- 月台樓梯 ----
-    # 每座月台一座，2 格寬，從 hi 端往回退 run+1 m 起算；"under" 從穿堂往上爬
-    # 到月台，"over" 從穿堂往下走。y_from / y_to 都是站立面：梯底那一階半磚
-    # 與樓板齊平、梯頂整塊與月台面（y+1）齊平，兩端才不會差一格。
+    # ---- Platform stairs ----
+    # One per platform, 2 blocks wide, starting run+1 m back from the hi end;
+    # "under" climbs from the concourse up to the platform, and "over" goes
+    # down from the concourse. y_from / y_to are both standing surfaces: the
+    # bottom slab is flush with the floor slab and the top full block is flush
+    # with the platform surface (y+1), so neither end is off by a block.
     run = 2 * abs(dy - 2)
     s0 = hi - (run + 1) * per_m
     if s0 <= lo:
@@ -755,10 +840,13 @@ def _side_concourse(w, samples, ys, grounds, lo, hi):
 
 def _side_stair(w, samples, ys, s0, per_m, y_from, y_to, off_lo, off_hi,
                 under, levels):
-    """一座月台樓梯，連同它在月台面或穿堂樓板上開的洞周圍的欄杆。
+    """One platform stair, together with the railings around the hole it
+    opens in the platform surface or the concourse floor slab.
 
-    頭部淨空（4 格）會自動把橋面板與月台面（"under"）或站屋屋頂與穿堂樓板
-    （"over"）挖開；clear_max_dy 擋住它，免得挖穿站屋屋頂或穿堂頂板。
+    The headroom (4 blocks) automatically digs open the bridge deck and the
+    platform surface ("under"), or the station building roof and the
+    concourse floor slab ("over"); clear_max_dy stops it from digging through
+    the station building roof or the concourse roof slab.
     """
     head = 4
     steps = _stair_run(w, samples, ys, s0, 1, per_m, y_from, y_to, off_lo, off_hi,
@@ -767,31 +855,36 @@ def _side_stair(w, samples, ys, s0, per_m, y_from, y_to, off_lo, off_hi,
         return
     sgn = 1.0 if y_to > y_from else -1.0
     sd = 1 if off_lo > 0 else -1
-    # 每一階：踏面站立高度、是否把「走的那一層」的樓板挖開了
+    # For each tread: the standing height, and whether it opened the floor
+    # slab of the level people walk on.
     info = []
     for k, (si, yb) in enumerate(steps):
         y = int(ys[si])
         fl, _ = levels(y)
-        walk_blk = (y + 1) if under else fl               # 月台面 / 穿堂樓板
+        walk_blk = (y + 1) if under else fl               # Platform surface / concourse floor slab.
         foot = int(math.floor(y_from + sgn * 0.5 * (k + 1)))
         info.append((si, yb + head >= walk_blk, walk_blk + 1, foot))
     for k, (si, opened, stand, foot) in enumerate(info):
         x, z, ux, uz, _ = samples[si]
         nx, nz = -uz, ux
         if opened and stand - foot >= 2:
-            # 洞口兩側：月台側只圍內側那一排（外側是站屋玻璃牆）；穿堂層
-            # 兩側都圍，靠牆那一排太窄，別讓人從那裡掉下去
+            # Both sides of the opening: on the platform, only the inner row
+            # gets railings (the outer side is the station building's glass
+            # wall); on the concourse both sides do, because the row along the
+            # wall is too narrow and nobody should fall in from there.
             for off in ((7,) if under else (7, 10)):
                 w.set(round(x + nx * sd * off), stand, round(z + nz * sd * off), BARS)
         nb = [info[j][1] for j in (k - 1, k + 1) if 0 <= j < len(info)]
         if not opened and any(nb):
-            # 洞的盡頭：這一格樓板還在、隔壁已經是洞，橫著圍一排
+            # The end of the hole: this floor cell is still there and the next
+            # one is already open, so a row of railings goes across.
             for off in range(off_lo, off_hi + 1):
                 w.set(round(x + nx * off), stand, round(z + nz * off), BARS)
 
 
 def place_signs(w, samples, ys, lo, hi, label):
-    """月台兩側每 20 m 立一面站名牌，牌面朝月台內側（朝軌道）。"""
+    """A station name sign every 20 m on both sides of the platform, facing
+    into the platform (toward the tracks)."""
     ref, zh, en = label
     per_m = max(1, int(round(1.0 / STEP)))
     for i in range(lo + 8 * per_m, hi - 6 * per_m, 20 * per_m):
@@ -804,16 +897,20 @@ def place_signs(w, samples, ys, lo, hi, label):
 
 
 def build_entrance(w, samples, ys, lo, hi, grounds=None, label=None):
-    """高架站出入口樓梯：從真實地面爬到月台面。
+    """Exit stair of an elevated station: climbs from the real ground to the
+    platform surface.
 
-    階高一定要從當地地面 grounds[] 起算。之前寫死成常數 GROUND=64，
-    地面在 71 m 的地方樓梯就從地下 7 m 才開始，上面只剩一口沒有階梯的直井。
+    Step heights must be counted from the local ground, grounds[]. They used
+    to be counted from the hard-coded constant GROUND=64, so where the ground
+    was at 71 m the stair started 7 m underground, leaving only a vertical
+    shaft with no steps above it.
     """
     per_m = max(1, int(round(1.0 / STEP)))
     start = min(lo + 4 * per_m, len(ys) - 1)
     g0 = int(grounds[start]) if grounds is not None else GROUND
     y_plat = int(ys[start]) + 2
-    # 站在地表方塊 g0 上面時腳在 g0+1，樓梯從那裡起算才接得平站廳地坪
+    # Standing on the ground block g0 puts the feet at g0+1; the stair has to
+    # start there to meet the station hall's paving flush.
     need = (abs(y_plat - g0 - 1) * 2 + 4) * per_m
     d = 1 if start + need < len(samples) else -1
     if not (0 <= start + d * need < len(samples)):
@@ -822,14 +919,17 @@ def build_entrance(w, samples, ys, lo, hi, grounds=None, label=None):
                        head=4, wall_offs=(10, 14), wall_ground=g0)
     if not steps:
         return
-    # 樓梯腳下的地面站廳，閘門擺在裡面。平面站的月台就在地面高度，
-    # 站廳擺在 off 9 會把月台外側兩排與玻璃牆蓋掉，得整個往外挪到月台外。
+    # The ground-level station hall at the foot of the stair, with the fare
+    # gates inside. At an at-grade station the platform is at ground level, and
+    # a hall at off 9 would cover the two outer platform rows and the glass
+    # wall, so the hall has to move out beyond the platform.
     o0 = 11 if y_plat - g0 <= 6 else 9
     _hall(w, samples, ys, start, d, per_m, g0, label, t0=-11, t1=0,
           o0=o0, o1=o0 + 8, floor_t0=-11, door_t=-11, open_end=0, gate_t=-4)
     si, _ = steps[-1]
     for s in range(max(0, si - per_m), min(len(samples), si + 2 * per_m)):
-        x, z, ux, uz, _ = samples[s]                    # 梯頂平台，接上月台面
+        # Landing at the top of the stair, joined to the platform surface.
+        x, z, ux, uz, _ = samples[s]
         nx, nz = -uz, ux
         yb = int(ys[s]) + 1
         for off in range(10, 14):

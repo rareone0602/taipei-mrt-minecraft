@@ -1,23 +1,28 @@
 #!/usr/bin/env python3
-"""從存檔讀回地下街，檢查每個出入口真的走得到彼此 —— 不相信生成器的自述。
+"""Read the underground malls back from a world save and check that every exit can
+really reach the others, instead of trusting the generator's own account.
 
-生成器只知道自己放了哪些方塊，不知道那些方塊拼起來走不走得通。少鋪一階、
-通道被別條線的隧道襯砌切斷、頂板壓到只剩一格淨空，在生成紀錄裡通通是
-「已完成」。所以獨立把方塊讀回來，用玩家真的走得動的規則（domain/walk.py）
-洪水填滿，看出入口落在幾個連通分量裡。
+The generator knows only which blocks it placed, not whether they add up to a walkable
+route. A missing step, a passage cut by another line's tunnel lining, a ceiling pressed
+down to one block of headroom: in the build log all of these are "done". So the blocks
+are read back independently and flood-filled under the rules a player can really walk by
+(domain/walk.py), to see how many connected components the exits fall into.
 
-關鍵是**不准走到地面**：所有出入口本來就都開在同一條街上，容許走地面的話
-一定全部相連，等於什麼都沒驗到。地下的可走空間才算數。
+The key is that **walking on the surface is not allowed**. All the exits open onto the
+same streets, so with the surface allowed they would always be connected and nothing
+would have been checked. Only walkable space underground counts.
 
-檢查四件事：
-  1. 每個出入口在地下都有站得住的空間（不是一個通到實心土裡的洞）
-  2. 不出地面就能在出入口之間往返（連通分量只有一個）
-  3. 走得到月台邊緣的黃色警戒帶（地下街真的接進車站，不是自成一區）
-  4. 每個出入口也連得上地面（樓梯沒有被封死在地下）
+Four checks:
+  1. Every exit has standable space underground (not a hole into solid ground).
+  2. The exits can be reached from each other without surfacing (exactly one connected
+     component).
+  3. The yellow warning strip at the platform edge is reachable (the underground mall
+     really connects into the station instead of forming an area of its own).
+  4. Every exit also connects to the surface (no stair is sealed underground).
 
-用法:
-    ./.venv/bin/python tools/verify_concourse.py                     # 預設存檔、台北車站
-    ./.venv/bin/python tools/verify_concourse.py out/測試 --stations 台北車站 北門
+Usage:
+    ./.venv/bin/python tools/verify_concourse.py                     # Default save, Taipei Main Station
+    ./.venv/bin/python tools/verify_concourse.py <save> --stations 台北車站 北門
 """
 import argparse
 import collections
@@ -32,11 +37,11 @@ from mrt.domain import walk
 from mrt.domain.terrain import Terrain
 from mrt.infrastructure.savereader import read_volume
 
-PLAT_EDGE = "minecraft:yellow_concrete"     # 月台邊緣警戒帶，build_line 的 YELLOW
+PLAT_EDGE = "minecraft:yellow_concrete"     # Platform-edge warning strip: YELLOW in build_line.
 
 
 def walk_candidates(get, x, y, z, radius=8, dy=20):
-    """(x, y, z) 附近站得住的格子，近的在前。"""
+    """Standable cells near (x, y, z), nearest first."""
     out = []
     for ddy in range(-dy, dy + 1):
         for ddx in range(-radius, radius + 1):
@@ -49,7 +54,7 @@ def walk_candidates(get, x, y, z, radius=8, dy=20):
 
 
 def load_entrances(stations, margin):
-    """挑出屬於這幾座車站的出入口，並算出要讀回來的範圍。"""
+    """Pick the exits that belong to these stations and compute the area to read back."""
     items = json.load(open(config.ENTRANCES_JSON, encoding="utf-8"))["items"]
     out = []
     for e in items:
@@ -72,32 +77,36 @@ def main():
     ap.add_argument("save", nargs="?", default=config.DEFAULT_SAVE)
     ap.add_argument("--stations", nargs="+", default=["台北車站"])
     ap.add_argument("--margin", type=int, default=60,
-                    help="出入口範圍再往外擴幾公尺")
+                    help="Metres to extend the area beyond the exits")
     ap.add_argument("--depth", type=int, default=60,
-                    help="從地面往下讀幾公尺（第 2 帶的站體軌面在地下 45 m，"
-                         "北門的松山新店線月台就在那裡，40 m 讀不到）")
+                    help="Metres to read below the ground. The rail top of a depth band 2 station "
+                         "box is 45 m underground, where the Songshan-Xindian Line "
+                         "platform at Beimen is, so 40 m misses it")
     a = ap.parse_args()
 
     if not os.path.isdir(a.save):
-        print(f"找不到存檔 {a.save}")
+        print(f"World save not found: {a.save}")
         return 1
 
     ents, box = load_entrances(a.stations, a.margin)
     if not ents:
-        print(f"entrances.json 裡沒有 {', '.join(a.stations)} 的出入口")
+        print(f"entrances.json has no exits for {', '.join(a.stations)}")
         return 1
     x0, z0, x1, z1 = box
 
     terr = Terrain()
     gs = [int(terr.y_at(x, z)) for _, _, x, z in ents]
     g_hi = max(gs)
-    y1 = g_hi + 6                       # 含地面出入口亭
+    y1 = g_hi + 6                       # Includes the exit kiosks at street level.
     y0 = min(gs) - a.depth
 
-    # 「地下」逐格看當地地面：腳的高度要比地表方塊低 2 格以上。原本拿所有
-    # 出入口裡最低的地面當全域上限，中山、雙連那頭的地面比台北車站低 3 m，
-    # 一併驗的時候整條地下街都被判成「地表」，剩下零星的口袋各成一個分量。
-    # 出入口亭的地坪在地表方塊上、梯頂兩階在地表下一格，都不算地下。
+    # "Underground" is judged cell by cell against the local ground: the feet must be 2 or
+    # more blocks below the ground surface block. The check once used the lowest ground
+    # among all exits as a global ceiling. The ground near Zhongshan and Shuanglian is 3 m
+    # lower than at Taipei Main Station, so checking them together judged the whole
+    # underground mall to be "surface", and the scattered pockets left over each became a
+    # component of their own. The paving of an exit kiosk sits on the ground surface block
+    # and the top two steps of a stair are one block below it; neither counts as underground.
     import numpy as np
     GX, GZ = np.meshgrid(np.arange(x0, x1 + 1), np.arange(z0, z1 + 1))
     T = terr.y_at(GX, GZ)
@@ -105,16 +114,17 @@ def main():
     def underground(x, y, z):
         return y <= int(T[z - z0, x - x0]) - 2
 
-    print(f"存檔 {a.save}")
-    print(f"車站 {', '.join(a.stations)}：出入口 {len(ents)} 個")
-    print(f"範圍 x {x0}..{x1}  z {z0}..{z1}  y {y0}..{y1}"
-          f"（地面 y {min(gs)}~{g_hi}，地下 = 腳比當地地表低 2 格以上）")
+    print(f"World save {a.save}")
+    print(f"Stations {', '.join(a.stations)}: {len(ents)} exits")
+    print(f"Area x {x0}..{x1}  z {z0}..{z1}  y {y0}..{y1}"
+          f" (ground y {min(gs)}-{g_hi}; underground = feet 2 or more blocks below the "
+          f"local surface)")
 
     vol = read_volume(a.save, x0, y0, z0, x1, y1, z1)
     get = vol.get
     ug_bounds = (x0, y0, z0, x1, g_hi, z1)
 
-    # ---- 1. 每個出入口在地下有沒有立足點 ----
+    # ---- 1. Does every exit have a foothold underground? ----
     foot, nowhere = {}, []
     for (ref, st, x, z), g in zip(ents, gs):
         best = None
@@ -127,40 +137,40 @@ def main():
         else:
             nowhere.append(f"{ref}({st})")
 
-    print(f"\n[1] 地下有立足點：{len(foot)}/{len(ents)}")
+    print(f"\n[1] Foothold underground: {len(foot)}/{len(ents)}")
     if nowhere:
-        print(f"    地下完全沒有東西的出入口 {len(nowhere)} 個："
+        print(f"    Exits with nothing at all underground ({len(nowhere)}): "
               f"{', '.join(nowhere)}")
 
     if not foot:
-        print("\n地下什麼都沒有，不必再往下驗。")
+        print("\nNothing underground, so the remaining checks are skipped.")
         return 1
 
-    # ---- 2. 不出地面的連通性 ----
+    # ---- 2. Connectivity without surfacing ----
     cells = list(foot.values())
     comps = walk.components(get, cells, bounds=ug_bounds, allow=underground)
     inv = collections.defaultdict(list)
     for (ref, st), c in foot.items():
-        # ref 在不同車站會重複（台北車站與北門都有 1、2、3 號出入口），
-        # 只印 ref 會看不出是哪一站的。
+        # A ref repeats across stations (Taipei Main Station and Beimen both have exits 1, 2
+        # and 3), so printing only the ref would not show which station it belongs to.
         inv[c].append(f"{ref}({st})" if len(a.stations) > 1 else ref)
-    print(f"\n[2] 不出地面的連通分量：{len(comps)} 個")
+    print(f"\n[2] Connected components without surfacing: {len(comps)}")
     for i, g in enumerate(comps, 1):
         refs = sorted({r for c in g for r in inv[c]})
         head = ", ".join(refs[:14]) + (" …" if len(refs) > 14 else "")
-        print(f"    分量{i:>2}（{len(refs):>3} 個出入口）: {head}")
+        print(f"    Component {i:>2} ({len(refs):>3} exits): {head}")
 
-    # 最遠的一對走幾步：地下街不該繞遠路
+    # Steps between the farthest pair: an underground mall should not take a long way round.
     main_comp = comps[0]
     dist, came = walk.flood(get, [main_comp[0]], bounds=ug_bounds, allow=underground)
     far = max(((dist.get(c, -1), c) for c in main_comp), key=lambda t: t[0])
     if far[0] > 0:
         refs = ", ".join(inv[far[1]])
-        print(f"    最大分量內，從 {', '.join(inv[main_comp[0]])} 走到 {refs} "
-              f"要 {far[0]:,} 步")
+        print(f"    In the largest component, {', '.join(inv[main_comp[0]])} to {refs} "
+              f"takes {far[0]:,} steps")
 
-    # ---- 3. 走不走得到月台 ----
-    print("\n[3] 從最大分量走得到的月台邊緣：")
+    # ---- 3. Can the platforms be reached? ----
+    print("\n[3] Platform edges reachable from the largest component:")
     edges = []
     for yy in range(y0, g_hi + 1):
         for zz in range(z0, z1 + 1, 4):
@@ -168,10 +178,11 @@ def main():
                 if get(xx, yy, zz) == PLAT_EDGE and underground(xx, yy + 1, zz):
                     edges.append((xx, yy + 1, zz))
     if not edges:
-        print("    範圍內沒有月台警戒帶（這個存檔可能沒蓋車站）")
+        print("    No platform warning strip in the area (this save may have no stations)")
     else:
-        # 把警戒帶分群 —— 範圍裡不只一座車站，混在一起數會看不出
-        # 「哪一座月台走不到」。同 y 且相距 60 m 內算同一座月台。
+        # Group the warning strips. The area holds more than one station, and counting them
+        # together would hide which platform cannot be reached. Strips at the same y within
+        # 60 m of each other count as one platform.
         groups = []
         for c in sorted(edges):
             for g in groups:
@@ -185,15 +196,16 @@ def main():
             n = sum(1 for c in g if c in dist)
             gx = sum(c[0] for c in g) // len(g)
             gz = sum(c[2] for c in g) // len(g)
-            print(f"    月台面 y={g[0][1]:>3} 約 ({gx:>5},{gz:>5})："
-                  f"抽樣 {len(g):>3} 格，走得到 {n:>3} 格"
-                  + ("" if n else "   <- 走不到"))
+            print(f"    Platform y={g[0][1]:>3} near ({gx:>5},{gz:>5}): "
+                  f"{len(g):>3} cells sampled, {n:>3} reachable"
+                  + ("" if n else "   <- unreachable"))
         reach_edges = [c for c in edges if c in dist]
 
-    # ---- 4. 每個出入口通不通地面 ----
-    # 一定要逐個出入口各洪水一次。把所有立足點一起當起點的話，只要有一座
-    # 樓梯通到街上，全部出入口就都「通過」了 —— 街道本來就是連通的，
-    # 那樣等於什麼都沒驗到。範圍也要圈在出入口附近，否則會沿著街道漫出去。
+    # ---- 4. Does every exit reach the surface? ----
+    # Each exit must be flooded separately. Starting from all footholds at once, a single
+    # stair reaching the street would make every exit "pass", since the streets are
+    # connected anyway, and nothing would have been checked. The bounds must also stay near
+    # the exit, or the flood spreads along the streets.
     no_surface = []
     for (ref, st), c in sorted(foot.items()):
         g = int(terr.y_at(c[0], c[2]))
@@ -201,14 +213,15 @@ def main():
         d, _ = walk.flood(get, [c], bounds=b)
         if not any(p[1] >= g for p in d):
             no_surface.append(f"{ref}({st})")
-    print(f"\n[4] 從地下走得上地面：{len(foot) - len(no_surface)}/{len(foot)}")
+    print(f"\n[4] Surface reachable from underground: {len(foot) - len(no_surface)}/{len(foot)}")
     if no_surface:
-        print(f"    出不去地面的：{', '.join(no_surface)}")
+        print(f"    Cannot reach the surface: {', '.join(no_surface)}")
 
     bad = bool(nowhere) or len(comps) > 1 or bool(no_surface) \
         or (edges and not reach_edges)
-    print("\n" + ("有問題，見上面各項" if bad else
-                  "全部通過：所有出入口不出地面就能互相往返，並且都通得到月台與地面"))
+    print("\n" + ("Problems found: see the checks above" if bad else
+                  "All passed: every exit reaches every other without surfacing, and each "
+                  "reaches the platforms and the surface"))
     return 1 if bad else 0
 
 

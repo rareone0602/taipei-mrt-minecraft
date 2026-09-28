@@ -1,27 +1,36 @@
 #!/usr/bin/env python3
-"""從存檔讀回出生點與區塊高度圖，驗證新玩家會站在該站的地方。
+"""Read the spawn point and the chunk heightmaps back from a world save, and check that a
+new player stands where they should.
 
-玩家曾經生在 (0.5, -63, 0.5)，世界最底下的石頭裡。遊戲找出生點
-（26.2 的 PlayerSpawnFinder）不看方塊本身，而是查區塊存的 MOTION_BLOCKING
-高度圖取柱頂、用 WORLD_SURFACE 與 OCEAN_FLOOR 排除水面，再從柱頂往下找第一個
-頂面完整的方塊，站在它上面。所以光是「出生點那格站得住」不夠，高度圖也得對。
+Players once spawned at (0.5, -63, 0.5), inside the stone at the bottom of the world. The
+game's spawn search (PlayerSpawnFinder in 26.2) does not look at the blocks themselves. It
+reads the column top from the MOTION_BLOCKING heightmap stored in the chunk, uses
+WORLD_SURFACE and OCEAN_FLOOR to rule out water surfaces, then searches down from the
+column top for the first block with a full top face and stands on it. So a standable spawn
+cell is not enough; the heightmaps must be right too.
 
-這支工具只讀磁碟，不信生成器的自述：
+This tool reads only the disk and does not trust the generator's own account:
 
-  (a) 讀 level.dat 的 spawn（pos、yaw、pitch、dimension）
-  (b) 出生點那一格站得住（walk.standable），而且頭上一路到世界頂都是空氣
-  (c) 解出生點所在區塊、周圍 3x3、再抽一批別的區塊，把存的四張高度圖
-      和從 section 方塊重算的結果逐柱比對（--all 則比對全部區塊）
-  (d) 照遊戲的 getLevelRespawnPos 用存的高度圖走一遍：玩家要剛好落在出生點那一格
-  (e) 面向的方向上是出入口亭的門洞，門裡看得到出口牌
-  另外印出 respawn_radius（預設 10）範圍內的候選柱各會落在哪裡 —— 只供參考，
-  不算失敗：半徑內有屋頂的話，玩家有機會被放到屋頂上。
+  (a) Read the spawn from level.dat (pos, yaw, pitch, dimension).
+  (b) The spawn cell is standable (walk.standable), with air all the way from the head to
+      the top of the world.
+  (c) Decode the spawn chunk, the 3x3 around it and a sample of other chunks, and compare
+      the four stored heightmaps column by column with the ones recomputed from the
+      section blocks (--all compares every chunk).
+  (d) Follow the game's getLevelRespawnPos with the stored heightmaps: the player must land
+      exactly on the spawn cell.
+  (e) The facing direction looks into the doorway of an exit kiosk, with the exit sign
+      visible inside.
+  It also prints where each candidate column within respawn_radius (default 10) would
+  land. This is for reference only and does not count as a failure: with a roof within
+  the radius, a player may be placed on the roof.
 
-重算高度圖用的分類表是 mrt/infrastructure/heightmap.py（與生成器同一份；
-那份表本身是拿 26.2 的 Heightmap.Types.*.isOpaque() 對全部方塊狀態比對過的）。
+The classification table for recomputing the heightmaps is mrt/infrastructure/heightmap.py
+(the same one the generator uses; that table was itself checked against 26.2's
+Heightmap.Types.*.isOpaque() for every block state).
 
-用法:
-    ./.venv/bin/python tools/verify_spawn.py <存檔> [--sample 300] [--all] [--radius 10]
+Usage:
+    ./.venv/bin/python tools/verify_spawn.py <save> [--sample 300] [--all] [--radius 10]
 """
 import argparse
 import math
@@ -41,11 +50,13 @@ from mrt.infrastructure import savereader as SR
 
 AIRS = HM.AIR_BLOCKS
 
-# 碰撞箱頂面不完整的方塊（半格高、細柱、門、梯、罐子……）。遊戲找出生點時
-# 要找「頂面完整」（Block.isFaceFull(collision, UP)）的方塊才站得上去。
-# 這裡只求對本專案用到的材質與常見方塊判得對：walk.is_support 過了、名稱不落在
-# 下面這些形狀裡，就當成完整方塊。用字尾與全名比對，不用子字串 —— 子字串會把
-# bedrock 當成床（bed）、把 sea_lantern 當成燈籠。
+# Blocks whose collision box has an incomplete top face (half height, thin posts, doors,
+# ladders, pots...). The game's spawn search stands only on a block with a full top face
+# (Block.isFaceFull(collision, UP)). This only needs to be right for the materials this
+# project uses and for common blocks: a block that passes walk.is_support and whose name
+# does not fall among the shapes below counts as full. The match is on suffixes and full
+# names, not substrings: a substring match would take bedrock for a bed and sea_lantern for
+# a lantern.
 _PARTIAL_SUFFIX = ("_fence", "_fence_gate", "_wall", "_pane", "_door", "_trapdoor",
                    "_pressure_plate", "_carpet", "_bed", "candle", "cake", "_sign",
                    "_banner", "_head", "_skull", "_button", "rail", "torch",
@@ -64,7 +75,8 @@ _PARTIAL_NAMES = frozenset("minecraft:" + n for n in """
 
 
 def full_top(block):
-    """這個方塊的碰撞箱頂面是不是完整一整面（站得上去、出生點會落在它上面）。"""
+    """Whether this block's collision box has a full top face (it can be stood on, and a
+    spawn lands on it)."""
     if not walk.is_support(block):
         return False
     name = walk.base_name(block)
@@ -88,7 +100,7 @@ def read_level(save):
 
 
 class ChunkData:
-    """一個讀回來的區塊：section 方塊與存的高度圖。"""
+    """A chunk read back: its section blocks and stored heightmaps."""
 
     def __init__(self, cx, cz, root):
         self.cx, self.cz = cx, cz
@@ -110,7 +122,7 @@ class ChunkData:
         return HM.heights_from_palettes(self.secs)
 
     def block(self, x, y, z):
-        """區塊內座標 (0..15) 的方塊。"""
+        """The block at in-chunk coordinates (0..15)."""
         s = self.secs.get(y >> 4)
         if s is None:
             return "minecraft:air"
@@ -119,13 +131,14 @@ class ChunkData:
 
 
 def check_chunk(ch):
-    """比對一個區塊存的高度圖與重算的結果。回傳問題描述清單（空的就是全對）。"""
+    """Compare a chunk's stored heightmaps with the recomputed ones. Return a list of
+    problem descriptions (empty when everything matches)."""
     probs = []
     if ch.keys != sorted(HM.TYPES):
-        probs.append(f"高度圖的鍵是 {ch.keys}，應該剛好是 {sorted(HM.TYPES)}")
+        probs.append(f"heightmap keys are {ch.keys}; expected exactly {sorted(HM.TYPES)}")
     bad_len = {k: n for k, n in ch.lens.items() if n != HM.N_LONGS}
     if bad_len:
-        probs.append(f"長度不是 {HM.N_LONGS} 個 long：{bad_len}")
+        probs.append(f"length is not {HM.N_LONGS} longs: {bad_len}")
     mine = ch.recomputed()
     for k, t in enumerate(HM.TYPES):
         if t not in ch.stored:
@@ -134,13 +147,15 @@ def check_chunk(ch):
         if len(diff):
             i = int(diff[0])
             x, z = i % 16, i // 16
-            probs.append(f"{t} 有 {len(diff)} 柱不符，例如 ({ch.cx * 16 + x},{ch.cz * 16 + z})："
-                         f"存的柱頂 y{HM.top_y(ch.stored[t][i])}，方塊重算 y{HM.top_y(mine[k][i])}")
+            probs.append(f"{t} differs in {len(diff)} columns, for example "
+                         f"({ch.cx * 16 + x},{ch.cz * 16 + z}): stored top "
+                         f"y{HM.top_y(ch.stored[t][i])}, recomputed from blocks "
+                         f"y{HM.top_y(mine[k][i])}")
     return probs
 
 
 class Nearby:
-    """出生點附近讀回來的區塊（只從磁碟）。"""
+    """Chunks near the spawn point, read back (from disk only)."""
 
     def __init__(self, save, coords):
         self.chunks = {(cx, cz): ChunkData(cx, cz, root)
@@ -153,18 +168,20 @@ class Nearby:
         return ch.block(x & 15, y, z & 15)
 
     def top(self, t, x, z):
-        """存的高度圖在 (x, z) 的柱頂 y（遊戲的 getHeight）。"""
+        """Column top y at (x, z) in the stored heightmap (the game's getHeight)."""
         ch = self.chunks.get((x >> 4, z >> 4))
         if ch is None or t not in ch.stored:
             return None
         return HM.top_y(ch.stored[t][(x & 15) + (z & 15) * 16])
 
     def respawn_pos(self, x, z):
-        """照 26.2 的 PlayerSpawnFinder.getLevelRespawnPos 走一遍（有天空的維度）。
+        """Follow 26.2's PlayerSpawnFinder.getLevelRespawnPos (for a dimension with a sky).
 
-        i = MOTION_BLOCKING 柱頂；比世界底還低就放棄。WORLD_SURFACE 柱頂 j 若
-        不高於 i 又高於 OCEAN_FLOOR 柱頂，這一柱是水面，放棄。否則從 i+1 往下找：
-        碰到流體就放棄，第一個頂面完整的方塊上面那一格就是答案。回傳 y 或 None。
+        i = the MOTION_BLOCKING column top; give up if it is below the bottom of the world.
+        If the WORLD_SURFACE column top j is no higher than i but higher than the
+        OCEAN_FLOOR column top, the column is a water surface; give up. Otherwise search
+        down from i+1: give up on meeting a fluid, and the cell above the first block with
+        a full top face is the answer. Return y or None.
         """
         i = self.top("MOTION_BLOCKING", x, z)
         if i is None or i < Y_MIN:
@@ -182,13 +199,14 @@ class Nearby:
         return None
 
     def fits(self, x, y, z):
-        """noCollisionNoLiquid：玩家（0.6 x 1.8）放在這一格底面中央，碰不到方塊、不在水裡。"""
+        """noCollisionNoLiquid: a player (0.6 x 1.8) placed at the center of this cell's floor
+        touches no block and is not in water."""
         return all(walk.is_passable(self.get(x, yy, z)) and not HM.has_fluid(self.get(x, yy, z))
                    for yy in (y, y + 1))
 
 
 def facing_of(yaw):
-    """Minecraft 的 yaw -> 水平朝向的最近正交方向 (dx, dz)。"""
+    """Minecraft yaw -> the nearest orthogonal horizontal direction (dx, dz)."""
     fx, fz = -math.sin(math.radians(yaw)), math.cos(math.radians(yaw))
     return (int(round(fx)), 0) if abs(fx) >= abs(fz) else (0, int(round(fz)))
 
@@ -196,9 +214,10 @@ def facing_of(yaw):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("save")
-    ap.add_argument("--sample", type=int, default=300, help="另外抽幾個區塊比對高度圖")
-    ap.add_argument("--all", action="store_true", help="比對存檔裡每一個區塊的高度圖")
-    ap.add_argument("--radius", type=int, default=10, help="respawn_radius（只供參考）")
+    ap.add_argument("--sample", type=int, default=300,
+                    help="Number of extra chunks to sample for the heightmap comparison")
+    ap.add_argument("--all", action="store_true", help="Compare the heightmaps of every chunk in the save")
+    ap.add_argument("--radius", type=int, default=10, help="respawn_radius (for reference only)")
     a = ap.parse_args()
 
     fails = []
@@ -213,9 +232,9 @@ def main():
     # ---- (a) level.dat ----
     lv = read_level(a.save)
     x, y, z = lv["pos"]
-    print(f"level.dat 出生點 ({x},{y},{z})  yaw {lv['yaw']:.1f}  pitch {lv['pitch']:.1f}  {lv['dim']}")
+    print(f"level.dat spawn point ({x},{y},{z})  yaw {lv['yaw']:.1f}  pitch {lv['pitch']:.1f}  {lv['dim']}")
     if lv["dim"] != "minecraft:overworld":
-        fail(f"出生點不在主世界：{lv['dim']}")
+        fail(f"Spawn point is not in the overworld: {lv['dim']}")
 
     coords_all = SR.chunk_coords(a.save)
     have = set(coords_all)
@@ -223,40 +242,41 @@ def main():
     r = max(1, (a.radius + 15) // 16 + 1)
     near = [(scx + dx, scz + dz) for dx in range(-r, r + 1) for dz in range(-r, r + 1)]
     if (scx, scz) not in have:
-        fail(f"出生點所在的區塊 ({scx},{scz}) 不在存檔裡 —— 遊戲會自己生成一塊超平坦地，"
-             f"跟蓋好的世界無關")
-        print(f"\n驗證失敗：{len(fails)} 項")
+        fail(f"The spawn chunk ({scx},{scz}) is not in the save. The game would generate a "
+             f"superflat chunk of its own, unrelated to the built world")
+        print(f"\nChecks failed: {len(fails)}")
         return 1
     w = Nearby(a.save, [c for c in near if c in have])
     sch = w.chunks[(scx, scz)]
-    print(f"  出生點區塊 ({scx},{scz})  Status {sch.status}")
+    print(f"  Spawn chunk ({scx},{scz})  Status {sch.status}")
 
-    # ---- (b) 站得住、頭上是天空 ----
-    print("\n(b) 出生點那一格")
+    # ---- (b) Standable, with open sky overhead ----
+    print("\n(b) Spawn cell")
     below = w.get(x, y - 1, z)
-    print(f"  腳下 y{y - 1} {below}；腳 y{y} {w.get(x, y, z)}；頭 y{y + 1} {w.get(x, y + 1, z)}")
+    print(f"  Below y{y - 1} {below}; feet y{y} {w.get(x, y, z)}; head y{y + 1} {w.get(x, y + 1, z)}")
     if walk.standable(w.get, x, y, z):
-        ok("站得住（walk.standable）")
+        ok("Standable (walk.standable)")
     else:
-        fail("站不住：腳或頭那一格不通，或腳下不是實心")
+        fail("Not standable: the feet or head cell is blocked, or the block below is not solid")
     roof = next((yy for yy in range(y, Y_MAX + 1) if w.get(x, yy, z) not in AIRS), None)
     if roof is None:
-        ok(f"頭上 y{y}..y{Y_MAX} 全是空氣（開放的天空）")
+        ok(f"Air all the way up from y{y} to y{Y_MAX} (open sky)")
     else:
-        fail(f"頭上 y{roof} 有 {w.get(x, roof, z)}，不是開放的天空")
+        fail(f"{w.get(x, roof, z)} overhead at y{roof}: not open sky")
     if full_top(below):
-        ok(f"腳下的 {walk.base_name(below)} 頂面完整")
+        ok(f"The {walk.base_name(below)} underfoot has a full top face")
     else:
-        fail(f"腳下的 {below} 頂面不完整，遊戲找出生點時會穿過它往下找")
+        fail(f"The {below} underfoot has no full top face, so the game's spawn search passes "
+             f"through it")
 
-    # ---- (c) 高度圖逐柱比對 ----
-    print("\n(c) 存的高度圖 vs. 從方塊重算")
+    # ---- (c) Column-by-column heightmap comparison ----
+    print("\n(c) Stored heightmaps against a recomputation from the blocks")
     col = (x & 15) + (z & 15) * 16
     mine = sch.recomputed()
     for k, t in enumerate(HM.TYPES):
         s = sch.stored.get(t)
-        sv = "（沒存）" if s is None else f"y{HM.top_y(s[col])}"
-        print(f"  出生點那一柱 {t:<26} 存的柱頂 {sv:<8} 重算 y{HM.top_y(mine[k][col])}")
+        sv = "(none)" if s is None else f"y{HM.top_y(s[col])}"
+        print(f"  Spawn column {t:<26} stored top {sv:<8} recomputed y{HM.top_y(mine[k][col])}")
     if a.all:
         pick = sorted(have)
     else:
@@ -272,57 +292,59 @@ def main():
         if probs:
             n_bad += 1
             if len(first) < 8:
-                first.append(f"區塊 ({cx},{cz})：" + "；".join(probs))
+                first.append(f"Chunk ({cx},{cz}): " + "; ".join(probs))
     if n_bad:
-        fail(f"{n} 個區塊裡 {n_bad} 個的高度圖跟方塊對不上")
+        fail(f"{n_bad} of {n} chunks have heightmaps that do not match their blocks")
         for s in first:
             print("      " + s)
     else:
-        ok(f"{n:,} 個區塊四張高度圖逐柱全對"
-           + ("（存檔裡的全部區塊）" if a.all
-              else f"（出生點周圍 {len(w.chunks)} 個 + 抽樣；存檔共 {len(have):,} 個，--all 全比）"))
+        ok(f"All four heightmaps match column by column in {n:,} chunks"
+           + (" (every chunk in the save)" if a.all
+              else f" ({len(w.chunks)} around the spawn point plus a sample, of "
+                   f"{len(have):,} in the save; --all compares every one)"))
 
-    # ---- (d) 照遊戲的邏輯走一遍 ----
-    print("\n(d) 遊戲用高度圖找出生點（getLevelRespawnPos）")
+    # ---- (d) Follow the game's logic ----
+    print("\n(d) The game's spawn search with the heightmaps (getLevelRespawnPos)")
     got = w.respawn_pos(x, z)
     if w.top("MOTION_BLOCKING", x, z) is None:
-        fail("出生點區塊沒有存 MOTION_BLOCKING 高度圖")
+        fail("The spawn chunk has no stored MOTION_BLOCKING heightmap")
     elif got is None:
-        fail("這一柱會被遊戲判成找不到出生點（高度圖在世界底下、是水面，或往下碰到流體）")
+        fail("The game would find no spawn position in this column (heightmap below the world, "
+             "a water surface, or a fluid on the way down)")
     elif got != y:
-        fail(f"高度圖會把玩家放在 y{got}，不是出生點的 y{y}")
+        fail(f"The heightmaps would place the player at y{got}, not at the spawn point's y{y}")
     else:
-        ok(f"MOTION_BLOCKING 柱頂 y{w.top('MOTION_BLOCKING', x, z)}，"
-           f"往下第一個完整頂面在 y{got - 1} —— 玩家剛好站在 y{y}")
+        ok(f"MOTION_BLOCKING column top y{w.top('MOTION_BLOCKING', x, z)}, "
+           f"first full top face below it at y{got - 1}: the player stands exactly at y{y}")
     if w.fits(x, y, z):
-        ok("玩家的碰撞箱放得下、不在水裡（noCollisionNoLiquid）")
+        ok("The player's collision box fits and is not in water (noCollisionNoLiquid)")
     else:
-        fail("玩家的碰撞箱會卡在方塊或水裡")
+        fail("The player's collision box would be stuck in blocks or water")
 
-    # ---- (e) 面向出入口亭的門 ----
-    print("\n(e) 面向")
+    # ---- (e) Facing the exit kiosk door ----
+    print("\n(e) Facing")
     fx, fz = facing_of(lv["yaw"])
     door = [w.get(x + fx, yy, z + fz) for yy in (y, y + 1, y + 2)]
     signs = SR.read_signs(a.save, x - 6, z - 6, x + 6, z + 6)
     ahead = [(sx, sy, sz, m) for sx, sy, sz, m in signs
              if (sx - x) * fx + (sz - z) * fz >= 1 and abs((sx - x) * fz - (sz - z) * fx) <= 1
              and (sx - x) * fx + (sz - z) * fz <= 4 and abs(sy - y) <= 2]
-    print(f"  yaw {lv['yaw']:.1f} -> 朝 ({fx},{fz})；前方一格 y{y}..y{y + 2}：" +
-          "、".join(walk.base_name(b).replace("minecraft:", "") for b in door))
+    print(f"  yaw {lv['yaw']:.1f} -> facing ({fx},{fz}); one block ahead, y{y}..y{y + 2}: " +
+          ", ".join(walk.base_name(b).replace("minecraft:", "") for b in door))
     if all(walk.is_passable(b) for b in door):
-        ok("正前方是三格高的門洞")
+        ok("Straight ahead is a doorway 3 blocks high")
     else:
-        fail("正前方不是門洞")
+        fail("Straight ahead is not a doorway")
     if ahead:
         sx, sy, sz, m = ahead[0]
-        ok(f"門裡 ({sx},{sy},{sz}) 的牌子：{' / '.join(t for t in m if t)}")
+        ok(f"Sign inside the door at ({sx},{sy},{sz}): {' / '.join(t for t in m if t)}")
     else:
-        fail("面向的方向上四格內看不到出口牌")
+        fail("No exit sign within 4 blocks in the facing direction")
 
-    # ---- respawn_radius 的參考 ----
+    # ---- respawn_radius, for reference ----
     R = a.radius
-    print(f"\nrespawn_radius = {R} 時（只供參考）：遊戲會在 {2 * R + 1}x{2 * R + 1} 的候選柱裡"
-          f"依亂數順序挑第一個合格的")
+    print(f"\nWith respawn_radius = {R} (for reference only): the game takes the first valid "
+          f"column, in random order, from {2 * R + 1}x{2 * R + 1} candidates")
     if R > 0:
         cats = {"street": [], "roof": [], "low": [], "none": []}
         for dx in range(-R, R + 1):
@@ -342,25 +364,28 @@ def main():
                     cats["street"].append((cx_, cz_, yy))
         total = (2 * R + 1) ** 2
         valid = total - len(cats["none"])
-        print(f"  街面（出生點 ±1 格）{len(cats['street'])}、比街面高（屋頂）{len(cats['roof'])}、"
-              f"比街面低 {len(cats['low'])}、不合格 {len(cats['none'])}（共 {total} 柱）")
+        print(f"  Street level (spawn ±1 block) {len(cats['street'])}, above the street (roofs) "
+              f"{len(cats['roof'])}, below the street {len(cats['low'])}, invalid "
+              f"{len(cats['none'])} (of {total} columns)")
         if valid == 0:
-            print("  沒有一柱合格 —— 遊戲會退回「從出生點往上找空位、再往下掉到第一個碰撞面」")
+            print("  No valid column. The game falls back to searching upward from the spawn point "
+                  "for free space, then dropping to the first collision surface")
         elif cats["roof"]:
             ys = sorted({c[2] for c in cats["roof"]})
             what = sorted({walk.base_name(w.get(c[0], c[2] - 1, c[1])).replace("minecraft:", "")
                            for c in cats["roof"]})
-            print(f"  屋頂柱落在 y{ys[0]}～y{ys[-1]}，踩的是 {', '.join(what)}："
-                  f"約 {len(cats['roof']) / max(1, valid):.0%} 的機會被放到屋頂上 —— "
-                  f"要讓每個新玩家都站在門口，respawn_radius 得設成 0")
+            print(f"  Roof columns land at y{ys[0]}-y{ys[-1]} on {', '.join(what)}: "
+                  f"about a {len(cats['roof']) / max(1, valid):.0%} chance of a roof. "
+                  f"For every new player to stand at the door, respawn_radius must be 0")
         else:
-            print("  半徑內沒有屋頂，預設半徑也不會把玩家放到屋頂上")
+            print("  No roofs within the radius, so the default radius will not place a player on a "
+                  "roof either")
 
     print()
     if fails:
-        print(f"驗證失敗：{len(fails)} 項")
+        print(f"Checks failed: {len(fails)}")
         return 1
-    print("出生點驗證通過")
+    print("Spawn point checks passed")
     return 0
 
 

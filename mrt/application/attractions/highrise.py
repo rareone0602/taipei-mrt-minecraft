@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
-"""摩天大樓的共用零件（台北101、新光摩天大樓）：逐層遮罩的量體、外殼、樓板燈、門、球、樹。
+"""Shared parts for skyscrapers (Taipei 101, Shin Kong Life Tower).
 
-kit.Painter 的 walls/fill 適合「一段輪廓擠出一段高度」；摩天大樓不是：101 的八節
-每一節都往外斜 7°、基座往內收，新光的轉角一層一層退縮。這裡的做法是**逐層**
-算遮罩 —— 每個 y 問一次「這一層的樓板長什麼樣」（Frame 上的布林陣列），
-外殼就是那一層遮罩的外圈，挑簷的上緣就是「這一層有、上一層沒有」的格子。
-斜面每升幾格外圈就挪一格，相鄰兩層的外圈只在斜角相接；shell() 在挪動的地方
-把上下兩層的外圈都算進來，外牆才不會漏光。
+Per-story mass masks, shells, floor lamps, doors, spheres and trees.
 
-這個模組只放零件，沒有 BUILDS（景點登錄在 taipei101.py、shin_kong.py）。
+kit.Painter's walls/fill suit "extrude one outline to one height"; skyscrapers do not
+work that way. Each of Taipei 101's eight modules flares outward by 7° and its base
+tapers inward, while Shin Kong's corners set back story by story. The approach here
+is to compute the mask **per story**: for each y, ask once "what does this story's
+floor plate look like" (a boolean array on the Frame). The shell is the outer ring of
+that story's mask, and the top of an overhang is the set of cells "present on this
+story but not on the one above".
+On a slope the outer ring moves by one cell every few rows, so the rings of adjacent
+stories touch only at diagonal corners. Where the ring moves, shell() includes the
+outer rings of both the story above and the story below, so no light leaks through
+the facade.
+
+This module holds only parts and has no BUILDS (the attractions are registered in
+taipei101.py and shin_kong.py).
 """
 import math
 
@@ -19,15 +27,17 @@ from mrt.application.attractions import kit
 AIR = kit.AIR
 
 
-# ---------------------------------------------------------------- 輪廓與座標
+# ---------------------------------------------------------------- Outlines and coordinates
 
 def outline_axes(poly):
-    """OSM 輪廓 -> (中心 x, 中心 z, 角度（弧度）, 半長 u, 半寬 v)。
+    """Return (center x, center z, angle in radians, half-length u, half-width v) of an outline.
 
-    角度：每條邊的方向乘 4（把互相垂直的邊折到同一個方向）、依邊長加權平均再除 4。
-    kit.principal_angle 取整數度，101 的 1.0° 與新光的 −0.6° 都會被捨入；
-    這裡要的是小數。中心是轉正之後外接矩形的中心（不是頂點平均：
-    有缺角的那幾角頂點比較多，平均會偏）。"""
+    Angle: multiply each edge's direction by 4 (folding perpendicular edges onto one
+    direction), take the length-weighted mean, then divide by 4.
+    kit.principal_angle rounds to whole degrees, which would round away Taipei 101's
+    1.0° and Shin Kong's −0.6°; this function needs the fraction. The center is the
+    center of the bounding rectangle after squaring up, not the vertex mean: the
+    notched corners have more vertices and would bias the mean."""
     sx = sy = 0.0
     n = len(poly)
     for i in range(n):
@@ -48,67 +58,81 @@ def outline_axes(poly):
             (max(us) - min(us)) / 2, (max(vs) - min(vs)) / 2)
 
 
-SNAP_DEG = 1.5          # 偏不到 1.5° 的塔樓轉正（見 snap_angle）
+SNAP_DEG = 1.5          # Towers skewed by less than 1.5° are squared up (see snap_angle).
 
 
 def snap_angle(ang, deg=SNAP_DEG):
-    """偏角小於 deg 度就回 0（把塔樓轉正對齊方塊格線），否則原樣回傳。
+    """Return 0 if the skew is under deg degrees, otherwise return the angle unchanged.
 
-    101 偏 1.0°、新光偏 −0.6°：半邊長 27 m、23 m 的立面兩端只差 0.5 m、0.3 m，
-    跟一格 1 m 的取整誤差同一個量級。不轉正的話，斜面每收一格、直櫺每隔幾格
-    都會在立面上畫出一條斜斜的鋸齒線（101 的基座與八斗整面都是）；
-    轉正之後收分變成一圈水平的線，跟真的樓層線一樣。位置（中心）照 OSM 不動。"""
+    Returning 0 squares the tower to the block grid. Taipei 101 is skewed 1.0° and
+    Shin Kong −0.6°: across facades with half-lengths of 27 m and 23 m, the two ends
+    differ by only 0.5 m and 0.3 m, the same order as the 1 m rounding error of a
+    block. Without squaring up, every one-cell setback of a slope and every mullion a
+    few cells apart draws a slanted zigzag across the facade (the whole of Taipei 101's
+    base and eight modules did). Once squared up, each setback becomes a level ring,
+    like real floor lines. The position (center) stays as in OSM."""
     return 0.0 if abs(math.degrees(ang)) <= deg else ang
 
 
 def rotate_poly(poly, cx, cz, ang):
-    """多邊形繞 (cx, cz) 轉 ang 弧度（從 +x 往 +z）。"""
+    """Rotate a polygon about (cx, cz) by ang radians (from +x toward +z)."""
     c, s = math.cos(ang), math.sin(ang)
     return [(cx + (x - cx) * c - (z - cz) * s, cz + (x - cx) * s + (z - cz) * c) for x, z in poly]
 
 
 def notched_radius(fr, n, du=0.0, dv=0.0):
-    """方形平面、四角各有兩階缺角（每階 n 公尺）的「半徑場」R：R <= a 就在半邊長 a 的平面裡。
+    """Return the "radius field" R of a square plan with two notched steps at each corner.
 
-    101 的轉角不是直角，是兩道內凹的鋸齒（Structure 雜誌：2.5 m 的缺角）。
-    令 m = max(|u|, |v|)、s = min(|u|, |v|)：離兩個面各 p = a - |u|、q = a - |v|，
-    兩個都小於 2n、其中一個小於 n 的格子被切掉，推回來就是
-    R = max(m, min(m + n, s + 2n))。半邊長 a 隨高度變的時候，缺角的大小不變。"""
+    Each step is n meters; R <= a lies inside the plan of half-width a.
+    Taipei 101's corners are not right angles but two inward sawtooth steps (Structure
+    magazine: a 2.5 m notch). Let m = max(|u|, |v|) and s = min(|u|, |v|). A cell whose
+    distances to the two faces, p = a - |u| and q = a - |v|, are both below 2n, with one
+    of them below n, is cut away; working backward gives
+    R = max(m, min(m + n, s + 2n)). When the half-width a varies with height, the notch
+    size stays the same."""
     u, v = np.abs(fr.U - du), np.abs(fr.V - dv)
     m, s = np.maximum(u, v), np.minimum(u, v)
     return np.maximum(m, np.minimum(m + n, s + 2 * n))
 
 
 def face_coords(fr, du=0.0, dv=0.0):
-    """(t, side)：t 是沿著最近那個立面量的座標（東西面用 v、南北面用 u），
-    side 是離中心的距離（max(|u|, |v|)）。立面上的直櫺、壁飾都用它排。"""
+    """Return (t, side) for laying out mullions and ornaments on the facades.
+
+    t is the coordinate measured along the nearest facade (v on the east and west
+    faces, u on the north and south faces), and side is the distance from the center
+    (max(|u|, |v|))."""
     u, v = fr.U - du, fr.V - dv
     ew = np.abs(u) >= np.abs(v)
     return np.where(ew, v, u), np.maximum(np.abs(u), np.abs(v))
 
 
-# ---------------------------------------------------------------- 寫入
+# ---------------------------------------------------------------- Writing
 
 def paint(w, fr, mask, y, block):
-    """遮罩裡每一格的 (x, y, z) 設成 block。"""
+    """Set (x, y, z) to block for every cell in the mask."""
     s = w.set
     for x, z in zip(fr.X[mask].tolist(), fr.Z[mask].tolist()):
         s(x, y, z, block)
 
 
 def paint_layers(w, fr, layers, y):
-    """[(遮罩, 方塊)] 依序寫：後面的蓋前面的。"""
+    """Write [(mask, block)] in order: later entries overwrite earlier ones."""
     for m, b in layers:
         if m is not None and m.any():
             paint(w, fr, m, y, b)
 
 
 def shell(M, Mp=None, Mn=None):
-    """這一層的外殼格：M 的外圈，加上「上下兩層的外圈裡、貼著這一層外圈」的格子。
+    """Return this story's shell cells.
 
-    斜面上相鄰兩層的外圈會錯開一格，只在斜角相接 —— 從外面看不出來，但光會漏進去、
-    人也鑽得過去。把上下層外圈裡跟這層外圈相鄰的格子也算成牆，錯開的地方就是
-    兩格厚。退縮很多的地方（裙樓屋頂接塔樓）不相鄰，不會多砌一圈。"""
+    The shell is the outer ring of M plus the cells "in the outer ring of the story
+    above or below, adjacent to this story's ring".
+    On a slope, the outer rings of adjacent stories are offset by one cell and touch
+    only at diagonal corners. This is invisible from outside, but light leaks in and a
+    player can squeeze through. Counting the cells of the rings above and below that
+    are adjacent to this ring as wall makes the offset spots two cells thick. Where the
+    setback is large (a podium roof meeting the tower), the rings are not adjacent, so
+    no extra ring is built."""
     rg = kit.ring(M)
     near = kit.dilate(rg, 1)
     out = rg.copy()
@@ -119,13 +143,15 @@ def shell(M, Mp=None, Mn=None):
 
 
 def grid_mask(fr, step, off=0, du=0.0, dv=0.0):
-    """局部座標每 step 公尺一格的點陣（樓板燈、樹、柱子）。"""
+    """Return a dot grid, one cell every step meters in local coordinates (lamps, trees, posts)."""
     return ((np.floor(fr.U - du).astype(int) % step) == off) & \
            ((np.floor(fr.V - dv).astype(int) % step) == off)
 
 
 def sphere(w, cx, cy, cz, r, block):
-    """實心球：中心 (cx, cy, cz) 是浮點數，格心在半徑內就放。"""
+    """Place a solid sphere around the float center (cx, cy, cz).
+
+    A cell is filled if its center lies within the radius."""
     for x in range(int(math.floor(cx - r)), int(math.ceil(cx + r)) + 1):
         for y in range(int(math.floor(cy - r)), int(math.ceil(cy + r)) + 1):
             for z in range(int(math.floor(cz - r)), int(math.ceil(cz + r)) + 1):
@@ -134,7 +160,10 @@ def sphere(w, cx, cy, cz, r, block):
 
 
 def door(w, x, y, z, facing, block="minecraft:waxed_copper_door", hinge="left"):
-    """一扇門（上下兩格）。facing 是 kit.cardinal 的方位名：人從門外往門裡走時面對的反方向。"""
+    """Place a door (two blocks tall).
+
+    facing is a kit.cardinal direction name: the opposite of the direction a player
+    faces when walking in from outside."""
     st = "[facing=%s,half=%%s,hinge=%s,open=false,powered=false]" % (facing, hinge)
     w.set(x, y, z, block + st % "lower")
     w.set(x, y + 1, z, block + st % "upper")
@@ -145,7 +174,9 @@ LOG = "minecraft:oak_log[axis=y]"
 
 
 def tree(w, x, gy, z, trunk=4, r=2.6, leaves=LEAVES, log=LOG):
-    """行道樹：樹幹 trunk 格、樹冠是半徑 r 的扁球（葉子設成 persistent，不會自己掉光）。"""
+    """Place a street tree: a trunk of trunk blocks and a flattened-sphere crown of radius r.
+
+    The leaves are persistent, so they do not decay."""
     for y in range(gy + 1, gy + trunk + 1):
         w.set(x, y, z, log)
     cy = gy + trunk + 1.0
@@ -158,14 +189,19 @@ def tree(w, x, gy, z, trunk=4, r=2.6, leaves=LEAVES, log=LOG):
 
 
 def dome(mask, rise):
-    """任意平面上的圓頂高度場：離邊界越遠越高，剖面是四分之一圓（邊上 0、最深處 rise）。"""
+    """Return a dome heightfield over an arbitrary plan.
+
+    It rises with distance from the edge along a quarter-circle profile: 0 at the edge,
+    rise at the deepest point."""
     d = kit.depth(mask).astype(float)
     top = d.max() if d.any() else 1.0
     return rise * np.sqrt(np.clip(1.0 - (1.0 - d / top) ** 2, 0.0, 1.0))
 
 
 def glyph(rows):
-    """點陣字串 -> [(列, 行)]（X 是實心；第 0 列在上）。壁飾（如意、古錢）用它畫。"""
+    """Convert a dot-matrix string to [(row, column)] (X is solid; row 0 is at the top).
+
+    Facade ornaments (the ruyi and the ancient coins) are drawn with it."""
     out = []
     for i, row in enumerate(rows):
         for j, ch in enumerate(row):

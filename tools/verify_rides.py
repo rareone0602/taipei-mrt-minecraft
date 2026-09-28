@@ -1,28 +1,45 @@
 #!/usr/bin/env python3
-"""從存檔讀回每一面搭車告示牌，檢查點了之後真的會到一個站得住的月台 —— 不相信生成器的自述。
+"""Reads every ride sign back from the world save and checks that clicking it
+really reaches a platform the player can stand on. It does not trust the
+generator's own account.
 
-搭車告示牌怎麼找：讀回告示牌的點擊動作。`function mrt:ride/<甲>_<乙>` 是從甲坐到乙，
-`function mrt:turn/<甲>_<p|m>` 是終點站換到對面月台。牌子是生成器立的沒錯，但下面
-每一件事都是從磁碟上的方塊、告示牌與資料包檔案獨立重建出來驗的：
+Ride signs are found by reading back each sign's click action.
+`function mrt:ride/<A>_<B>` rides from A to B, and
+`function mrt:turn/<A>_<p|m>` moves the player to the opposite platform at a
+terminus. The generator did place the signs, but every check below is rebuilt
+independently from the blocks, signs and datapack files on disk:
 
-  1. 牌子在月台門那一排：牌子那一格是立牌、上面是月台門的玻璃、底下踩得住
-  2. 牌子正前方兩格站得住（domain/walk 的規則），而且那裡是月台（附近有黃色警示帶）
-  3. 牌上寫的跟指令對得上：中文牌「下一站 X」的 X 就是 ride 目的地的站名、
-     英文牌的 Next 是那一站的英文名（容許縮寫與截短）；牌子離它說的那一站不遠；
-     終點側的牌寫「本站終點／Terminus」
-  4. 存檔裡有資料包（<存檔>/datapacks/<DATAPACK_NAME>/）的話：每個指令的函式檔都在、
-     裡面剛好一行 `tp @s x y z yaw pitch`、傳送目的地站得住、在月台上、
-     面前 2～3 格有一面搭車（或終點）告示牌而且人正對著它 —— 坐到乙就要站在乙的牌子前面
-     （斜的線形上站位取整後可能只離牌子一個斜格 1.41 m，也算；目的地在 --bbox 沒產生的
-     區塊裡的另外列出來，不算失敗）
-  5. 每一站數一數：一座站體每條線兩側各三面，少了會列出來；範圍內的車站一面都沒有就算失敗
+  1. The sign is in the row of platform screen doors: its block is a standing
+     sign, the block above is screen door glass, and the block below can be
+     stood on.
+  2. The spot two blocks straight in front of the sign is standable (the rules
+     in domain/walk), and it is on a platform (a yellow warning strip is
+     nearby).
+  3. The text matches the command: the X in "下一站 X" on a Chinese sign is
+     the name of the ride's destination, and Next on an English sign is that
+     station's English name (abbreviations and truncation allowed). The sign
+     is not far from the station it names. Signs on the terminus side say
+     "本站終點" / "Terminus".
+  4. If the save has the datapack (<save>/datapacks/<DATAPACK_NAME>/): every
+     command's function file exists and holds exactly one line
+     `tp @s x y z yaw pitch`, the teleport destination is standable and on a
+     platform, and 2 to 3 blocks ahead there is a ride (or terminus) sign that
+     the player faces squarely. Riding to B must leave the player in front of
+     B's sign. (On a skewed alignment the rounded berth may be only one
+     diagonal block, 1.41 m, from the sign; that counts too. Destinations in
+     chunks that --bbox did not generate are listed separately and are not
+     failures.)
+  5. A count per station: a station box has three signs on each side for each
+     line, and any shortfall is listed. A station in range without a single
+     sign is a failure.
 
-另外順便點名：路線圖售票機（點了開對話框的牌子）的對話框 id、資料包裡有沒有那個對話框。
+It also checks the route map ticket machines (signs that open a dialog): their
+dialog id, and whether the datapack has that dialog.
 
-用法:
-    ./.venv/bin/python tools/verify_rides.py <存檔>
-    ./.venv/bin/python tools/verify_rides.py <存檔> --stations 台北車站 西門
-    ./.venv/bin/python tools/verify_rides.py <存檔> --bbox X0 Z0 X1 Z1
+Usage:
+    ./.venv/bin/python tools/verify_rides.py <save>
+    ./.venv/bin/python tools/verify_rides.py <save> --stations 台北車站 西門
+    ./.venv/bin/python tools/verify_rides.py <save> --bbox X0 Z0 X1 Z1
 """
 import argparse
 import collections
@@ -42,23 +59,31 @@ from mrt.infrastructure.savereader import read_sign_entities, read_volume
 PLAT_EDGE = "minecraft:yellow_concrete"
 CMD_RE = re.compile(r"^function ([a-z0-9_.-]+):(ride|turn)/([a-z0-9_]+)$")
 TP_RE = re.compile(r"(?:^|\s)tp @s (\S+) (\S+) (\S+) (\S+) (\S+)")
-MAX_FROM_STATION = 600      # 牌子離它自稱的那一站（mc_stations.csv 的站點）最遠幾公尺
-PER_STATION = 6             # 一座站體一條線：兩側各三面
+# Maximum distance (m) from a sign to the station it names (that station's point
+# in mc_stations.csv).
+MAX_FROM_STATION = 600
+PER_STATION = 6             # Per station box and line: three on each side.
 
 
 def fn_code(code):
-    """站號 -> 函式路徑用的小寫代號（跟資料包的命名同一套：只留 a-z0-9_）。"""
+    """Station code -> lowercase code for function paths (the same scheme as the
+    datapack names: a-z0-9_ only)."""
     return "".join(ch for ch in code.lower() if ch.isalnum() or ch == "_")
 
 
 def load_stations():
-    """{小寫站號: dict(code, zh, en, x, z)}（轉乘站每條線的站號各一筆）。
+    """{lowercase station code: dict(code, zh, en, x, z)} (a transfer station has
+    one entry per line's code).
 
-    只收路線站號（字母開頭、後面接數字：BL12、G03A、A14a）：mc_stations.csv 裡還有
-    機場航廈電車（ref 是 "Skytrain"）與沒有 ref 的節點，它們不是捷運車站，原本被當成
-    「一面搭車告示牌都沒有」的車站。英文名欄位偶爾是中文（環狀線 Y07 大坪林寫的是
-    「大坪林」），跟生成器（network.build_network）一樣向同名車站的別條線借英文名，
-    不然牌上正確的「Next: Dapinglin」會被判成對不上。
+    Only line station codes are kept (letters followed by digits: BL12, G03A,
+    A14a). mc_stations.csv also holds the airport terminal Skytrain (ref
+    "Skytrain") and nodes without a ref. They are not metro stations, and they
+    used to be reported as stations without a single ride sign. The English
+    name field is occasionally Chinese (Y07 Dapinglin on the Circular Line
+    holds its Chinese name). As the generator does (network.build_network),
+    borrow the English name from the station of the same name on another line;
+    otherwise the correct "Next: Dapinglin" on a sign would be judged a
+    mismatch.
     """
     rows = list(csv.DictReader(open(config.MC_STATIONS_CSV, encoding="utf-8")))
     en_of = {}
@@ -96,10 +121,13 @@ def region_exists(save, x, z):
 
 
 def chunk_exists(save, x, z):
-    """(x, z) 所在的區塊有沒有寫進存檔（region 檔開頭的位移表不是 0）。
+    """Whether the chunk containing (x, z) was written to the save (its entry in
+    the offset table at the start of the region file is not 0).
 
-    --bbox 只產生一部分 region：坐到範圍外的鄰站，目的地根本沒蓋，讀回來是空氣 ——
-    那不是資料包錯了，是那一站不在這個存檔裡，要分開講。"""
+    --bbox generates only some regions. A ride to a neighbor outside that range
+    has a destination that was never built, and it reads back as air. That is
+    not a datapack error: the station is not in this save, and it must be
+    reported separately."""
     p = os.path.join(config.region_dir(save), f"r.{x >> 9}.{z >> 9}.mca")
     if not os.path.exists(p):
         return False
@@ -110,19 +138,22 @@ def chunk_exists(save, x, z):
     return len(head) == 4 and int.from_bytes(head[:3], "big") != 0
 
 
-# ---------- 文字 ----------
+# ---------- Text ----------
 
 def _words(s):
     return [w for w in re.split(r"[\s/\-]+", s) if w]
 
 
 def en_match(text, name):
-    """牌上的英文（可能縮寫、截短）是不是這個站名。
+    """Whether the English on a sign (possibly abbreviated or truncated) is this
+    station name.
 
-    每個字依序對到站名裡的某個字（可以跳過站名的字，縮寫常常拿掉 Taipei 之類）：
-    全大寫的是字首縮寫（WTC、CKS）或原字；其餘可以是縮寫（Exh. -> Exhibition、
-    Bldg -> Building：字母依序出現在原字裡、第一個字母相同）；最後一個字後面有
-    「…」可以只是字首。
+    Each word must match some word of the station name, in order (words of the
+    station name may be skipped, since abbreviations often drop Taipei and the
+    like). An all-caps word is an acronym (WTC, CKS) or the word itself. Other
+    words may be abbreviations (Exh. -> Exhibition, Bldg -> Building: the
+    letters appear in order in the original word, and the first letter
+    matches). The last word may be only a prefix if "…" follows it.
     """
     t = text.strip()
     cut = t.endswith("…")
@@ -131,7 +162,7 @@ def en_match(text, name):
         return False
     if t.lower() == name.lower():
         return True
-    words = [w.lower().rstrip(".") for w in _words(name)]   # 站名自己也有縮寫（Minquan W. Rd.）
+    words = [w.lower().rstrip(".") for w in _words(name)]   # Names abbreviate too (Minquan W. Rd.).
     words = [w for w in words if w]
     toks = _words(t)
     wi = 0
@@ -148,7 +179,8 @@ def en_match(text, name):
                 found = True; wi += 1; break
             if tok.isupper() and len(tok) >= 2 and "".join(x[0] for x in words[wi:wi + len(tok)]) == low:
                 found = True; wi += len(tok); break
-            # 縮寫（Exh.、Ctr.、Bldg、Pk）：字母依序出現在原字裡、第一個字母相同
+            # Abbreviations (Exh., Ctr., Bldg, Pk): the letters appear in order in
+            # the original word, and the first letter matches.
             if len(low) >= 2 and low[0] == w[0] and _subseq(low, w) or (low and low == w[:len(low)] and tok.endswith(".")):
                 found = True; wi += 1; break
             wi += 1
@@ -164,7 +196,8 @@ def _subseq(a, b):
 
 
 def sign_next(front):
-    """牌上寫的下一站：("zh", 站名) / ("en", 英文) / (None, None)。"""
+    """The next station written on the sign: ("zh", name) / ("en", English name)
+    / (None, None)."""
     for i, ln in enumerate(front):
         s = ln.strip()
         if s.startswith("下一站"):
@@ -185,10 +218,11 @@ def zh_match(text, name):
     return t == name
 
 
-# ---------- 方塊 ----------
+# ---------- Blocks ----------
 
 class Blocks:
-    """幾塊讀回來的立體範圍，依序查。範圍外一律當空氣（呼叫端先保證讀過）。"""
+    """Several volumes read back, searched in order. Anything outside them is
+    air (the caller makes sure the volumes were read first)."""
 
     def __init__(self):
         self.vols = []
@@ -208,7 +242,8 @@ class Blocks:
 
 
 def read_clusters(save, pts, blocks, grid=160, pad=8, below=4, above=6):
-    """把要查的點依 grid 公尺分團，每團讀一塊立體範圍。"""
+    """Groups the points to check into cells of grid meters and reads one volume
+    per cell."""
     groups = collections.defaultdict(list)
     for x, y, z in pts:
         if not blocks.covers(x, y, z):
@@ -225,7 +260,8 @@ def rotation_of(block):
 
 
 def facing_vec(rot):
-    """立牌 rotation（0 = 朝南、4 = 朝西…）-> 牌面朝向的單位向量 (dx, dz)。"""
+    """Standing sign rotation (0 = south, 4 = west, …) -> unit vector (dx, dz)
+    the sign faces."""
     yaw = math.radians(rot * 22.5)
     return -math.sin(yaw), math.cos(yaw)
 
@@ -236,13 +272,15 @@ def yaw_vec(yaw_deg):
 
 
 def near_yellow(get, x, y, z, r=2):
-    """站位附近（腳下那一層）有沒有月台邊的黃色警示帶。"""
+    """Whether the yellow warning strip of a platform edge is near the berth (on
+    the layer under the feet)."""
     return any(get(x + dx, y - 1, z + dz) == PLAT_EDGE
                for dx in range(-r, r + 1) for dz in range(-r, r + 1))
 
 
 def stand_in_front(get, sx, sy, sz, f):
-    """牌子正前方兩格左右站得住的格子（最接近 2 格的那一個）；沒有就 None。"""
+    """A standable block about two blocks straight in front of the sign (the one
+    closest to 2 blocks away); None if there is none."""
     best = None
     for dx in range(-3, 4):
         for dz in range(-3, 4):
@@ -259,7 +297,7 @@ def stand_in_front(get, sx, sy, sz, f):
     return best[1] if best else None
 
 
-# ---------- 資料包 ----------
+# ---------- Datapack ----------
 
 def function_dir(save):
     root = os.path.join(save, "datapacks", config.DATAPACK_NAME, "data", config.DATAPACK_NS)
@@ -271,7 +309,8 @@ def function_dir(save):
 
 
 def read_tp(path):
-    """函式檔裡的 tp：[(x, y, z, yaw, pitch)]（約定是剛好一行）。"""
+    """The tp commands in a function file: [(x, y, z, yaw, pitch)] (by
+    convention, exactly one line)."""
     out = []
     with open(path, encoding="utf-8") as f:
         for ln in f:
@@ -284,7 +323,7 @@ def read_tp(path):
     return out
 
 
-# ---------- 主程式 ----------
+# ---------- Main ----------
 
 def main():
     ap = argparse.ArgumentParser()
@@ -294,7 +333,7 @@ def main():
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
     if not os.path.isdir(a.save):
-        print(f"找不到存檔 {a.save}")
+        print(f"World save not found: {a.save}")
         return 1
     stn = load_stations()
     by_name = collections.defaultdict(list)
@@ -306,15 +345,15 @@ def main():
     elif a.stations:
         pts = [(stn[c]["x"], stn[c]["z"]) for n in a.stations for c in by_name.get(n, ())]
         if not pts:
-            print("mc_stations.csv 裡沒有這些車站"); return 1
+            print("None of these stations is in mc_stations.csv"); return 1
         box = (min(p[0] for p in pts) - 500, min(p[1] for p in pts) - 500,
                max(p[0] for p in pts) + 500, max(p[1] for p in pts) + 500)
     else:
         box = save_extent(a.save)
         if box is None:
-            print("存檔裡沒有 region 檔"); return 1
+            print("The world save has no region files"); return 1
 
-    print(f"存檔 {a.save}\n讀取範圍 x {box[0]}..{box[2]}  z {box[1]}..{box[3]} 的告示牌 …")
+    print(f"World save {a.save}\nReading signs in x {box[0]}..{box[2]}  z {box[1]}..{box[3]} …")
     signs = read_sign_entities(a.save, *box)
     rides, maps, bad_exit = [], [], []
     for s in signs:
@@ -338,26 +377,28 @@ def main():
     if a.stations:
         want = {c for n in a.stations for c in by_name.get(n, ())}
         rides = [s for s in rides if s.get("frm") in want]
-    print(f"告示牌 {len(signs):,} 面，其中搭車告示牌 {sum(1 for s in rides if s['kind'] == 'ride')} 面、"
-          f"終點換月台 {sum(1 for s in rides if s['kind'] == 'turn')} 面、路線圖售票機 {len(maps)} 台")
+    print(f"{len(signs):,} signs: {sum(1 for s in rides if s['kind'] == 'ride')} ride signs, "
+          f"{sum(1 for s in rides if s['kind'] == 'turn')} terminus platform-change signs, "
+          f"{len(maps)} route map ticket machines")
 
-    # ---- 資料包：先把目的地讀出來，一起讀方塊 ----
+    # ---- Datapack: read the destinations first, so their blocks are read in the same pass ----
     fdir = function_dir(a.save)
-    targets = {}                            # 函式 id -> (x, y, z, yaw, pitch) 或錯誤訊息
+    targets = {}                            # Function id -> (x, y, z, yaw, pitch) or an error message.
     if fdir is None:
-        print(f"（存檔裡沒有資料包 datapacks/{config.DATAPACK_NAME}/，只驗牌子與站位，不驗傳送目的地）")
+        print(f"(The save has no datapack datapacks/{config.DATAPACK_NAME}/; checking signs and berths "
+              f"only, not teleport destinations)")
     else:
         for ident in sorted({s["ident"] for s in rides if s["kind"] in ("ride", "turn")}):
             p = os.path.join(fdir, ident + ".mcfunction")
             if not os.path.exists(p):
-                targets[ident] = "函式檔不存在"
+                targets[ident] = "function file missing"
                 continue
             tps = read_tp(p)
             if len(tps) != 1 or tps[0] is None:
-                targets[ident] = f"應該剛好一行 tp @s x y z yaw pitch，實際 {len(tps)} 行"
+                targets[ident] = f"expected exactly one line tp @s x y z yaw pitch, found {len(tps)}"
                 continue
             targets[ident] = tps[0]
-        print(f"資料包 {fdir}：{len(targets)} 個函式")
+        print(f"Datapack {fdir}: {len(targets)} functions")
 
     blocks = Blocks()
     pts = [(s["x"], s["y"], s["z"]) for s in rides]
@@ -366,7 +407,7 @@ def main():
     read_clusters(a.save, pts + list(tcells.values()), blocks)
     get = blocks.get
 
-    # 目的地附近的牌子：範圍外的另外讀
+    # Signs near the destinations: those outside the range are read separately.
     sign_at = {(s["x"], s["y"], s["z"]): s for s in rides}
     extra = [c for c in tcells.values()
              if not (box[0] <= c[0] <= box[2] and box[1] <= c[2] <= box[3])]
@@ -378,62 +419,67 @@ def main():
                 s.update(kind=m.group(2), ident=f"{m.group(2)}/{m.group(3)}", frm=parts[0])
                 sign_at.setdefault((s["x"], s["y"], s["z"]), s)
 
-    # ---- 逐面驗 ----
-    problems = collections.defaultdict(list)       # 站號 -> [訊息]
+    # ---- Check each sign ----
+    problems = collections.defaultdict(list)       # Station code -> [messages].
     count = collections.Counter()
-    outside = set()                                # 目的地不在這個存檔產生的範圍裡
+    outside = set()                                # Destinations outside the range this save generated.
     for s in rides:
         x, y, z = s["x"], s["y"], s["z"]
         code = s.get("frm")
-        tag = f"{' / '.join(t for t in s['front'][:2] if t)}（{x},{y},{z}）"
+        tag = f"{' / '.join(t for t in s['front'][:2] if t)} ({x},{y},{z})"
         if s["kind"] == "bad":
-            problems[code or "?"].append(f"{tag}: 看不懂的指令 {s['ident']}")
+            problems[code or "?"].append(f"{tag}: unrecognised command {s['ident']}")
             continue
         count[(code, s["kind"])] += 1
         me = stn.get(code)
         if me is None:
-            problems[code].append(f"{tag}: 站號 {code} 不在 mc_stations.csv 裡")
+            problems[code].append(f"{tag}: station code {code} is not in mc_stations.csv")
         elif math.hypot(me["x"] - x, me["z"] - z) > MAX_FROM_STATION:
-            problems[code].append(f"{tag}: 離 {me['zh']} 的站點 {math.hypot(me['x'] - x, me['z'] - z):.0f} m，"
-                                  f"不像是那一站的牌子")
+            problems[code].append(f"{tag}: {math.hypot(me['x'] - x, me['z'] - z):.0f} m from the "
+                                  f"station point of {me['zh']}, too far to be that station's sign")
         blk = get(x, y, z)
         rot = rotation_of(blk)
         if "_sign" not in blk or rot is None:
-            problems[code].append(f"{tag}: 那一格不是立牌（{blk}）")
+            problems[code].append(f"{tag}: the block is not a standing sign ({blk})")
             continue
         above, below = get(x, y + 1, z), get(x, y - 1, z)
         if "glass_pane" not in above:
-            problems[code].append(f"{tag}: 不在月台門那一排（上面是 {above}，不是月台門玻璃）")
+            problems[code].append(f"{tag}: not in the row of platform screen doors "
+                                  f"(above is {above}, not screen door glass)")
         if not walk.is_support(below):
-            problems[code].append(f"{tag}: 底下踩不住（{below}）")
+            problems[code].append(f"{tag}: nothing to stand on below ({below})")
         f = facing_vec(rot)
         st = stand_in_front(get, x, y, z, f)
         if st is None:
-            problems[code].append(f"{tag}: 牌子正前方兩格站不住")
+            problems[code].append(f"{tag}: the spot two blocks in front of the sign is not standable")
         elif not near_yellow(get, *st):
-            problems[code].append(f"{tag}: 站位 {st} 附近沒有月台警示帶，不像在月台上")
-        # 文字對不對得上指令
+            problems[code].append(f"{tag}: no platform warning strip near berth {st}, "
+                                  f"so it is not on a platform")
+        # Check that the text matches the command.
         if s["kind"] == "ride":
             to = stn.get(s["to"])
             lang, nxt = sign_next(s["front"])
             if to is None:
-                problems[code].append(f"{tag}: 目的地站號 {s['to']} 不在 mc_stations.csv 裡")
+                problems[code].append(f"{tag}: destination code {s['to']} is not in mc_stations.csv")
             elif lang is None:
-                problems[code].append(f"{tag}: 牌上沒寫下一站")
+                problems[code].append(f"{tag}: the sign does not name the next station")
             elif lang == "zh" and not zh_match(nxt, to["zh"]):
-                problems[code].append(f"{tag}: 牌上寫下一站「{nxt}」，指令卻坐到 {to['zh']}（{s['ident']}）")
+                problems[code].append(f"{tag}: the sign says next station '{nxt}', but the command rides "
+                                      f"to {to['zh']} ({s['ident']})")
             elif lang == "en" and not en_match(nxt, to["en"]):
-                problems[code].append(f"{tag}: 牌上寫 Next「{nxt}」，指令卻坐到 {to['en']}（{s['ident']}）")
+                problems[code].append(f"{tag}: the sign says Next '{nxt}', but the command rides "
+                                      f"to {to['en']} ({s['ident']})")
             elif lang == "zh" and me is not None and not any(me["zh"] in t for t in s["front"]):
-                problems[code].append(f"{tag}: 中文牌上沒寫本站 {me['zh']}")
+                problems[code].append(f"{tag}: the Chinese sign does not name this station, {me['zh']}")
         else:
             if not ("本站終點" in s["front"][0] or "Terminus" in s["front"][0]):
-                problems[code].append(f"{tag}: 終點換月台的牌子沒寫「本站終點／Terminus」")
-        # 資料包：目的地
+                problems[code].append(f"{tag}: the terminus platform-change sign does not say "
+                                      f"'本站終點' or 'Terminus'")
+        # Datapack: the destination.
         if fdir is not None:
             t = targets.get(s["ident"])
             if not isinstance(t, tuple):
-                problems[code].append(f"{tag}: {s['ident']}：{t}")
+                problems[code].append(f"{tag}: {s['ident']}: {t}")
                 continue
             tx, ty, tz, yaw, _ = t
             c = tcells[s["ident"]]
@@ -442,12 +488,14 @@ def main():
                 outside.add(s["ident"])
                 continue
             if abs(tx - c[0] - 0.5) > 1e-6 or abs(tz - c[2] - 0.5) > 1e-6:
-                problems[code].append(f"{tag}: {where} 不在方塊正中央（x/z 應該是 .5）")
+                problems[code].append(f"{tag}: {where} is not at the centre of a block "
+                                      f"(x and z should end in .5)")
             if not walk.standable(get, *c):
-                problems[code].append(f"{tag}: {where} 站不住（腳 {get(*c)}，腳下 {get(c[0], c[1] - 1, c[2])}）")
+                problems[code].append(f"{tag}: {where} is not standable "
+                                      f"(feet {get(*c)}, below {get(c[0], c[1] - 1, c[2])})")
                 continue
             if not near_yellow(get, *c):
-                problems[code].append(f"{tag}: {where} 附近沒有月台警示帶")
+                problems[code].append(f"{tag}: {where} has no platform warning strip nearby")
             fv = yaw_vec(yaw)
             faced = None
             for (qx, qy, qz), q in sign_at.items():
@@ -455,35 +503,39 @@ def main():
                     continue
                 dx, dz = qx - c[0], qz - c[2]
                 d = math.hypot(dx, dz)
-                # 斜的線形上站位取整之後可能只離牌子一個斜格（1.41 m），也算面前
+                # On a skewed alignment the rounded berth may be only one diagonal
+                # block (1.41 m) from the sign; that still counts as in front.
                 if 1.3 <= d <= 3.5 and (dx * fv[0] + dz * fv[1]) / d >= 0.75:
                     faced = q
                     break
             if faced is None:
-                problems[code].append(f"{tag}: {where} 面前 2～3 格沒有搭車告示牌（或沒有正對著）")
+                problems[code].append(f"{tag}: {where} has no ride sign 2 to 3 blocks ahead "
+                                      f"(or does not face it squarely)")
                 continue
             arrive = s["to"] if s["kind"] == "ride" else code
             if faced.get("frm") != arrive:
-                problems[code].append(f"{tag}: {where} 面對的是 {faced.get('ident')} 的牌子，"
-                                      f"應該是 {arrive} 這一站的")
+                problems[code].append(f"{tag}: {where} faces the sign for {faced.get('ident')}, "
+                                      f"not a sign of station {arrive}")
             elif s["kind"] == "turn" and faced.get("kind") != "ride":
-                problems[code].append(f"{tag}: 換月台之後面對的還是終點側的牌子（{faced.get('ident')}）")
+                problems[code].append(f"{tag}: after the platform change the player still faces a "
+                                      f"terminus-side sign ({faced.get('ident')})")
 
-    # ---- 路線圖售票機 ----
+    # ---- Route map ticket machines ----
     want_dialog = f"{config.DATAPACK_NS}:network"
     wrong = [s for s in maps if (s["click"] or {}).get("dialog") != want_dialog]
     for s in wrong:
-        problems["路線圖"].append(f"（{s['x']},{s['y']},{s['z']}）對話框是 {(s['click'] or {}).get('dialog')}，"
-                                f"不是 {want_dialog}")
+        problems["Route map"].append(f"({s['x']},{s['y']},{s['z']}) opens dialog "
+                                     f"{(s['click'] or {}).get('dialog')}, not {want_dialog}")
     if fdir is not None and maps:
         dlg = os.path.join(os.path.dirname(fdir), "dialog", "network.json")
         if not os.path.exists(dlg):
-            problems["路線圖"].append(f"資料包裡沒有 {want_dialog} 對話框（{dlg}）")
+            problems["Route map"].append(f"the datapack has no {want_dialog} dialog ({dlg})")
     for s in bad_exit:
-        problems["出口牌"].append(f"（{s['x']},{s['y']},{s['z']}）第一行是「{s['front'][0]}」卻帶點擊動作")
+        problems["Exit sign"].append(f"({s['x']},{s['y']},{s['z']}) has the first line "
+                                     f"'{s['front'][0]}' but carries a click action")
 
-    # ---- 每一站 ----
-    codes = sorted({s["frm"] for s in rides if s.get("frm")} | set(problems) - {"路線圖", "出口牌"},
+    # ---- Per station ----
+    codes = sorted({s["frm"] for s in rides if s.get("frm")} | set(problems) - {"Route map", "Exit sign"},
                    key=lambda c: (re.sub(r"\d.*", "", c), int(re.sub(r"\D", "", c) or 0), c))
     in_box = [c for c, s in stn.items()
               if box[0] <= s["x"] <= box[2] and box[1] <= s["z"] <= box[3]
@@ -495,32 +547,34 @@ def main():
     for c in codes:
         me = stn.get(c, dict(zh="?", code=c))
         nr, nt = count[(c, "ride")], count[(c, "turn")]
-        flag = "   <- 有問題" if problems.get(c) else ""
+        flag = "   <- problem" if problems.get(c) else ""
         note = ""
         if nr + nt < PER_STATION:
-            note = f"  （少於 {PER_STATION} 面）"
+            note = f"  (fewer than {PER_STATION})"
             few.append(c)
-        print(f"  {me['code']:<6} {me['zh']:<8} 搭車 {nr:>2}  終點 {nt:>2}{note}{flag}")
+        print(f"  {me['code']:<6} {me['zh']:<8} ride {nr:>2}  terminus {nt:>2}{note}{flag}")
         for p in problems.get(c, ())[:8 if not a.verbose else None]:
             print(f"      {p}")
         if not a.verbose and len(problems.get(c, ())) > 8:
-            print(f"      …另外 {len(problems[c]) - 8} 則（-v 看全部）")
-    for k in ("路線圖", "出口牌"):
+            print(f"      …and {len(problems[c]) - 8} more (-v shows all)")
+    for k in ("Route map", "Exit sign"):
         for p in problems.get(k, ()):
             print(f"  {k}: {p}")
     for c in missing:
-        print(f"  {stn[c]['code']:<6} {stn[c]['zh']:<8} 一面搭車告示牌都沒有   <- 有問題")
+        print(f"  {stn[c]['code']:<6} {stn[c]['zh']:<8} no ride signs at all   <- problem")
 
     if outside:
-        print(f"  （{len(outside)} 個函式的目的地在這個存檔沒產生的區塊裡，沒驗：{', '.join(sorted(outside)[:8])}"
-              f"{' …' if len(outside) > 8 else ''}）")
+        print(f"  ({len(outside)} functions have destinations in chunks this save did not generate; "
+              f"not checked: {', '.join(sorted(outside)[:8])}{' …' if len(outside) > 8 else ''})")
     n_bad = sum(len(v) for v in problems.values())
-    print(f"\n合計 {len(codes)} 個站號、{len(rides)} 面搭車／終點告示牌；"
-          f"問題 {n_bad} 則；範圍內沒有牌子的車站 {len(missing)} 座；少於 {PER_STATION} 面的 {len(few)} 個站號")
+    print(f"\nTotal: station codes {len(codes)}, ride and terminus signs {len(rides)}; "
+          f"problems {n_bad}; stations in range without signs {len(missing)}; "
+          f"station codes with fewer than {PER_STATION} signs {len(few)}")
     if n_bad or missing:
         return 1
-    print("全部通過：每一面搭車告示牌都在月台門那一排、前面站得住、寫的跟點了會去的地方一致"
-          + ("，資料包的傳送目的地也都站在下一站的牌子前面" if fdir else ""))
+    print("All passed: every ride sign is in the row of platform screen doors, the spot in front "
+          "is standable, and the text matches where a click goes"
+          + ("; every datapack teleport also lands in front of the next station's sign" if fdir else ""))
     return 0
 
 

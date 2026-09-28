@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""從 Anvil 存檔讀回一塊立體範圍的方塊。
+"""Read a box-shaped volume of blocks back from an Anvil world save.
 
-寫入那半邊在 mcworld.py。讀回來這半邊本來散在 tools/ 的三支工具裡各寫一份
-（verify_rails 掃鐵軌、verify_render 掃地表、slice_world 掃剖面），三份的
-palette 解碼與位元解包幾乎一樣。驗證地下街要的是「任意座標查方塊」，
-跟那三種掃法都不同，所以把共用的部分放到這裡。
+The writing half lives in mcworld.py. The reading half used to be written
+three times over in tools/ (verify_rails scans rails, verify_render scans the
+ground surface, slice_world scans cross-sections), with nearly identical
+palette decoding and bit unpacking. Verifying the underground malls needs
+"look up the block at any coordinate", which differs from all three scans, so
+the shared parts live here.
 
-region 檔格式：開頭 4 KB 是 1024 個 (offset, sectors)，接著每個 chunk 是
-4 位元組長度 + 1 位元組壓縮方式 + 壓縮過的 NBT。方塊存在 sections[].block_states
-的 palette + 位元打包索引裡；1.16 起同一個索引不會跨 long。
+Region file format: the first 4 KB is 1024 (offset, sectors) entries; after
+that, each chunk is a 4-byte length + a 1-byte compression type + compressed
+NBT. Blocks are stored in sections[].block_states as a palette plus
+bit-packed indices; since 1.16, no index spans two longs.
 """
 import glob
 import io
@@ -22,7 +25,7 @@ AIR = "minecraft:air"
 
 
 def unpack(data, bits, n=4096):
-    """位元打包的索引陣列 -> 長度 n 的索引。索引不跨 long（1.16 起的格式）。"""
+    """Unpack a bit-packed index array into n indices. Indices do not span longs (the format since 1.16)."""
     per = 64 // bits
     out = np.zeros(n, dtype=np.int64)
     arr = np.asarray(data, dtype=np.int64).view(np.uint64)
@@ -35,7 +38,7 @@ def unpack(data, bits, n=4096):
 
 
 def palette_names(bs):
-    """block_states -> 帶方塊狀態的名稱清單，順序即 palette 索引。"""
+    """Map block_states to a list of names with block states, in palette index order."""
     out = []
     for e in bs["palette"]:
         name = str(e["Name"])
@@ -47,11 +50,11 @@ def palette_names(bs):
 
 
 class Volume:
-    """一塊立體範圍的方塊，用 int16 的 palette 索引存。
+    """A box-shaped volume of blocks, stored as int16 palette indices.
 
-    1400 x 900 x 32 大約 40 M 格 = 80 MB，查詢是純陣列索引。
-    範圍外一律回空氣 —— 呼叫端（walk.flood）自己用 bounds 圈住搜尋範圍，
-    這裡不必分辨「外面」與「沒東西」。
+    1400 x 900 x 32 is about 40 M cells = 80 MB, and a lookup is a plain array
+    index. Anything outside the volume reads as air: the caller (walk.flood)
+    bounds its own search, so this class need not tell "outside" from "empty".
     """
 
     def __init__(self, x0, y0, z0, x1, y1, z1):
@@ -78,7 +81,7 @@ class Volume:
         return self.names[self.data[y - self.y0, z - self.z0, x - self.x0]]
 
     def count(self, predicate):
-        """符合條件的方塊數。predicate 收方塊名稱。"""
+        """Return the number of blocks that match; predicate takes a block name."""
         keep = np.array([bool(predicate(n)) for n in self.names])
         return int(keep[self.data].sum())
 
@@ -89,13 +92,13 @@ class Volume:
 def _region_dir(save, region_dir=None):
     rdir = region_dir or os.path.join(save, "dimensions", "minecraft",
                                       "overworld", "region")
-    if not os.path.isdir(rdir):                 # 26.2 之前的舊佈局
+    if not os.path.isdir(rdir):                 # The old layout from before 26.2.
         rdir = os.path.join(save, "region")
     return rdir
 
 
 def _parse_chunk(raw, i):
-    """region 檔內容 raw 的第 i 個 chunk -> 根 Compound（沒有這個 chunk 回 None）。"""
+    """Return the root Compound of chunk i in the region file contents raw, or None if the chunk is absent."""
     off = int.from_bytes(raw[i * 4:i * 4 + 3], "big")
     if off == 0:
         return None
@@ -108,7 +111,7 @@ def _parse_chunk(raw, i):
 
 
 def iter_chunks(rdir, x0, z0, x1, z1):
-    """走訪與 [x0,x1] x [z0,z1] 有交集的 chunk，產生 (cx, cz, 根 Compound)。"""
+    """Visit the chunks that intersect [x0,x1] x [z0,z1], yielding (cx, cz, root Compound)."""
     want = []
     for rx in range(x0 >> 9, (x1 >> 9) + 1):
         for rz in range(z0 >> 9, (z1 >> 9) + 1):
@@ -131,7 +134,9 @@ def iter_chunks(rdir, x0, z0, x1, z1):
 
 
 def chunk_coords(save, region_dir=None):
-    """存檔裡實際寫了哪些 chunk：[(cx, cz)]。只讀每個 region 檔開頭 4 KB 的索引。"""
+    """Return the chunks actually written in the save, as [(cx, cz)].
+
+    Reads only the 4 KB index at the start of each region file."""
     rdir = _region_dir(save, region_dir)
     out = []
     for path in sorted(glob.glob(os.path.join(rdir, "r.*.*.mca"))):
@@ -150,7 +155,7 @@ def chunk_coords(save, region_dir=None):
 
 
 def read_chunks(save, coords, region_dir=None):
-    """讀回指定的一批 chunk：產生 (cx, cz, 根 Compound)。每個 region 檔只讀一次。"""
+    """Read back the given chunks, yielding (cx, cz, root Compound). Each region file is read once."""
     rdir = _region_dir(save, region_dir)
     by_region = {}
     for cx, cz in coords:
@@ -169,8 +174,9 @@ def read_chunks(save, coords, region_dir=None):
 
 
 def section_blocks(sec):
-    """一個 section 的方塊 -> (palette 名稱清單, 長度 4096 的索引陣列，(y,z,x) 順序)。
-    沒有 block_states 回 None。"""
+    """Return a section's blocks as (palette names, 4096 indices in (y,z,x) order).
+
+    Returns None if the section has no block_states."""
     if "block_states" not in sec:
         return None
     bs = sec["block_states"]
@@ -183,7 +189,10 @@ def section_blocks(sec):
 
 
 def component_text(m):
-    """文字元件 -> 純文字。純字串原樣回傳；compound 取 text 再接上 extra。"""
+    """Convert a text component to plain text.
+
+    A plain string is returned as is; a compound gives its text followed by extra.
+    """
     if isinstance(m, dict):
         s = str(m.get("text", ""))
         for e in m.get("extra", ()):
@@ -193,7 +202,10 @@ def component_text(m):
 
 
 def _click_of(messages):
-    """四行裡第一個 click_event（沒有就 None）：{"action": ..., "command"/"dialog": ...}"""
+    """Return the first click_event among the four lines, or None.
+
+    The result has the form {"action": ..., "command"/"dialog": ...}.
+    """
     for m in messages:
         if isinstance(m, dict) and "click_event" in m:
             return {str(k): str(v) for k, v in m["click_event"].items()}
@@ -202,10 +214,12 @@ def _click_of(messages):
 
 def read_sign_entities(save, x0, z0, x1, z1, region_dir=None, ids=("minecraft:sign",
                                                                     "minecraft:hanging_sign")):
-    """讀回範圍內所有告示牌的完整內容：[dict(x, y, z, id, front, back, click, glow)]。
+    """Read back the full contents of every sign in the area: [dict(x, y, z, id, front, back, click, glow)].
 
-    front / back 是四行純文字，click 是正面第一個點擊動作。驗證搭車告示牌用它：
-    牌上說點了會去哪裡，要跟資料包裡的函式、跟那一站真的站得住的月台對得上。
+    front / back are four lines of plain text, and click is the first click
+    action on the front. The ride-sign verifier uses this: where a sign says a
+    click will take you must match the function in the datapack and a platform
+    at that station that can actually be stood on.
     """
     rdir = _region_dir(save, region_dir)
     out = []
@@ -228,12 +242,14 @@ def read_sign_entities(save, x0, z0, x1, z1, region_dir=None, ids=("minecraft:si
 
 
 def read_signs(save, x0, z0, x1, z1, region_dir=None):
-    """讀回範圍內所有告示牌：[(x, y, z, [四行文字])]。
+    """Read back every sign in the area: [(x, y, z, [four lines of text])].
 
-    文字在 block_entities 的 front_text.messages 裡（1.21.5 起是原生 NBT，
-    不是 JSON）：純文字的牌是字串清單，有顏色或點擊動作的是 compound 清單，
-    這裡一律攤平成純文字。驗證出入口用它找出入口亭 —— 牌子是生成器
-    立的沒錯，但「牌子旁邊有沒有一座走得通的樓梯」是從方塊讀回來驗的。
+    The text is in the block entity's front_text.messages (native NBT since
+    1.21.5, not JSON): a plain-text sign is a list of strings, and a sign with
+    color or a click action is a list of compounds; both are flattened to
+    plain text here. The exit verifier uses this to find exit kiosks. The
+    generator did place the signs, but whether a walkable stair stands next to
+    each one is verified from the blocks read back.
     """
     return [(s["x"], s["y"], s["z"], s["front"])
             for s in read_sign_entities(save, x0, z0, x1, z1, region_dir,
@@ -241,7 +257,7 @@ def read_signs(save, x0, z0, x1, z1, region_dir=None):
 
 
 def read_volume(save, x0, y0, z0, x1, y1, z1, region_dir=None, verbose=True):
-    """讀回 [x0,x1] x [y0,y1] x [z0,z1]（含端點）的方塊。"""
+    """Read back the blocks in [x0,x1] x [y0,y1] x [z0,z1], inclusive."""
     rdir = _region_dir(save, region_dir)
     vol = Volume(x0, y0, z0, x1, y1, z1)
     if verbose:
@@ -249,7 +265,7 @@ def read_volume(save, x0, y0, z0, x1, y1, z1, region_dir=None, verbose=True):
         nreg = sum(1 for rx in range(x0 >> 9, (x1 >> 9) + 1)
                    for rz in range(z0 >> 9, (z1 >> 9) + 1)
                    if os.path.exists(os.path.join(rdir, f"r.{rx}.{rz}.mca")))
-        print(f"  範圍涵蓋 {nreg} 個 region（存檔共 {have} 個）")
+        print(f"  The area covers {nreg} regions ({have} in the save)")
 
     sy0, sy1 = y0 >> 4, y1 >> 4
     nchunk = 0
@@ -268,7 +284,7 @@ def read_volume(save, x0, y0, z0, x1, y1, z1, region_dir=None, verbose=True):
             ids = np.array([vol.ident(n) for n in pal], dtype=np.int16)
             blk = ids[idx].reshape(16, 16, 16)          # [y][z][x]
 
-            # 與目標範圍取交集，只搬重疊的那一塊
+            # Intersect with the target volume and copy only the overlap.
             by = sy * 16
             ly0, ly1 = max(y0, by), min(y1, by + 15)
             lz0, lz1 = max(z0, bz), min(z1, bz + 15)
@@ -282,6 +298,6 @@ def read_volume(save, x0, y0, z0, x1, y1, z1, region_dir=None, verbose=True):
                 lz0 - bz:lz1 - bz + 1,
                 lx0 - bx:lx1 - bx + 1]
     if verbose:
-        print(f"  讀回 {nchunk:,} 個區塊，{len(vol.names)} 種方塊，"
-              f"非空氣 {len(vol):,} 格")
+        print(f"  Read back {nchunk:,} chunks, {len(vol.names)} block types, "
+              f"{len(vol):,} non-air cells")
     return vol

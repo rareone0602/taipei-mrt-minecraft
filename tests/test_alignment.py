@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""線形的單元測試。
+"""Unit tests for the alignment.
 
-這些原本測不了 —— 線形算式和「把方塊放進世界」綁在同一支 build_line.py 裡，
-要驗證縱斷面就得先產生一個存檔。拆到 domain 之後純函式進純函式出，
-不必碰 Minecraft。
+These used to be untestable: the alignment formulas were tied to the code that puts
+blocks into the world, in the same build_line.py, so checking a vertical profile meant
+generating a world save first. Moved into domain, they are pure functions in and out,
+with no need to touch Minecraft.
 
-用法: ./.venv/bin/python tests/test_alignment.py
+Usage: ./.venv/bin/python tests/test_alignment.py
 """
 import math
 import os
@@ -28,88 +29,97 @@ def line(n, step=1.0):
     return [(i * step, 0.0) for i in range(n)]
 
 
-print("取樣")
-pts = line(11, 10.0)                       # 100 m 直線
+print("Sampling")
+pts = line(11, 10.0)                       # A 100 m straight line
 s = AL.resample(pts, ["ground"] * 11, AL.STEP)
-chk(f"100 m / step {AL.STEP} -> {len(s)} 點", abs(len(s) - 200) <= 2)
+chk(f"100 m / step {AL.STEP} -> {len(s)} points", abs(len(s) - 200) <= 2)
 d = [math.dist(s[i][:2], s[i + 1][:2]) for i in range(len(s) - 1)]
-chk(f"間距一致 (max {max(d):.3f}, min {min(d):.3f})",
+chk(f"even spacing (max {max(d):.3f}, min {min(d):.3f})",
     max(d) - min(d) < 1e-6 and abs(max(d) - AL.STEP) < 1e-6)
-chk("方向向量為單位向量",
+chk("direction vectors are unit vectors",
     all(abs(math.hypot(p[2], p[3]) - 1) < 1e-9 for p in s))
-chk("沿 +X 前進 -> ux=1", abs(s[len(s) // 2][2] - 1.0) < 1e-6)
+chk("heading along +X -> ux=1", abs(s[len(s) // 2][2] - 1.0) < 1e-6)
 
-print("縱斷面")
+print("Vertical profile")
 ys = AL.vertical_profile(["ground"] * 400)
-chk("全平面 -> 地面 +1", set(ys) == {AL.GROUND + AL.PROFILE["ground"]})
+chk("all at grade -> ground +1", set(ys) == {AL.GROUND + AL.PROFILE["ground"]})
 
-# 高架段要夠長：從 y77 降到 y44 是 33 m，4% 坡度需要 825 m 引道，
-# 短於這個長度整段都會被下包絡線拉下去（這正是設計行為）。
-SEG = int(1500 / AL.STEP)        # 每段 1500 m
+# The viaduct segments must be long enough: dropping from y77 to y44 is 33 m, which at a
+# 4% grade needs an 825 m approach ramp. Anything shorter is pulled down entirely by the
+# lower envelope (which is the intended behavior).
+SEG = int(1500 / AL.STEP)        # 1500 m per segment
 kinds = ["bridge"] * SEG + ["tunnel"] * SEG + ["bridge"] * SEG
 ys = AL.vertical_profile(kinds)
-# 坡度要在一段距離上量。ys 已四捨五入成整數，逐點相鄰差最小就是 1 格 /
-# 0.5 m = 200%，那是取整的假象，不是真的坡度。
-W = int(100 / AL.STEP)           # 100 m 視窗
+# The grade must be measured over a distance. ys is already rounded to integers, so the
+# smallest nonzero difference between adjacent samples is 1 block / 0.5 m = 200%, an
+# artifact of rounding rather than a real grade.
+W = int(100 / AL.STEP)           # A 100 m window
 grades = [abs(ys[i + W] - ys[i]) / 100.0 for i in range(len(ys) - W)]
-chk(f"100 m 視窗最大坡度 {max(grades):.4f} <= {AL.MAX_GRADE}",
+chk(f"maximum grade over a 100 m window {max(grades):.4f} <= {AL.MAX_GRADE}",
     max(grades) <= AL.MAX_GRADE + 0.001)
-chk("隧道段真的降到地面以下", min(ys) < AL.GROUND)
-chk(f"高架段抬到 y={max(ys)} = 地面{AL.PROFILE['bridge']:+d}",
+chk("the tunnel segment really drops below the ground", min(ys) < AL.GROUND)
+chk(f"the viaduct segment rises to y={max(ys)} = ground {AL.PROFILE['bridge']:+d}",
     max(ys) == AL.GROUND + AL.PROFILE["bridge"])
 mid = len(ys) // 2
-chk(f"隧道中央 y={ys[mid]} = 地面{AL.PROFILE['tunnel']:+d}",
+chk(f"mid-tunnel y={ys[mid]} = ground {AL.PROFILE['tunnel']:+d}",
     ys[mid] == AL.GROUND + AL.PROFILE["tunnel"])
-# 洞口前後應該是連續下降的引道，不是垂直斷崖
+# Around a portal there should be a continuously descending approach ramp, not a vertical cliff
 step_down = max(abs(ys[i + 1] - ys[i]) for i in range(len(ys) - 1))
-chk(f"相鄰取樣點最大高差 {step_down} 格（不是斷崖）", step_down <= 1)
+chk(f"largest height step between adjacent samples: {step_down} block (not a cliff)",
+    step_down <= 1)
 
-print("結構型態依高程而非標籤")
-chk("軌面高於地面 6 -> 高架", AL.structure_for_ground(AL.GROUND + 6, AL.GROUND) == "viaduct")
-chk("軌面貼近地面 -> 平面", AL.structure_for_ground(AL.GROUND + 1, AL.GROUND) == "surface")
-chk("軌面低於地面 2 -> 隧道", AL.structure_for_ground(AL.GROUND - 2, AL.GROUND) == "tunnel")
-chk("掛 bridge 標籤但已降到地下 -> 仍算隧道",
+print("Structure type follows elevation, not tags")
+chk("rail top 6 above the ground -> viaduct",
+    AL.structure_for_ground(AL.GROUND + 6, AL.GROUND) == "viaduct")
+chk("rail top close to the ground -> at grade",
+    AL.structure_for_ground(AL.GROUND + 1, AL.GROUND) == "surface")
+chk("rail top 2 below the ground -> tunnel",
+    AL.structure_for_ground(AL.GROUND - 2, AL.GROUND) == "tunnel")
+chk("tagged bridge but already below ground -> still a tunnel",
     AL.structure_for_ground(AL.GROUND - 10, AL.GROUND) == "tunnel")
 
-print("軌道離線位")
+print("Track offsets")
 n = 600
 samples = [(i * AL.STEP, 0.0, 1.0, 0.0, "tunnel") for i in range(n)]
 ys = [AL.GROUND - 20] * n
 toff = AL.track_offsets(samples, ys, [AL.GROUND] * n, [n // 2])
-chk(f"站中心張開到 ±{AL.STN_TRACK_OFF}", toff[n // 2] == AL.STN_TRACK_OFF)
-chk(f"區間維持 ±{AL.TUN_TRACK_OFF}", toff[0] == AL.TUN_TRACK_OFF)
-chk("過渡是單調的（沒有跳階）",
+chk(f"spreads to ±{AL.STN_TRACK_OFF} at the station centre", toff[n // 2] == AL.STN_TRACK_OFF)
+chk(f"stays at ±{AL.TUN_TRACK_OFF} between stations", toff[0] == AL.TUN_TRACK_OFF)
+chk("the transition is monotonic (no jumps)",
     all(toff[i] >= toff[i - 1] - 1e-9 for i in range(1, n // 2)))
 jump = max(abs(toff[i + 1] - toff[i]) for i in range(n - 1))
-chk(f"相鄰點離線位最大變化 {jump:.3f} m（軌道不會斷）", jump < 0.2)
+chk(f"largest offset change between adjacent points: {jump:.3f} m (the track does not break)",
+    jump < 0.2)
 
-chk("半寬 = 離線位 + 2", AL.half_width(8) == 10)
-chk("半寬有下限 5", AL.half_width(1) == 5)
+chk("half-width = offset + 2", AL.half_width(8) == 10)
+chk("half-width has a minimum of 5", AL.half_width(1) == 5)
 
-print("原地折返")
-pts = [(0, 0), (100, 0), (200, 0), (150, 0)]     # 走到底再折回 50 m
+print("Reversals")
+pts = [(0, 0), (100, 0), (200, 0), (150, 0)]     # Runs to the end, then doubles back 50 m
 out, _ = AL.drop_reversal(pts, ["ground"] * 4)
-chk(f"折返段被砍掉 ({len(pts)} -> {len(out)} 點)", len(out) < len(pts))
-chk("留下的是較長的那一半", out[-1][0] == 200)
+chk(f"the reversal is cut off ({len(pts)} -> {len(out)} points)", len(out) < len(pts))
+chk("the longer half is kept", out[-1][0] == 200)
 straight = line(5, 50.0)
 out, _ = AL.drop_reversal(straight, ["ground"] * 5)
-chk("直線不會被誤砍", len(out) == len(straight))
+chk("a straight line is not cut by mistake", len(out) == len(straight))
 
-print("路線變體")
+print("Route variants")
 up = {"points": [[i * 10.0, 0.0] for i in range(60)]}
-down = {"points": [[i * 10.0, 3.0] for i in reversed(range(60))]}   # 反向的同一條
-# 支線要從幹線中段垂直岔出去，長度也不同 —— 若沿著幹線方向直直延伸且長度相同，
-# _same_corridor 的端點配對（容差 600 m）會把它誤判成上下行。
+down = {"points": [[i * 10.0, 3.0] for i in reversed(range(60))]}   # The same line, reversed
+# The branch must leave the middle of the trunk at a right angle and differ in length. If it
+# ran straight on in the trunk's direction with the same length, the endpoint matching in
+# _same_corridor (600 m tolerance) would mistake it for the other direction.
 branch = {"points": [[300.0, i * 10.0] for i in range(100)]}
 sel = AL.select_variants([up, down])
-chk(f"上下行收斂成一條（2 -> {len(sel)}）", len(sel) == 1)
+chk(f"the two directions collapse into one (2 -> {len(sel)})", len(sel) == 1)
 sel = AL.select_variants([up, down, branch])
-chk(f"支線保留（3 -> {len(sel)}）", len(sel) == 2)
+chk(f"the branch is kept (3 -> {len(sel)})", len(sel) == 2)
 
-print("退化輸入")
-chk("單點取樣不炸", AL.resample([(0.0, 0.0)], ["ground"], AL.STEP) == [])
-chk("空縱斷面不炸", AL.vertical_profile([]) == [])
-chk("沒有變體回空清單", AL.select_variants([]) == [])
+print("Degenerate input")
+chk("sampling a single point does not crash",
+    AL.resample([(0.0, 0.0)], ["ground"], AL.STEP) == [])
+chk("an empty vertical profile does not crash", AL.vertical_profile([]) == [])
+chk("no variants returns an empty list", AL.select_variants([]) == [])
 
-print("\n全部通過" if ok else "\n有測試失敗")
+print("\nAll passed" if ok else "\nSome tests failed")
 raise SystemExit(0 if ok else 1)

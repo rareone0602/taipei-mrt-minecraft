@@ -1,42 +1,68 @@
 #!/usr/bin/env python3
-"""疊式車站與袋狀軌：一條線的兩股道在車站分到上下兩層、或區間裡多出第三股道。
+"""Stacked stations and pocket tracks: the two tracks of a line split onto two
+levels at a station, or a third track appears between stations.
 
-北捷不是每一座地下站都是「島式月台、兩股道在同一層」：
+Not every underground Taipei Metro station is "an island platform with both
+tracks on one level":
 
-  · 府中（BL06）是地下五層的**側式疊式月台**：B3 一月台往南港展覽館、B5 二月台
-    往頂埔，兩股道上下疊在同一個位置，月台都在往南港展覽館方向的左側
-    （B3 左側開門、B5 右側開門）。OSM 的兩塊月台多邊形（level -3 / -4）
-    落在完全相同的位置，就是這個意思。
-  · 西門（BL11/G12）、中正紀念堂（R08/G10）、古亭（G09/O05）、東門（R07/O06）
-    是**島式疊式月台的平行轉乘站**：兩條線共用一座雙層站體，每一層都是
-    「一股自己的道、一座島、一股對方的道」，各線的兩股道上下疊在站體的一側。
-    OSM 的兩塊月台多邊形中心正好落在兩條線的中線上，兩線的中線在站區相距
-    17～22.5 m。
+  · Fuzhong (BL06) is a five-level underground station with **stacked side
+    platforms**: platform 1 on B3 toward Taipei Nangang Exhibition Center and
+    platform 2 on B5 toward Dingpu. The two tracks are stacked at the same
+    position, and both platforms are on the left facing Taipei Nangang
+    Exhibition Center (doors open on the left on B3 and on the right on B5).
+    That is why OSM's two platform polygons (level -3 / -4) sit in exactly the
+    same place.
+  · Ximen (BL11/G12), Chiang Kai-shek Memorial Hall (R08/G10), Guting
+    (G09/O05) and Dongmen (R07/O06) are **cross-platform transfer stations
+    with stacked island platforms**: two lines share one two-level station
+    box, each level is "one track of its own, one island, one track of the
+    other line", and each line's two tracks are stacked on one side of the
+    box. The centers of OSM's two platform polygons fall exactly on the
+    midline between the two lines, whose centerlines are 17-22.5 m apart at
+    the station.
 
-    東門與另外三座不一樣：其他三座是「同一層兩股道同方向」（一線左側開門、
-    另一線右側開門），東門整層同一個門側（B2 右、B4 左），也就是同一層的
-    兩股道行車方向相反 —— 維基百科點名它「有別於其他的島疊式車站」，
-    理由是照乘客主要流向排的。這裡不必為它寫特例：哪一股道留在上層只看
-    upper_toward，東門兩條線的 upper_toward 指向站體相反的兩端，反向自然就出來。
+    Dongmen differs from the other three. The other three have "both tracks on
+    a level running in the same direction" (one line opens its doors on the
+    left, the other on the right); Dongmen has one door side per level (B2
+    right, B4 left), which means the two tracks on a level run in opposite
+    directions. Wikipedia singles it out as "different from the other stacked
+    island stations", explaining that the layout follows the main passenger
+    flows. No special case is needed here: which track stays on the upper
+    level depends only on upper_toward, and Dongmen's two lines have
+    upper_toward pointing to opposite ends of the station box, so the opposite
+    directions follow naturally.
 
-兩者要的是同一件事：**一條線的兩股道在車站附近分到上下兩層**。做法：
+Both need the same thing: **the two tracks of a line split onto two levels
+near the station**. The method:
 
-  1. 站體外 SPLIT_M 公尺處，其中一股道開始以最大坡度下潛 LEVEL_H 公尺，
-     另一股維持線形的軌面。哪一股下潛由 ``upper_toward`` 決定：北捷靠右行駛，
-     往那一站行駛的列車走的是行進方向右側那股道，它留在上層，對面那股下潛。
-  2. 進站前 FLARE_M 公尺，兩股道從 ±3 的離線位併到同一個離線位（上下疊）。
-     共用站體的（西門），兩條線各自的兩股道併到站體座標系裡 ±8 的位置；站體
-     以兩條線的中線為準（``shift_samples`` 做出來的 frame），只由 primary
-     那條線蓋一次，partner 那條線在站體範圍內不蓋斷面、也不再有自己的車站。
-  3. 站體是 21 格高的雙層箱涵：上層就是原本的島式站（dy -2..10，穿堂仍在
-     軌面 +7，所以出入口、轉乘通道與驗證工具全部不必改），下層在 dy -10..-2。
+  1. SPLIT_M meters outside the station box, one track starts to descend
+     LEVEL_H meters at the maximum grade while the other keeps the rail top of
+     the alignment. ``upper_toward`` decides which one descends: Taipei Metro
+     runs on the right, so trains running toward that station use the track on
+     the right of their direction of travel, which stays on the upper level,
+     and the opposite track descends.
+  2. FLARE_M meters before the station, the two tracks converge from lateral
+     offsets of ±3 to a single offset (stacked). In a shared station box
+     (Ximen), each line's two tracks converge to ±8 in the box's coordinate
+     system. The box follows the midline of the two lines (the frame made by
+     ``shift_samples``) and is built once, by the primary line; within the box
+     the partner line builds no cross-section and no longer has a station of
+     its own.
+  3. The station box is a two-level box structure 21 blocks high. The upper
+     level is the original island platform station (dy -2..10, with the
+     concourse still at rail top +7, so exits, transfer passages and the
+     verification tools need no changes), and the lower level is at
+     dy -10..-2.
 
-袋狀軌（POCKETS）是區間裡兩股正線之間多出來的一股儲車軌：正線先張開到
-±POCKET_OFF，中間鋪第三股道，再收回 ±3。沒有道岔（見 README 已知限制），
-第三股道在正線收攏到離它太近之前就結束。
+A pocket track (POCKETS) is an extra storage track between the two main
+tracks, between two stations: the main tracks first flare out to
+±POCKET_OFF, the third track runs between them, and they then close back to
+±3. There are no switches (see docs/limitations.md), so the third track ends
+before the main tracks close in too near to it.
 
-哪一股道在上層、月台在哪一側、袋狀軌在哪裡，都是 OSM 沒有的真實資料，
-出處寫在各筆旁邊。
+Which track is on the upper level, which side the platform is on, and where
+the pocket tracks are: none of this is in OSM. It is real data, with its
+source noted beside each entry.
 """
 import numpy as np
 
@@ -46,153 +72,209 @@ from mrt.domain.alignment import (
 )
 from mrt.domain.alignment import FLARE_M as STATION_FLARE_M
 
-# 下層軌面比上層低幾格。上層月台廳佔 dy -1..5、穿堂樓板在 6；下層放在 -8 才有
-# 自己的底板（-10）、月台（-7）、四格淨空（-6..-3）與頂板（-2，就是上層的底板）。
+# How many blocks the lower level's rail top is below the upper level's. The
+# upper platform hall occupies dy -1..5 and the concourse floor slab is at 6;
+# placing the lower level at -8 gives it its own floor slab (-10), platform
+# (-7), four blocks of headroom (-6..-3) and roof (-2, which is the upper
+# level's floor slab).
 LEVEL_H = 8
-RAMP_M  = LEVEL_H / MAX_GRADE      # 下潛 8 m 要走 200 m
-FLARE_M = 40                       # 兩股道從 ±3 併到目標離線位的過渡長度
-SPLIT_M = RAMP_M + FLARE_M         # 站體之外的過渡段總長
-BOX_BOTTOM_DY = -(LEVEL_H + 2)     # 雙層箱涵的底板
+RAMP_M  = LEVEL_H / MAX_GRADE      # A descent of 8 m takes 200 m.
+FLARE_M = 40                       # Transition length over which the two tracks converge from ±3 to the target offset.
+SPLIT_M = RAMP_M + FLARE_M         # Total length of the transition outside the station box.
+BOX_BOTTOM_DY = -(LEVEL_H + 2)     # Floor slab of the two-level box structure.
 
-POCKET_OFF     = 6                 # 袋狀軌段正線的離線位（第三股道在 0）
-POCKET_FLARE_M = 60                # 正線張開／收攏的過渡長度（實際的道岔段約 80 m）
-POCKET_LEN_M   = 190               # 儲車軌長度：北捷後期路網的中央避車線內部約 190 m
-POCKET_MIN_GAP = 4.5               # 正線離中線不到這麼近，第三股道就結束（沒有道岔）
-# 共用站體的兩條線，在這個半徑內彼此不算占用（深度帶與跨線淨距都用同一個值）。
-# 半徑要正好蓋住「兩條線真的是同一座結構」的範圍：半座站體（PLATFORM_LEN/2）
-# 加上分層過渡段（SPLIT_M），再加一格空間雜湊的餘裕，約 350 m。
+POCKET_OFF     = 6                 # Lateral offset of the main tracks along a pocket track (the third track is at 0).
+POCKET_FLARE_M = 60                # Length over which the main tracks flare out and close in
+                                   # (the real turnout zone is about 80 m).
+POCKET_LEN_M   = 190               # Storage track length: the central refuge tracks of the later
+                                   # Taipei Metro network are about 190 m inside.
+POCKET_MIN_GAP = 4.5               # The third track ends where the main tracks come nearer than this
+                                   # to the centerline (there are no switches).
+# Within this radius, the two lines of a shared station box do not count as
+# occupying each other (the same value serves the depth bands and the
+# clearance between lines). The radius must cover exactly the range where the
+# two lines really are one structure: half a station box (PLATFORM_LEN/2) plus
+# the level-split transition (SPLIT_M), plus one spatial-hash cell of slack,
+# about 350 m.
 #
-# 這個值太大會出事：原本設 500 m，古亭以南的松山新店線與中和新蘆線在羅斯福路
-# 底下並行 500 m、中線只差 7～13 m，卻因為「是自己人」而被判成不必分層，
-# 兩條 14 m 寬的箱涵就這樣在同一個深度上重疊了 400 m。
+# Too large a value does damage. It was originally 500 m: south of Guting, the
+# Songshan-Xindian Line and the Zhonghe-Xinlu Line run in parallel under
+# Roosevelt Road for 500 m with centerlines only 7-13 m apart, yet were judged
+# to be allies that needed no separate depths, so the two 14 m wide box
+# structures overlapped at the same depth for 400 m.
 ALLY_M         = 350
-# 共用站體的兩條線，中線距離要落在這個範圍才蓋得成「一股道、一座島、一股道」的斷面：
-# 太近併不出兩股道加一座島，太遠就不是同一座箱涵。實測西門 17.2 m、中正紀念堂 22.5 m、
-# 古亭 17.5 m、東門 17.1 m，都在 14～24 m 之間。超出範圍寧可不蓋 —— 硬蓋會生出一座
-# 幾十公尺寬、跨過整條馬路的箱涵，而且是靜悄悄地蓋出來
+# The two lines of a shared station box can form the "track, island, track"
+# cross-section only if their centerlines are within this range: too close and
+# two tracks plus an island do not fit; too far and it is no longer one box
+# structure. Measured: Ximen 17.2 m, Chiang Kai-shek Memorial Hall 22.5 m,
+# Guting 17.5 m, Dongmen 17.1 m, all within 14-24 m. Outside the range it is
+# better not to build at all: forcing it produces a box structure tens of
+# meters wide that spans a whole road, and it does so silently.
 SEP_MIN, SEP_MAX = 2 * STN_TRACK_OFF - 2, 2 * BOX_HALF
 
 
-# ---------- 真實資料 ----------
+# ---------- Real data ----------
 
-# (站名, 路線) -> 規格
-#   kind          "side"   側式疊式（一股道一層，月台在同一側）
-#                 "shared" 兩條線共用的島式疊式（每層一股自己的道、一座島、一股對方的道）
-#   upper_toward  上層那股道的列車往哪一站開（同一條線的鄰站）
-#   plat          "left" / "right"：月台在上層列車行進方向的哪一側（只有 side 用）
-#   partner       共用站體的另一條線（只有 shared 用；寫在 primary 那一筆）
+# (station name, line) -> specification
+#   kind          "side"   stacked side platforms (one track per level, platforms on the same side)
+#                 "shared" stacked island platforms shared by two lines (each level: one track of
+#                          its own, one island, one track of the other line)
+#   upper_toward  the station the upper-level trains run toward (an adjacent station on the same line)
+#   plat          "left" / "right": which side of the upper-level trains' direction of travel the
+#                 platform is on (side only)
+#   partner       the other line of a shared station box (shared only; written on the primary entry)
 STACKED = {
-    # 維基百科「府中站 (臺灣)」車站構造：地下五層，側式疊式月台。
-    # 地下三樓一月台 板南線往南港展覽館 左側開門；地下五樓二月台 往頂埔 右側開門。
+    # Chinese Wikipedia, "Fuzhong Station (Taiwan)", station structure: five underground levels,
+    # stacked side platforms. B3 platform 1: Bannan Line toward Taipei Nangang Exhibition Center,
+    # doors open on the left; B5 platform 2: toward Dingpu, doors open on the right.
     ("府中", "BL"): dict(kind="side", upper_toward="板橋", plat="left"),
-    # 維基百科「西門站 (臺北市)」月台配置：地下二樓 板南線往南港展覽館（右側開門）、
-    # 松山新店線往松山（左側開門）；地下三樓 板南線往頂埔（左側開門）、
-    # 松山新店線往新店（右側開門）。
+    # Chinese Wikipedia, "Ximen Station (Taipei)", platform layout: B2 has the Bannan Line toward
+    # Taipei Nangang Exhibition Center (doors open on the right) and the Songshan-Xindian Line toward
+    # Songshan (doors open on the left); B3 has the Bannan Line toward Dingpu (doors open on the left)
+    # and the Songshan-Xindian Line toward Xindian (doors open on the right).
     ("西門", "BL"): dict(kind="shared", partner="G", upper_toward="台北車站"),
     ("西門", "G"):  dict(kind="shared", upper_toward="北門"),
-    # 維基百科「中正紀念堂站」月台配置：地下二樓 一月台 淡水信義線往淡水（左側開門）、
-    # 二月台 松山新店線往松山（右側開門）；地下三樓 三月台 淡水信義線往廣慈/奉天宮
-    # （右側開門）、四月台 松山新店線往新店（左側開門）。上層是「往淡水＋往松山」這一組。
+    # Chinese Wikipedia, "Chiang Kai-shek Memorial Hall Station", platform layout: B2 platform 1,
+    # Tamsui-Xinyi Line toward Tamsui (doors open on the left), and platform 2, Songshan-Xindian Line
+    # toward Songshan (doors open on the right); B3 platform 3, Tamsui-Xinyi Line toward
+    # Guangci/Fengtian Temple (doors open on the right), and platform 4, Songshan-Xindian Line toward
+    # Xindian (doors open on the left). The upper level is the "toward Tamsui + toward Songshan" pair.
     ("中正紀念堂", "R"): dict(kind="shared", partner="G", upper_toward="台大醫院"),
     ("中正紀念堂", "G"): dict(kind="shared", upper_toward="小南門"),
-    # 維基百科「古亭站」月台配置：地下二樓 一月台 松山新店線往松山（右側開門）、
-    # 二月台 中和新蘆線往迴龍或蘆洲（左側開門）；地下三樓 三月台 松山新店線往新店
-    # （左側開門）、四月台 中和新蘆線往南勢角（右側開門）。上層是「往松山＋往迴龍蘆洲」。
+    # Chinese Wikipedia, "Guting Station", platform layout: B2 platform 1, Songshan-Xindian Line
+    # toward Songshan (doors open on the right), and platform 2, Zhonghe-Xinlu Line toward Huilong or
+    # Luzhou (doors open on the left); B3 platform 3, Songshan-Xindian Line toward Xindian (doors open
+    # on the left), and platform 4, Zhonghe-Xinlu Line toward Nanshijiao (doors open on the right).
+    # The upper level is "toward Songshan + toward Huilong/Luzhou".
     ("古亭", "O"): dict(kind="shared", partner="G", upper_toward="東門"),
     ("古亭", "G"): dict(kind="shared", upper_toward="中正紀念堂"),
-    # 維基百科「東門站 (臺北市)」月台配置：地下二樓 一月台 中和新蘆線往迴龍或蘆洲、
-    # 二月台 淡水信義線往淡水；地下四樓 三月台 中和新蘆線往南勢角、
-    # 四月台 淡水信義線往廣慈/奉天宮。上層是「往迴龍蘆洲＋往淡水」這一組。
-    # 這一座整層只有一個門側（B2 右側、B4 左側），也就是同一層的兩股道行車方向
-    # 相反 —— 維基百科點名它「有別於其他的島疊式車站」。模型不必為它寫特例：
-    # 兩條線的 upper_toward 指向站體相反的兩端，反向自然就出來。
-    # （兩層月台是 B2 與 B4，中間夾一層；這裡的模型只管上下差 LEVEL_H，
-    #   不管真實的樓層編號。）
+    # Chinese Wikipedia, "Dongmen Station (Taipei)", platform layout: B2 platform 1, Zhonghe-Xinlu
+    # Line toward Huilong or Luzhou, and platform 2, Tamsui-Xinyi Line toward Tamsui; B4 platform 3,
+    # Zhonghe-Xinlu Line toward Nanshijiao, and platform 4, Tamsui-Xinyi Line toward
+    # Guangci/Fengtian Temple. The upper level is the "toward Huilong/Luzhou + toward Tamsui" pair.
+    # This station has one door side per level (B2 right, B4 left), which means the two tracks on a
+    # level run in opposite directions; Wikipedia singles it out as "different from the other
+    # stacked island stations". The model needs no special case for it: the two lines'
+    # upper_toward point to opposite ends of the station box, and the opposite directions follow
+    # naturally. (The two platform levels are B2 and B4, with one floor between them; the model
+    # only keeps the levels LEVEL_H apart and ignores the real floor numbers.)
     ("東門", "R"): dict(kind="shared", partner="O", upper_toward="中正紀念堂"),
     ("東門", "O"): dict(kind="shared", upper_toward="忠孝新生"),
 }
 
-# 袋狀軌：路線、兩端的站、OSM 上那條儲車軌的 way id（data/sidings.json 有它就
-# 照它的幾何放）、沒有資料時的退路（儲車軌起點離甲站站體中心幾公尺、長度）。
+# Pocket tracks: the line, the stations at each end, the OSM way id of the
+# storage track (placed along its geometry when data/sidings.json has it), and
+# a fallback for when there is no data (the start of the storage track in
+# meters from the center of station box a, and its length).
 #
-# 主要出處是捷運工程局自己的書：《捷運工程叢書 精進版 9 捷運軌道工程實務》
-# 8.3.5.2「中央側線」第 406 頁 —— 「布設在上、下行軌間之袋狀軌係由 4 組#10 及
-# 2 組#7 道岔與其間之標準軌道連接所構成……淡水線之中央側線係布設在高架段之
-# 石牌（R23）與唭哩岸站（R24）間，布設在隧道路段則有淡水線臺北車站（R13）至
-# 中山站（R12）間，新店線則分別設置在臺電大樓站（G9）至公館站（G7）及大坪林站
-# （G4）至七張站（G3）間，南港線之忠孝復興站（BL10）與忠孝敦化站（BL11）間，
-# 土城線之亞東醫院站（BL40）與海山站（BL40）間，至於中和線路段，受路幅取得不易
-# 而未予設置。」（站號是 2009 年之前的舊制，書也早於信義線與松山線。）
+# The main source is the Department of Rapid Transit Systems' own book, "MRT
+# Engineering Series, enhanced edition, vol. 9: MRT Track Engineering Practice"
+# (捷運工程叢書 精進版 9 捷運軌道工程實務), section 8.3.5.2, "Central sidings",
+# page 406 (translated): "A pocket track laid between the up and down tracks
+# consists of four #10 and two #7 turnouts connected by the standard track
+# between them... On the Tamsui Line the central siding is on the elevated
+# section between Shipai (R23) and Qilian (R24) stations; in tunnel sections
+# there is one on the Tamsui Line between Taipei Main Station (R13) and
+# Zhongshan station (R12); on the Xindian Line they are between Taipower
+# Building station (G9) and Gongguan station (G7) and between Dapinglin station
+# (G4) and Qizhang station (G3); on the Nangang Line between Zhongxiao Fuxing
+# station (BL10) and Zhongxiao Dunhua station (BL11); and on the Tucheng Line
+# between Far Eastern Hospital station (BL40) and Haishan station (BL40). On
+# the Zhonghe Line none was built, because the right-of-way was hard to
+# obtain." (The station numbers are the pre-2009 scheme, and the book predates
+# the Xinyi and Songshan lines.)
 #
-# 所以中和新蘆線一處都沒有 —— 不是漏掉，是當年「百億瘦身」把避車軌改成剪式
-# 橫渡線省下的（維基百科「中和新蘆線」避車軌設置爭議）。高架段的三處
-# （石牌—唭哩岸、文德—港墘、幸福—新北產業園區）目前蓋不了：sec_multi 只會挖
-# 隧道斷面，高架要另做橋梁版本，見 README 已知限制。
+# So the Zhonghe-Xinlu Line has none. That is not an omission: the "ten-billion
+# slimming" cost cut of the time replaced its refuge tracks with scissors
+# crossovers (Chinese Wikipedia, "Zhonghe-Xinlu Line", the refuge track
+# controversy). The three on elevated sections (Shipai–Qilian, Wende–Gangqian,
+# Xingfu–New Taipei Industrial Park) cannot be built yet: sec_multi only digs
+# tunnel cross-sections, and elevated ones need a separate viaduct version; see
+# docs/limitations.md.
 POCKETS = [
-    # 官方書上的五處地下袋狀軌，OSM 都畫得出來：
-    # 忠孝復興—忠孝敦化。維基百科「忠孝敦化站」：「本站與忠孝復興站間設有可供
-    #   列車調度的袋狀軌」。OSM way 877532286（211 m），緊貼忠孝敦化站西側。
+    # The official book's five underground pocket tracks, all of which OSM maps:
+    # Zhongxiao Fuxing–Zhongxiao Dunhua. Chinese Wikipedia, "Zhongxiao Dunhua Station": "A pocket
+    #   track for train dispatching lies between this station and Zhongxiao Fuxing station." OSM
+    #   way 877532286 (211 m), right against the west side of Zhongxiao Dunhua station.
     dict(ref="BL", a="忠孝復興", b="忠孝敦化", osm=877532286, start=None, length=POCKET_LEN_M),
-    # 亞東醫院—海山：折返列車用的儲車軌在站體南側，土城機廠的機廠線也在這裡分歧。
-    #   OSM 五條 way 名叫「亞東醫院袋狀軌」，中央那條是 818792051（197 m）。
-    #   捷運公司的駕駛室影片在亞東醫院開車後 29～68 秒看得到這座箱涵與第三股道。
+    # Far Eastern Hospital–Haishan: the storage track for turning trains is south of the station
+    #   box, and the depot line to Tucheng Depot branches off here too. Five OSM ways are named
+    #   "Far Eastern Hospital pocket track"; the central one is 818792051 (197 m). The metro
+    #   company's cab-view video shows this box structure and the third track 29-68 seconds after
+    #   departing Far Eastern Hospital.
     dict(ref="BL", a="亞東醫院", b="海山", osm=818792051, start=300, length=POCKET_LEN_M),
-    # 台北車站—中山：OSM 沒標成 siding 而是 service=yard（way 1226066660，296 m，
-    #   layer -4，兩端各有兩條道岔腿 1226066661~4），形狀就是標準的袋狀軌。
-    #   維基百科「中山站 (臺北市)」：「淡水線月台南邊往台北車站方向設袋狀軌一條。」
+    # Taipei Main Station–Zhongshan: OSM tags it not as a siding but as service=yard (way
+    #   1226066660, 296 m, layer -4, with two turnout legs at each end, 1226066661-4); its shape is
+    #   a standard pocket track. Chinese Wikipedia, "Zhongshan Station (Taipei)": "One pocket track
+    #   lies south of the Tamsui Line platforms, toward Taipei Main Station."
     dict(ref="R", a="台北車站", b="中山", osm=1226066660, start=None, length=POCKET_LEN_M),
-    # 台電大樓—公館。維基百科「台電大樓站」：「本站南面與公館站之間設有袋狀軌，
-    #   是新店線其中一個（另一個是大坪林站與七張站之間）。在1999年啟用至中和新蘆線
-    #   東門站通車前只作為後備車軌。」OSM way 818790283（200 m）。
+    # Taipower Building–Gongguan. Chinese Wikipedia, "Taipower Building Station": "A pocket track
+    #   lies between this station and Gongguan station to the south, one of the two on the Xindian
+    #   Line (the other is between Dapinglin and Qizhang stations). From its opening in 1999 until
+    #   Dongmen station on the Zhonghe-Xinlu Line opened, it served only as a reserve track." OSM
+    #   way 818790283 (200 m).
     dict(ref="G", a="台電大樓", b="公館", osm=818790283, start=None, length=POCKET_LEN_M),
-    # 大坪林—七張：小碧潭支線的接駁車就在這條軌上折返。維基百科「七張站」：
-    #   「從小碧潭支線出發的小碧潭支線列車駛入1號（北上）月台，供乘客下車，接著
-    #   駛入車站北側的袋狀軌」。OSM way 619265949（206 m）。
+    # Dapinglin–Qizhang: the Xiaobitan branch shuttle turns back on this track. Chinese Wikipedia,
+    #   "Qizhang Station": "Xiaobitan branch trains coming from the Xiaobitan branch enter platform 1
+    #   (northbound) to let passengers off, then enter the pocket track north of the station." OSM
+    #   way 619265949 (206 m).
     dict(ref="G", a="大坪林", b="七張", osm=619265949, start=None, length=POCKET_LEN_M),
-    # 書上沒有、但信義線（2013）與松山線（2014）都比書晚的兩處：
-    # 大安—信義安和：OSM way 685934617 名叫「大安袋狀軌」（214 m，緊貼大安站東側）。
-    #   維基百科「大安站 (臺灣)」有它的用途：「由於本站是淡水信義線『北投－大安』
-    #   區間車終點站」，月台配置表也列了「淡水信義線 區間車下車月台（不提供載客）」。
+    # Two that are not in the book, on the Xinyi Line (2013) and the Songshan Line (2014), both
+    # later than the book:
+    # Daan–Xinyi Anhe: OSM way 685934617 is named "Daan pocket track" (214 m, right against the
+    #   east side of Daan station). Chinese Wikipedia, "Daan Station (Taiwan)", gives its purpose:
+    #   "because this station is the terminus of the Tamsui-Xinyi Line's 'Beitou–Daan' short-turn
+    #   service", and its platform table also lists "Tamsui-Xinyi Line short-turn alighting
+    #   platform (no boarding)".
     dict(ref="R", a="大安", b="信義安和", osm=685934617, start=None, length=POCKET_LEN_M),
-    # 松江南京—南京復興：**只有車迷的整理支持**（PTT MRT 板 2023-09-12「Re: [問題]
-    #   袋狀軌」列「綠線　松江南京~南京復興　潛盾-袋-站　備援」）。松山線 2014 年
-    #   才通車，晚於上面那本書；維基百科的松江南京站、南京復興站、松山新店線三篇
-    #   都沒提。OSM way 871168318（201 m，layer -2，隧道）的形狀與位置對得上，
-    #   長度也不是橫渡線的量級，所以照著蓋，但出處只有這一份。
+    # Songjiang Nanjing–Nanjing Fuxing: **supported only by a rail fan's compilation** (the PTT
+    #   MRT board post "Re: [Question] Pocket tracks" of 2023-09-12 lists "Green line, Songjiang
+    #   Nanjing ~ Nanjing Fuxing, shield tunnel - pocket - station, standby"). The Songshan Line
+    #   opened only in 2014, later than the book above, and the Chinese Wikipedia articles on
+    #   Songjiang Nanjing station, Nanjing Fuxing station and the Songshan-Xindian Line do not
+    #   mention it. OSM way 871168318 (201 m, layer -2, tunnel) matches in shape and position, and
+    #   its length is not on the scale of a crossover, so it is built accordingly, but this is the
+    #   only source.
     dict(ref="G", a="松江南京", b="南京復興", osm=871168318, start=None, length=POCKET_LEN_M),
 ]
 
 
 
-# ---------- 方向與版面 ----------
+# ---------- Direction and layout ----------
 
 def direction_sign(idx, idx_toward):
-    """從 idx 往 idx_toward 那一站走，是取樣順序的正向（+1）還是反向（-1）。"""
+    """Return whether going from idx toward the station at idx_toward follows
+    the sample order (+1) or runs against it (-1)."""
     return 1 if idx_toward > idx else -1
 
 
 def upper_side(direction):
-    """上層那股道在線形的哪一側（+1 = 取樣方向的右手邊，即 nx,nz 那一側）。
+    """Return the side of the alignment the upper-level track is on (+1 = the
+    right-hand side in sample direction, the nx, nz side).
 
-    靠右行駛：往 +u 方向開的列車走 +off 那股道，往 -u 開的走 -off。
+    Right-hand running: trains running toward +u use the +off track, and trains
+    running toward -u use the -off track.
     """
     return direction
 
 
 def plat_side(direction, plat):
-    """側式月台在線形的哪一側。plat 是相對上層列車行進方向的左右。"""
+    """Return the side of the alignment a side platform is on. plat is left or
+    right relative to the upper-level trains' direction of travel."""
     return -direction if plat == "left" else direction
 
 
 def layout(kind, side):
-    """一層月台的版面（站體座標系的離線位）：
-      tracks  這一層有哪幾股道
-      psd     月台門
-      yellow  警示帶
-      plat    月台鋪面的離線位範圍（含兩端）
-      stair   穿堂下月台的樓梯離線位範圍
-      lstair  上層月台下到下層月台的樓梯離線位範圍
-    kind="side" 的 side 是月台那一側；kind="shared" 的 side 是 partner 那條線那一側。
+    """Return the layout of one platform level (lateral offsets in station box
+    coordinates):
+      tracks  the tracks on this level
+      psd     platform screen doors
+      yellow  warning strips
+      plat    lateral offset range of the platform paving (inclusive)
+      stair   lateral offset range of the stairs from the concourse down to the platform
+      lstair  lateral offset range of the stairs from the upper platform down to the lower platform
+    For kind="side", side is the platform side; for kind="shared", side is the
+    partner line's side.
     """
     if kind == "side":
         s = side
@@ -209,24 +291,28 @@ def layout(kind, side):
                 stair=(-3, 3), lstair=(-3, 3))
 
 
-# ---------- 座標系 ----------
+# ---------- Coordinate systems ----------
 
 def shift_samples(samples, m):
-    """整條取樣序列沿法向平移 m 公尺（+m = 右手邊）。共用站體的 frame 就是
-    primary 的取樣點平移到兩線中線。"""
+    """Shift the whole sample sequence m meters along the normal (+m = the
+    right-hand side). The frame of a shared station box is the primary's
+    samples shifted to the midline of the two lines."""
     return [(x - uz * m, z + ux * m, ux, uz, k) for x, z, ux, uz, k in samples]
 
 
 def station_samples(sg, bi):
-    """車站 bi 的站體座標系：共用站體用 frame，其餘就是路段自己的取樣點。"""
+    """Return the station box coordinate system of station bi: the frame for a
+    shared station box, otherwise the segment's own samples."""
     return sg.get("frames", {}).get(bi, sg["samples"])
 
 
 def tracks_at(sg, i):
-    """取樣點 i 有哪幾股道：[(離線位, 軌面 y), ...]。
+    """Return the tracks at sample i: [(lateral offset, rail top y), ...].
 
-    分層過渡段（sg["split"]）裡兩股道各有自己的離線位與軌面；其餘是 ±toff、
-    同一個軌面。袋狀軌（sg["extras"]）的第三股道落在範圍內就一起回傳。
+    In a level-split transition (sg["split"]) each of the two tracks has its
+    own lateral offset and rail top; elsewhere they are at ±toff with one rail
+    top. The third track of a pocket track (sg["extras"]) is included when i
+    falls within its range.
     """
     y = int(sg["ys"][i])
     if sg.get("split") is not None and sg["split"][i]:
@@ -241,8 +327,9 @@ def tracks_at(sg, i):
 
 
 def strands(sg):
-    """鐵軌要鋪的每一股道：[(i0, i1, off_at(i), y_at(i)), ...]。兩股正線整段各一，
-    袋狀軌另外一股。"""
+    """Return every track that gets rails: [(i0, i1, off_at(i), y_at(i)), ...].
+    One for each of the two main tracks over the whole segment, plus one for a
+    pocket track."""
     n = len(sg["samples"])
     split = sg.get("split")
     out = []
@@ -264,7 +351,8 @@ def strands(sg):
 
 
 def lateral_offset(samples, j, x, z):
-    """點 (x, z) 在取樣點 j 座標系裡的離線位（+ = 右手邊）。"""
+    """Return the lateral offset of point (x, z) in the coordinate system of
+    sample j (+ = the right-hand side)."""
     sx, sz, ux, uz, _ = samples[j]
     return -(x - sx) * uz + (z - sz) * ux
 
@@ -280,8 +368,10 @@ def nearest(samples, x, z, lo=0, hi=None):
 
 
 def frame_track_offsets(samples, lo, hi, frame, flo, fhi, foff):
-    """partner 的取樣點 lo..hi 逐點算「frame 座標系裡離線位 foff 的那條線」
-    落在自己座標系的哪個離線位。兩條線在站體內幾乎平行，用最近的 frame 點就夠。"""
+    """For each partner sample lo..hi, compute the lateral offset, in the
+    partner's own coordinate system, of "the line at offset foff in the frame
+    coordinate system". The two lines are nearly parallel within the station
+    box, so the nearest frame point is enough."""
     pts = [(frame[i][0] - frame[i][3] * foff, frame[i][1] + frame[i][2] * foff)
            for i in range(flo, fhi + 1)]
     out = []
@@ -292,16 +382,17 @@ def frame_track_offsets(samples, lo, hi, frame, flo, fhi, foff):
     return out
 
 
-# ---------- 兩股道分層 ----------
+# ---------- Splitting the two tracks onto two levels ----------
 
 def split_sides(n, lo, hi, up_side, tgt_in, ys, step=STEP):
-    """把兩股道在車站 lo..hi 附近分到上下兩層。
+    """Split the two tracks onto two levels around station lo..hi.
 
-    tgt_in  站體範圍內每個取樣點兩股道併到的離線位（len = hi - lo + 1）
-    回傳 (off_side, y_side, multi)：
-      off_side[s]  s = ±1 那股道逐點的離線位（區間仍是 ±3）
-      y_side[s]    逐點的軌面；下潛那股在站內是 ys - LEVEL_H
-      multi        bool 陣列，True 的取樣點斷面要用 sec_multi 蓋
+    tgt_in  the lateral offset the two tracks converge to at each sample within
+            the station box (len = hi - lo + 1)
+    Returns (off_side, y_side, multi):
+      off_side[s]  per-sample lateral offset of track s = ±1 (still ±3 between stations)
+      y_side[s]    per-sample rail top; the descending track is at ys - LEVEL_H in the station
+      multi        bool array; samples that are True must be built with sec_multi
     """
     ys = np.asarray(ys)
     off_side = {1: np.full(n, float(TUN_TRACK_OFF)), -1: np.full(n, -float(TUN_TRACK_OFF))}
@@ -317,7 +408,7 @@ def split_sides(n, lo, hi, up_side, tgt_in, ys, step=STEP):
         y_side[down][i] = ys[i] - LEVEL_H
         multi[i] = True
     for end, sgn, t_end in ((lo, -1, tgt[0]), (hi, 1, tgt[-1])):
-        for j in range(1, fl + 1):                           # 併攏
+        for j in range(1, fl + 1):                           # Converge.
             i = end + sgn * j
             if not (0 <= i < n):
                 break
@@ -326,7 +417,7 @@ def split_sides(n, lo, hi, up_side, tgt_in, ys, step=STEP):
                 off_side[s][i] = t_end + (s * TUN_TRACK_OFF - t_end) * f
             y_side[down][i] = ys[i] - LEVEL_H
             multi[i] = True
-        for j in range(1, rp + 1):                           # 下潛
+        for j in range(1, rp + 1):                           # Descend.
             i = end + sgn * (fl + j)
             if not (0 <= i < n):
                 break
@@ -338,7 +429,8 @@ def split_sides(n, lo, hi, up_side, tgt_in, ys, step=STEP):
 
 
 def split_extent(lo, hi, n, step=STEP):
-    """分層過渡段涵蓋的取樣索引範圍（含站體）。"""
+    """Return the sample index range covered by the level-split transition
+    (station box included)."""
     ext = int(round(SPLIT_M / step))
     return max(0, lo - ext), min(n - 1, hi + ext)
 
@@ -349,7 +441,8 @@ def station_range(n, bi, step=STEP):
 
 
 def _ensure_split(sg):
-    """路段第一次有分層時，把兩股道的逐點陣列補上（預設 ±3、同一個軌面）。"""
+    """The first time a segment is split, add per-sample arrays for the two
+    tracks (by default ±3 at one rail top)."""
     n = len(sg["samples"])
     if "split" not in sg:
         sg["off_side"] = {1: np.full(n, float(TUN_TRACK_OFF)),
@@ -372,9 +465,11 @@ def _apply_split(sg, lo, hi, up_side, tgt):
 
 
 def plan_side(sg, bi, direction, plat):
-    """側式疊式站（府中）：釘平縱斷面、兩股道分層。direction 是上層列車的行進
-    方向（取樣順序的 ±1），plat 是月台在那個方向的左或右。回傳版面
-    （也記在 sg["stacked"][bi]，cli 與出入口規劃靠它認出疊式站）。"""
+    """Stacked side-platform station (Fuzhong): pin the vertical profile flat
+    and split the two tracks onto two levels. direction is the upper-level
+    trains' direction of travel (±1 in sample order), and plat is left or right
+    of that direction. Returns the layout (also recorded in sg["stacked"][bi],
+    which the cli and the exit planner use to recognize stacked stations)."""
     n = len(sg["samples"])
     lo, hi = station_range(n, bi)
     fl = int(round(FLARE_M / STEP))
@@ -386,12 +481,17 @@ def plan_side(sg, bi, direction, plat):
 
 
 def plan_shared(sg, bi, direction, psg, pbi, pdirection):
-    """兩線共用的島式疊式站（西門）。sg 是 primary（蓋站體的那條線），psg 是
-    partner。站體座標系是 primary 的取樣點平移到兩線中線（frame）；primary 的
-    兩股道併到 frame 的 −8·side、partner 的併到 +8·side（side 是 partner 在
-    primary 的哪一側）。partner 的軌面釘成跟 primary 一樣，在站體範圍內不蓋
-    斷面（nobuild）、也不再有自己的車站。回傳 (版面, 中線偏移 m, side, partner 的站體範圍)；
-    兩線的中線距離不在 SEP_MIN..SEP_MAX 之間就回傳 None，什麼都不改。"""
+    """Stacked island station shared by two lines (Ximen). sg is the primary
+    (the line that builds the station box) and psg the partner. The box
+    coordinate system is the primary's samples shifted to the midline of the
+    two lines (frame); the primary's two tracks converge to −8·side in the
+    frame and the partner's to +8·side (side is the side of the primary that
+    the partner is on). The partner's rail top is pinned to match the
+    primary's; within the box it builds no cross-section (nobuild) and no
+    longer has a station of its own. Returns (layout, midline offset in m,
+    side, partner's station box range); if the centerline distance between the
+    two lines is not within SEP_MIN..SEP_MAX, returns None and changes
+    nothing."""
     n, pn = len(sg["samples"]), len(psg["samples"])
     lo, hi = station_range(n, bi)
     fl = int(round(FLARE_M / STEP))
@@ -422,8 +522,9 @@ def plan_shared(sg, bi, direction, psg, pbi, pdirection):
 
 
 def plan_pocket(sg, ia, ib, start_m, length_m, rng=None):
-    """在 sg 的 ia、ib 兩站之間開袋狀軌：正線離線位就地張開、第三股道記進
-    sg["extras"]。要在 track_offsets 之後、算 hw 之前呼叫。回傳 (i0, i1) 或 None。"""
+    """Open a pocket track between stations ia and ib of sg: widen the main
+    track offsets in place and record the third track in sg["extras"]. Call it
+    after track_offsets and before hw is computed. Returns (i0, i1) or None."""
     n = len(sg["samples"])
     if "multi" not in sg:
         sg["multi"] = np.zeros(n, dtype=bool)
@@ -436,23 +537,28 @@ def plan_pocket(sg, ia, ib, start_m, length_m, rng=None):
     return i0, i1
 
 
-# ---------- 袋狀軌 ----------
+# ---------- Pocket tracks ----------
 
 def pocket_zone(toff, n, ia, ib, start_m, length_m, step=STEP, rng=None,
                 off=POCKET_OFF, flare_m=POCKET_FLARE_M, min_gap=POCKET_MIN_GAP):
-    """在 ia、ib 兩站之間開一段袋狀軌。就地把正線的離線位張開，回傳
-    (i0, i1, multi)：第三股道占的取樣範圍，與要用 sec_multi 蓋的遮罩。
+    """Open a stretch of pocket track between stations ia and ib. Widens the
+    main track offsets in place and returns (i0, i1, multi): the sample range
+    of the third track and the mask of samples to build with sec_multi.
 
-    rng      (i0, i1)：儲車軌的取樣範圍（OSM 畫了那條軌就用它，只夾進兩站之間
-             放得下的範圍）；沒有的話用 start_m / length_m
-    start_m  儲車軌起點離 ia 站體中心幾公尺（None = 置於兩站正中間）
+    rng      (i0, i1): the sample range of the storage track (used when OSM
+             maps that track, clipped to the range that fits between the two
+             stations); otherwise start_m / length_m are used
+    start_m  meters from the center of station box ia to the start of the
+             storage track (None = centered between the two stations)
     """
     half = int(PLATFORM_LEN / 2 / step)
     fl = max(1, int(round(flare_m / step)))
     ln = int(round(length_m / step))
     a, b = (ia, ib) if ia < ib else (ib, ia)
-    # 兩站進站張開段（±3 -> ±8，FLARE_M）之外才是袋狀軌的地盤；忠孝敦化那一處
-    # 的道岔腿在 OSM 上一路畫到站體西端，儲車軌本身離站體只有 90 m
+    # The pocket track may only use the space outside the flares at the two
+    # stations (±3 -> ±8, FLARE_M). At Zhongxiao Dunhua the turnout legs in OSM
+    # run all the way to the west end of the station box, while the storage
+    # track itself is only 90 m from the box.
     stn_fl = int(round(STATION_FLARE_M / step))
     free_lo, free_hi = a + half + stn_fl, b - half - stn_fl
     if rng is not None:
@@ -476,7 +582,8 @@ def pocket_zone(toff, n, ia, ib, start_m, length_m, step=STEP, rng=None,
         toff[i1 + j] = max(toff[i1 + j], v)
     for i in range(i0 - fl, i1 + fl + 1):
         multi[i] = True
-    # 第三股道往兩端的張開段延伸，到正線離中線不到 min_gap 為止
+    # Extend the third track into the flares at both ends until the main tracks
+    # come nearer than min_gap to the centerline.
     lo, hi = i0, i1
     while lo - 1 >= i0 - fl and toff[lo - 1] >= min_gap:
         lo -= 1
@@ -485,14 +592,18 @@ def pocket_zone(toff, n, ia, ib, start_m, length_m, step=STEP, rng=None,
     return lo, hi, multi
 
 
-# ---------- 縱斷面釘平 ----------
+# ---------- Pinning the vertical profile ----------
 
 def pin_profile(ys, lo, hi, y_c, step=STEP, grade=MAX_GRADE):
-    """把 lo..hi 釘平在 y_c，兩側以最大坡度收斂回原本的縱斷面（升降都夾）。
+    """Pin lo..hi flat at y_c, and converge back to the original vertical
+    profile at the maximum grade on both sides (clamping both rises and falls).
 
-    共用站體的兩條線軌面要一模一樣，兩層月台之間的樓梯也要站體是平的才蓋得準。
-    原本的縱斷面只往下夾（下包絡線），釘平之後鄰近的點可能比 y_c 低太多或高太多，
-    這裡從釘平段往外走，每一步都夾在 ±坡度 之內。
+    The two lines of a shared station box need identical rail tops, and the
+    stairs between the two platform levels can only be built accurately if the
+    box is level. The original profile is only clamped downward (a lower
+    envelope), so after pinning, nearby points may be far too low or too high
+    relative to y_c; this walks outward from the pinned stretch and clamps each
+    step to within ±grade.
     """
     y = np.asarray(ys, dtype=float).copy()
     n = len(y)
@@ -506,19 +617,24 @@ def pin_profile(ys, lo, hi, y_c, step=STEP, grade=MAX_GRADE):
 
 
 def stacked_pins(stations, refs_of, band=0, radius_m=ALLY_M, reserve_m=60.0):
-    """疊式車站的深度帶釘樁：
+    """Depth-band pins for stacked stations:
 
-      · 車站本身釘在 band（西門 B2/B3、府中 B3/B5 都是淺層），共用站體的兩條線
-        釘在同一帶 —— 它們本來就是同一座箱涵。釘樁半徑與 ALLY_M 同一個值：
-        釘住的範圍就是「兩條線是同一座結構」的範圍，出了這個範圍要讓分帶
-        演算法自由地把它們拉開。
-      · 下層在上層底下 LEVEL_H，21 格高的箱涵會伸進下一帶的深度，所以站體
-        範圍另外替下一帶占位，別條線不能從底下鑽過去。
+      · The station itself is pinned to band (Ximen B2/B3 and Fuzhong B3/B5
+        are all shallow), and both lines of a shared station box are pinned to
+        the same band, since they are one box structure. The pin radius is the
+        same value as ALLY_M: the pinned range is the range where the two lines
+        are one structure, and outside it the banding algorithm must be free to
+        separate them.
+      · The lower level is LEVEL_H below the upper one, so the 21-block box
+        structure reaches into the depth of the next band; the station box
+        range therefore also reserves the next band, so that no other line can
+        pass beneath it.
 
-    stations  [(refs, 站名, x, z, ...)]（cli.load_stations 的格式）
-    refs_of   站名 -> 這座站在 STACKED 裡登記的路線代號集合
-    回傳 tunnel_layers.assign_bands 的 pins 格式 [(x, z, 半徑, ref, band)]。
-    真正的釘樁排在前面，占位的排在後面 —— assign_bands 對自己的線取第一根命中的。
+    stations  [(refs, station name, x, z, ...)] (the format of cli.load_stations)
+    refs_of   station name -> the set of line codes registered for that station in STACKED
+    Returns pins in the format of tunnel_layers.assign_bands: [(x, z, radius, ref, band)].
+    Real pins come first and reservations after, because assign_bands takes the
+    first hit for its own line.
     """
     pins, reserve = [], []
     for row in stations:

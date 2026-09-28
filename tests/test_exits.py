@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-"""真實出入口的單元測試：蓋一座直線地下站，接上幾個刁鑽位置的出入口，
-再用玩家真的走得動的規則從每個出入口亭走到月台。
+"""Unit tests for real exits: build a straight underground station, connect a
+few awkwardly placed exits, then walk from every exit kiosk to the platform by
+the rules a player can actually walk.
 
-刻意挑的出入口位置，每一個都對應資料裡真的會出現的情況：
-  · 站體旁邊（最單純）
-  · 隧道正上方、月台範圍之外 —— 井得往外推，通道得沿站體外側繞回來
-  · 8 m 內的兩個門 —— 要併成一座井
-  · 500 m 外 —— 要拒絕
-  · 對面那一側 —— 第二個洞
+Each exit position is chosen deliberately and matches a case that really
+occurs in the data:
+  · beside the station box (the simplest)
+  · right above the tunnel, outside the platform range: the shaft must be
+    pushed outward, and the passage must come back along the outside of the
+    station box
+  · two doors within 8 m: they must merge into one shaft
+  · more than 500 m away: must be rejected
+  · on the opposite side: a second opening
 
-用法: ./.venv/bin/python tests/test_exits.py
+Usage: ./.venv/bin/python tests/test_exits.py
 """
 import os
 import sys
@@ -32,7 +36,7 @@ def chk(name, cond):
     ok = ok and cond
 
 
-Y, G = 40, 60           # 軌面、地面（平的）
+Y, G = 40, 60           # Rail top and ground (flat).
 
 
 def straight_seg(x0=-400, x1=400, idx_x=0):
@@ -64,86 +68,87 @@ def build_line_and_station(w, seg, idx, access):
 
 seg, idx = straight_seg()
 samples = seg["samples"]
-print("占用索引")
+print("Occupancy index")
 occ = EX.index_segments([seg])
-chk("隧道中心線在軌面高度是被占用的", occ.blocked(200, 0, Y, Y + 2))
-chk("隧道側牆外一格沒被占用", not occ.blocked(200, 9, Y, Y + 2))
-chk("站體範圍占到半寬 13", occ.blocked(0, 13, Y + 8, Y + 9))
-chk("地面以上沒被占用", not occ.blocked(200, 0, G + 1, G + 3))
+chk("Tunnel centreline is occupied at rail-top height", occ.blocked(200, 0, Y, Y + 2))
+chk("Cell just outside the tunnel side wall is free", not occ.blocked(200, 9, Y, Y + 2))
+chk("Station box occupies half-width 13", occ.blocked(0, 13, Y + 8, Y + 9))
+chk("Nothing above the ground is occupied", not occ.blocked(200, 0, G + 1, G + 3))
 
-print("轉乘站分派")
+print("Transfer station assignment")
 seg2, idx2 = straight_seg(idx_x=0)
-# 第二條線：同一條幾何但站體移到 x=+300（假裝是另一條線的站體）
+# A second line: the same geometry with the station box moved to x=+300 (standing in for
+# another line's station box).
 seg2b, idx2b = straight_seg(idx_x=300)
 boxes = {"A": (seg2["samples"], seg2["ys"], idx2),
          "B": (seg2b["samples"], seg2b["ys"], idx2b)}
 asg = EX.assign_to_boxes([("1", 20, 40), ("2", 280, -40), ("3", 150, 30)], boxes)
-chk(f"離 A 近的給 A：{[e[0] for e in asg['A']]}", [e[0] for e in asg["A"]] == ["1", "3"])
-chk(f"離 B 近的給 B：{[e[0] for e in asg['B']]}", [e[0] for e in asg["B"]] == ["2"])
+chk(f"Exits nearer A go to A: {[e[0] for e in asg['A']]}", [e[0] for e in asg["A"]] == ["1", "3"])
+chk(f"Exits nearer B go to B: {[e[0] for e in asg['B']]}", [e[0] for e in asg["B"]] == ["2"])
 
-print("規劃")
-ents = [("1", 10, 40),        # 站體旁邊
-        ("2", 120, -5),       # 隧道正上方、月台之外
-        ("3", 16, 44),        # 離 1 號 8 m -> 併掉
-        ("4", 600, 0),        # 太遠
-        ("5", -60, -30)]      # 對面、lo 端之外
+print("Planning")
+ents = [("1", 10, 40),        # Beside the station box.
+        ("2", 120, -5),       # Right above the tunnel, beyond the platform.
+        ("3", 16, 44),        # 8 m from No. 1 -> merged.
+        ("4", 600, 0),        # Too far.
+        ("5", -60, -30)]      # Opposite side, beyond the lo end.
 ground_at = lambda x, z: G
 plan = EX.plan_station(samples, seg["ys"], seg["ground"], idx, ents, ground_at,
                        occ, EX.Occupancy())
-chk(f"穿堂層站立面 y{plan['ym']} = 軌面 + 7", plan["ym"] == Y + AL.MEZZ_DY + 1)
-chk(f"蓋 {len(plan['shafts'])} 座井（1+3 併、2、5）", len(plan["shafts"]) == 3)
-chk(f"拒絕 {len(plan['skipped'])} 個（4 號太遠）",
+chk(f"Concourse standing surface y{plan['ym']} = rail top + 7", plan["ym"] == Y + AL.MEZZ_DY + 1)
+chk(f"Builds {len(plan['shafts'])} shafts (1+3 merged, 2, 5)", len(plan["shafts"]) == 3)
+chk(f"Rejects {len(plan['skipped'])} (No. 4 is too far)",
     len(plan["skipped"]) == 1 and plan["skipped"][0][0] == ["4"])
 merged = [s for s in plan["shafts"] if "3" in s["refs"] and "1" in s["refs"]]
-chk("1 號與 3 號共用一座井", len(merged) == 1)
+chk("Nos. 1 and 3 share one shaft", len(merged) == 1)
 s2 = next(s for s in plan["shafts"] if s["refs"] == ["2"])
 cells2 = EX.shaft_cells(s2["x0"], s2["z0"], s2["ux"], s2["uz"])
-chk(f"隧道正上方的井往外推了 {s2['slide']} m，井身離中心線 >= 13",
+chk(f"Shaft above the tunnel pushed out {s2['slide']} m, shaft body >= 13 from the centreline",
     s2["slide"] > 0 and min(abs(z) for _, z in cells2) >= 13)
-chk("井身沒有壓到任何地下結構",
+chk("Shaft body overlaps no underground structure",
     not occ.any_blocked(cells2, plan["ym"] - 1, G + 5))
 per_m = int(round(1 / AL.STEP))
 hole_x = samples[plan["hole"]][0]
-chk(f"開洞位置在 lo + 7 m（x={hole_x:.0f}，閘門在 lo + 14）",
+chk(f"Opening at lo + 7 m (x={hole_x:.0f}; fare gates at lo + 14)",
     abs(hole_x - (samples[plan["lo"]][0] + 7)) < 1)
-chk("兩側都開了洞",
+chk("Openings on both sides",
     (int(round(hole_x)), 11) in plan["cells"] and (int(round(hole_x)), -11) in plan["cells"])
-chk("通道格不包含站體內部", not (plan["cells"] & plan["no_wall"]))
+chk("Passage cells exclude the station box interior", not (plan["cells"] & plan["no_wall"]))
 
-print("蓋出來並走一遍")
+print("Build and walk through")
 w = DictSink()
 lo, hi = build_line_and_station(w, seg, idx, access=False)
 n_before = len(w.blocks)
 objs, exits, rep = BX.station_exits([seg], {"測試站": ents}, ground_at,
                                     verbose=False)
-chk(f"station_exits 回報這一站有 {list(exits.values())} 座井", exits == {(0, idx): 3})
+chk(f"station_exits reports {list(exits.values())} shafts for this station", exits == {(0, idx): 3})
 for o in objs:
     o.build(w)
-chk(f"多寫了 {len(w.blocks) - n_before:,} 個方塊", len(w.blocks) - n_before > 5000)
+chk(f"Wrote {len(w.blocks) - n_before:,} more blocks", len(w.blocks) - n_before > 5000)
 
 get = w.get
 ym = plan["ym"]
 bounds = (-450, Y - 5, -120, 450, G + 6, 120)
 wells = [o for o in objs if isinstance(o, BX.BCC.ShaftStair)]
-chk(f"{len(wells)} 座 ShaftStair", len(wells) == 3)
+chk(f"{len(wells)} ShaftStairs", len(wells) == 3)
 yellow = [(x, y + 1, z) for (x, y, z), b in w.blocks.items() if b == BL.YELLOW]
-chk(f"月台警戒帶 {len(yellow)} 格", len(yellow) > 100)
+chk(f"Platform warning strip: {len(yellow)} cells", len(yellow) > 100)
 starts = {}
 for well in wells:
-    x, z = well._w(0, 0)                      # 井口平台，門內第一格
+    x, z = well._w(0, 0)                      # The entrance landing, the first cell inside the door.
     c = (x, well.g0 + 1, z)
-    chk(f"出入口 {well.label[1]} 的井口站得住 {c}", walk.standable(get, *c))
+    chk(f"Exit {well.label[1]}: shaft entrance {c} is standable", walk.standable(get, *c))
     starts[well.label[1][0]] = c
 comps = walk.components(get, list(starts.values()), bounds=bounds)
-chk(f"三座井互相走得到（{len(comps)} 個連通分量）", len(comps) == 1)
+chk(f"The three shafts reach each other ({len(comps)} connected components)", len(comps) == 1)
 for ref, c in sorted(starts.items()):
     dist, _ = walk.flood(get, [c], bounds=bounds)
     reach = sum(1 for y in yellow if y in dist)
-    chk(f"從出入口 {ref} 走得到月台警戒帶（{reach}/{len(yellow)} 格）", reach == len(yellow))
-    chk(f"出入口 {ref} 走得到穿堂層閘門前（非付費區）",
+    chk(f"Exit {ref} reaches the platform warning strip ({reach}/{len(yellow)} cells)", reach == len(yellow))
+    chk(f"Exit {ref} reaches the concourse in front of the fare gates (unpaid area)",
         any(y == ym and x < samples[lo][0] + 14 for (x, y, z) in dist))
 
-print("井與通道沒有動到隧道")
+print("Shafts and passages leave the tunnel alone")
 ref_w = DictSink()
 build_line_and_station(ref_w, seg, idx, access=False)
 bad = 0
@@ -151,18 +156,18 @@ for (x, y, z), b in ref_w.blocks.items():
     if abs(z) <= 7 and not (samples[lo][0] - 1 <= x <= samples[hi][0] + 1):
         if w.blocks.get((x, y, z)) != b:
             bad += 1
-chk(f"站體以外的隧道斷面一格都沒被改（改了 {bad} 格）", bad == 0)
+chk(f"No tunnel cross-section cell outside the station box changed ({bad} changed)", bad == 0)
 hole_cells = [(int(round(hole_x)), ym + dy, 11) for dy in range(0, 3)]
-chk("側牆的洞真的是空的", all(get(*c) == "minecraft:air" for c in hole_cells))
-chk("洞旁邊的襯砌還在",
+chk("Side-wall opening is really empty", all(get(*c) == "minecraft:air" for c in hole_cells))
+chk("Lining beside the opening is intact",
     get(int(round(hole_x)) + 6, ym, 11) != "minecraft:air")
 
-print("沒有真實出入口時樣板樓梯照舊")
+print("Template stair unchanged without real exits")
 w0 = DictSink()
 build_line_and_station(w0, seg, idx, access=True)
 w1 = DictSink()
 build_line_and_station(w1, seg, idx, access=False)
-chk(f"access=True 多了 {len(w0) - len(w1):,} 個方塊（樣板樓梯與站屋）", len(w0) > len(w1) + 500)
+chk(f"access=True adds {len(w0) - len(w1):,} blocks (template stair and station building)", len(w0) > len(w1) + 500)
 
-print("\n全部通過" if ok else "\n有測試失敗")
+print("\nAll passed" if ok else "\nSome tests failed")
 raise SystemExit(0 if ok else 1)

@@ -1,19 +1,26 @@
 #!/usr/bin/env python3
-"""把 DEM 重新取樣成 Minecraft 座標系的高程網格 -> data/heightmap.npy
+"""Resample the DEM into an elevation grid in the Minecraft coordinate system -> data/heightmap.npy.
 
-高程來源有兩個，優先序不同：
+There are two elevation sources, with different priorities:
 
-  1. 內政部國土測繪中心 20 m DTM（data/dem/nlsc20/）—— 主要來源。
-     這是「數值地形模型」，房屋與樹冠都已濾除，是真正的地面。
-     原生就是 TWD97 / TM2 二度分帶（EPSG:3826），跟本專案的座標系同源，
-     所以完全不需要重投影，只是平移 + 雙線性內插。
-  2. Copernicus GLO-30（data/dem/copernicus/）—— 只用來補雙北以外的空缺
-     （機場捷運西段進入桃園）。它是 DSM，建物與樹冠都烘在高程裡，
-     所以會先扣掉與 DTM 的系統性偏差，再在交界處做羽化混合，避免出現斷崖。
+  1. The 20 m DTM of the National Land Surveying and Mapping Center, Ministry
+     of the Interior (data/dem/nlsc20/): the primary source. It is a digital
+     terrain model, with buildings and tree canopy filtered out, so it is the
+     true ground surface. It is natively in TWD97 / TM2 two-degree zones
+     (EPSG:3826), the same coordinate system as this project, so no
+     reprojection is needed at all: only a translation plus bilinear
+     interpolation.
+  2. Copernicus GLO-30 (data/dem/copernicus/): used only to fill the gaps
+     outside Taipei and New Taipei (the western section of the Airport MRT,
+     which enters Taoyuan). It is a DSM, with buildings and tree canopy baked
+     into the elevations, so its systematic offset from the DTM is subtracted
+     first, and the two are feather-blended at the boundary so no cliff
+     appears.
 
-輸出是以台北車站為原點、20 m 間距的 int16 網格（單位公尺，海平面 = 0）。
+The output is an int16 grid with Taipei Main Station as its origin and a 20 m
+spacing (in meters, sea level = 0).
 
-用法: ./.venv/bin/python scripts/make_heightmap.py [--step 20]
+Usage: ./.venv/bin/python -m mrt.adapters.dem.make_heightmap [--step 20]
 """
 import os, json, glob, zipfile, argparse
 os.environ.setdefault("PROJ_NETWORK", "OFF")
@@ -22,16 +29,16 @@ from rasterio.merge import merge
 from pyproj import Transformer
 
 from mrt import config
-OE, ON = 302214.8, 2770999.4          # 台北車站 TWD97，與 to_minecraft.py 同源
-SEA_Y = 62                            # 海平面對應的 Minecraft y
-NLSC_STEP = 20                        # 國土測繪中心格網間距
-FEATHER = 20                          # 羽化半徑（格），20 格 = 400 m
+OE, ON = 302214.8, 2770999.4          # Taipei Main Station in TWD97; same origin as adapters/projection.py.
+SEA_Y = 62                            # Minecraft y of sea level.
+NLSC_STEP = 20                        # Grid spacing of the NLSC data.
+FEATHER = 20                          # Feather radius in cells; 20 cells = 400 m.
 
 TO_LL = Transformer.from_crs("EPSG:3826", "EPSG:4326", always_xy=True)
 
 
 def bilinear(arr, col, row):
-    """對 arr 做雙線性取樣；col/row 為浮點索引"""
+    """Sample arr bilinearly; col/row are floating-point indices."""
     h, w = arr.shape
     c0 = np.clip(np.floor(col).astype(np.int64), 0, w - 2)
     r0 = np.clip(np.floor(row).astype(np.int64), 0, h - 2)
@@ -44,7 +51,9 @@ def bilinear(arr, col, row):
 
 
 def box_blur(a, r):
-    """用累積和做的方形均值濾波，用來把有效遮罩羽化成混合權重"""
+    """Apply a box mean filter of radius r, built from cumulative sums.
+
+    Used to feather the valid mask into blend weights."""
     if r <= 0:
         return a
     out = a
@@ -63,8 +72,11 @@ def box_blur(a, r):
 
 
 def _grd_blobs(d):
-    """產出 (檔名, bytes)。直接讀 .zip，免得為了一次性的高程計算
-    在 repo 裡長期攤開 170 MB 的 ASCII 圖幅。散落的 .grd 也照收。"""
+    """Yield (file name, bytes).
+
+    Reads the .zip files directly, so a one-off elevation computation does not
+    leave 170 MB of ASCII map sheets unpacked in the repo. Loose .grd files are
+    read as well."""
     for zp in sorted(glob.glob(os.path.join(d, "*.zip"))):
         with zipfile.ZipFile(zp) as z:
             for n in sorted(z.namelist()):
@@ -75,55 +87,57 @@ def _grd_blobs(d):
 
 
 def load_nlsc(d):
-    """讀入所有 .grd（ASCII 的 E N Z），散佈到一張共同的 20 m 格網上。
+    """Read every .grd (ASCII E N Z) and scatter it onto one shared 20 m grid.
 
-    不假設檔案內的排列順序，直接用座標算索引，所以圖幅缺角或順序不同都不會錯位。
+    No order is assumed within a file: indices are computed from the
+    coordinates, so a map sheet with a missing corner or a different order is
+    not misplaced.
     """
     cols, names = [], set()
     for name, blob in _grd_blobs(d):
-        if name in names:            # zip 與散落檔重複時只取一份
+        if name in names:            # Take one copy when a zip and a loose file duplicate each other.
             continue
         names.add(name)
         a = np.fromstring(blob.decode("ascii"), sep=" ")
         if a.size % 3:
-            raise SystemExit(f"{name} 欄數不是 3 的倍數")
+            raise SystemExit(f"{name}: the number of values is not a multiple of 3")
         cols.append(a.reshape(-1, 3))
     if not cols:
         return None, None, None
-    print(f"NLSC 20 m DTM：{len(cols)} 幅")
+    print(f"NLSC 20 m DTM: {len(cols)} sheets")
     pts = np.concatenate(cols)
     del cols
 
     E, N, Z = pts[:, 0], pts[:, 1], pts[:, 2]
-    bad = (Z < -50) | (Z > 4000)          # 濾掉無資料哨兵值
+    bad = (Z < -50) | (Z > 4000)          # Filter out no-data sentinel values.
     if bad.any():
-        print(f"  濾除異常高程 {bad.sum():,} 點")
+        print(f"  Filtered out {bad.sum():,} points with abnormal elevations")
         E, N, Z = E[~bad], N[~bad], Z[~bad]
 
     e0, e1 = E.min(), E.max()
     n0, n1 = N.min(), N.max()
     nx = int((e1 - e0) / NLSC_STEP) + 1
     nz = int((n1 - n0) / NLSC_STEP) + 1
-    print(f"  範圍 E[{e0:.0f},{e1:.0f}] N[{n0:.0f},{n1:.0f}]"
-          f"  = {(e1-e0)/1000:.1f} x {(n1-n0)/1000:.1f} km  格網 {nz}x{nx}")
+    print(f"  Extent E[{e0:.0f},{e1:.0f}] N[{n0:.0f},{n1:.0f}]"
+          f"  = {(e1-e0)/1000:.1f} x {(n1-n0)/1000:.1f} km  grid {nz}x{nx}")
 
     grid = np.full((nz, nx), np.nan, dtype=np.float32)
     ci = np.rint((E - e0) / NLSC_STEP).astype(np.int64)
     ri = np.rint((N - n0) / NLSC_STEP).astype(np.int64)
     grid[ri, ci] = Z
     filled = np.isfinite(grid)
-    print(f"  {len(Z):,} 點，格網填滿率 {100*filled.mean():.1f}%"
-          f"，高程 {np.nanmin(grid):.1f}~{np.nanmax(grid):.1f} m")
+    print(f"  {len(Z):,} points, grid {100*filled.mean():.1f}% filled"
+          f", elevation {np.nanmin(grid):.1f}~{np.nanmax(grid):.1f} m")
     return grid, (e0, n0), filled
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--step", type=int, default=20, help="網格間距（公尺）")
-    ap.add_argument("--margin", type=int, default=600, help="路網外擴（公尺）")
+    ap.add_argument("--step", type=int, default=20, help="grid spacing in metres")
+    ap.add_argument("--margin", type=int, default=600, help="margin around the network in metres")
     a = ap.parse_args()
 
-    # 涵蓋範圍取自實際路網
+    # The coverage is taken from the actual network.
     lines = json.load(open(config.MC_LINES_JSON, encoding="utf-8"))
     xs, zs = [], []
     for vs in lines.values():
@@ -132,7 +146,7 @@ def main():
                 xs.append(x); zs.append(z)
     x0, x1 = min(xs) - a.margin, max(xs) + a.margin
     z0, z1 = min(zs) - a.margin, max(zs) + a.margin
-    print(f"涵蓋 MC X[{x0},{x1}] Z[{z0},{z1}]  = {(x1-x0)/1000:.1f} x {(z1-z0)/1000:.1f} km")
+    print(f"Coverage MC X[{x0},{x1}] Z[{z0},{z1}]  = {(x1-x0)/1000:.1f} x {(z1-z0)/1000:.1f} km")
 
     gx = np.arange(x0, x1 + a.step, a.step)
     gz = np.arange(z0, z1 + a.step, a.step)
@@ -140,10 +154,10 @@ def main():
     E = GX + OE
     N = ON - GZ
 
-    # --- 1. NLSC DTM（主要來源，原生 EPSG:3826，直接平移取樣）---
+    # --- 1. NLSC DTM (primary source, native EPSG:3826, sampled after a plain translation) ---
     nl, org, _ = load_nlsc(config.DEM_NLSC)
     if nl is None:
-        raise SystemExit(f"{config.DEM_NLSC} 下沒有 .grd")
+        raise SystemExit(f"No .grd files under {config.DEM_NLSC}")
     e0, n0 = org
     col = (E - e0) / NLSC_STEP
     row = (N - n0) / NLSC_STEP
@@ -157,9 +171,9 @@ def main():
                   np.clip(row, 0, nl.shape[0] - 1.001))
     good = inside & (wt > 0.99)
     dtm = np.where(good, v / np.where(wt > 0, wt, 1), np.nan)
-    print(f"DTM 覆蓋路網範圍 {100*good.mean():.1f}%")
+    print(f"DTM covers {100*good.mean():.1f}% of the network extent")
 
-    # --- 2. Copernicus DSM（補空缺）---
+    # --- 2. Copernicus DSM (fills the gaps) ---
     tifs = sorted(glob.glob(os.path.join(config.DEM_COPERNICUS, "*.tif"))) \
         or sorted(glob.glob(os.path.join(config.DATA, "dem", "*.tif")))
     srcs = [rasterio.open(t) for t in tifs]
@@ -171,23 +185,24 @@ def main():
     lon, lat = TO_LL.transform(E, N)
     cc, rr = (~tf) * (lon, lat)
     dsm = bilinear(cop, np.asarray(cc), np.asarray(rr))
-    print(f"Copernicus DSM 鑲嵌 {cop.shape}（{len(tifs)} 幅）")
+    print(f"Copernicus DSM mosaic {cop.shape} ({len(tifs)} tiles)")
 
-    # DSM 系統性偏高（建物 + 樹冠 + 基準差），先扣掉中位數偏差再拿來補
+    # The DSM reads systematically high (buildings + tree canopy + datum
+    # difference), so subtract the median offset before using it as fill.
     diff = (dsm - dtm)[good]
     bias = float(np.median(diff))
-    print(f"DSM - DTM：中位數 {bias:+.2f} m，"
-          f"平均 {np.mean(diff):+.2f} m，"
-          f"90 分位 {np.percentile(diff,90):+.2f} m，最大 {diff.max():+.2f} m")
+    print(f"DSM - DTM: median {bias:+.2f} m, "
+          f"mean {np.mean(diff):+.2f} m, "
+          f"90th percentile {np.percentile(diff,90):+.2f} m, max {diff.max():+.2f} m")
 
-    # --- 3. 羽化混合，交界不出現斷崖 ---
+    # --- 3. Feathered blend, so no cliff appears at the boundary ---
     w = box_blur(good.astype(np.float64), FEATHER)
     w = np.clip(w, 0, 1)
     fill = dsm - bias
     hm_f = np.where(good, np.nan_to_num(dtm) * w + fill * (1 - w), fill)
     n_fill = int((~good).sum())
-    print(f"以 DSM 補的格點 {n_fill:,}（{100*n_fill/good.size:.1f}%），"
-          f"交界羽化半徑 {FEATHER*a.step} m")
+    print(f"Cells filled from the DSM: {n_fill:,} ({100*n_fill/good.size:.1f}%), "
+          f"boundary feather radius {FEATHER*a.step} m")
 
     hm = np.round(hm_f).astype(np.int16)
     np.save(config.HEIGHTMAP_NPY, hm)
@@ -199,11 +214,11 @@ def main():
     json.dump(meta, open(config.HEIGHTMAP_JSON, "w", encoding="utf-8"),
               indent=1, ensure_ascii=False)
 
-    print(f"\n網格 {hm.shape}  高程 {hm.min()}~{hm.max()} m")
+    print(f"\nGrid {hm.shape}  elevation {hm.min()}~{hm.max()} m")
     for q in (1, 25, 50, 75, 95, 99, 99.9):
-        print(f"  {q:>5}% 分位: {np.percentile(hm, q):>7.1f} m  -> y={SEA_Y+np.percentile(hm,q):.0f}")
+        print(f"  {q:>5}% quantile: {np.percentile(hm, q):>7.1f} m  -> y={SEA_Y+np.percentile(hm,q):.0f}")
     over = (hm.astype(np.int32) + SEA_Y > 319).sum()
-    print(f"超過 y=319 上限的格點: {over} ({100*over/hm.size:.3f}%)")
+    print(f"Cells above the y=319 limit: {over} ({100*over/hm.size:.3f}%)")
 
 
 if __name__ == "__main__":

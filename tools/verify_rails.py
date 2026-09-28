@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-"""從存檔讀回所有鐵軌，檢查真的能一路跑完 —— 不相信生成器的自述。
+"""Read every rail back from a world save and check that a train can really run the
+whole way, instead of trusting the generator's own account.
 
-生成器自己的單元測試只證明「算出來的路徑」合法，證明不了寫進世界之後
-還是那樣：region 過濾、車站挖空、樓梯都可能把某幾格蓋掉。所以獨立掃一遍。
+The generator's unit tests prove only that the computed path is valid, not that it is
+still valid once written into the world: region filtering, station excavation and stairs
+can all overwrite a few cells. So the rails are scanned independently.
 
-檢查三件事：
-  1. 每根鐵軌宣告的兩個連接方向，對面真的有一根鐵軌接回來
-  2. 斜軌上方那一格真的高一格、另一端同高
-  3. 鐵軌底下是實心方塊（懸空的軌道礦車會掉下去）
+Three checks:
+  1. In both connection directions a rail declares, the rail on the other side really
+     connects back.
+  2. On an ascending rail, the cell on the uphill side really is one block higher and the
+     other end is level.
+  3. There is a solid block under every rail (a minecart falls through a rail over air).
 
-用法: ./.venv/bin/python tools/verify_rails.py [存檔路徑] [--show=20]
+Usage: ./.venv/bin/python tools/verify_rails.py [save path] [--show=20]
 """
 import io, os, re, sys, glob, zlib, collections
 import numpy as np, nbtlib
@@ -26,7 +30,7 @@ CURVE = {"north_east": ("north", "east"), "north_west": ("north", "west"),
 
 
 def conns(shape):
-    """(兩個連接方向, 上坡方向或 None)"""
+    """Return (the two connection directions, the uphill direction or None)."""
     if shape.startswith("ascending_"):
         d = shape[len("ascending_"):]
         opp = {"north": "south", "south": "north", "east": "west", "west": "east"}[d]
@@ -49,10 +53,11 @@ def unpack(data, bits, n=4096):
 
 
 def scan(rdir):
-    """回傳 {(x,y,z): (shape, powered)} 與 {(x,y,z): 底下是否實心}
+    """Return {(x,y,z): (shape, powered)} and {(x,y,z): whether the block below is solid}.
 
-    鍵一定要含 y：同一條線可能上下疊（例如支線從主線底下鑽過），
-    只用 (x,z) 當鍵會把其中一根蓋掉，然後憑空生出一堆假斷點。
+    The key must include y: track can run above other track (a branch line passing under
+    the main line, for example), and keying on (x,z) alone would overwrite one of the two
+    rails and produce a crop of false breaks.
     """
     rails, solid = {}, {}
     files = sorted(glob.glob(os.path.join(rdir, "r.*.mca")))
@@ -71,9 +76,10 @@ def scan(rdir):
                 zlib.decompress(blob) if raw[q+4] == 2 else blob))
             root = root[''] if '' in root else root
             bx, bz = int(root["xPos"]) * 16, int(root["zPos"]) * 16
-            # 先把整個 chunk 的 section 解開：鐵軌落在 section 最底一排
-            # （y % 16 == 0）時，底下那格在下一個 section 裡，要跨 section 查。
-            # 原本只在同一個 section 內往下看，每 16 排就有一排的懸空漏檢。
+            # Decode every section of the chunk first. When a rail sits on the bottom layer
+            # of a section (y % 16 == 0), the cell below it is in the section beneath, so
+            # the lookup must cross sections. The check once looked down only within the
+            # same section and missed unsupported rails on one layer in every 16.
             decoded = {}
             for sec in root["sections"]:
                 bs = sec["block_states"]
@@ -97,7 +103,7 @@ def scan(rdir):
                     m = re.search(r"shape=([a-z_]+)", pal[j])
                     rails[(x, y, z)] = (m.group(1) if m else "?",
                                         "powered=true" in pal[j])
-                # 記下軌道底下那一格是不是空氣
+                # Record whether the cell below each rail is air.
                 air = [j for j, n in enumerate(names) if n == "minecraft:air"]
                 below = decoded.get(sy - 1)
                 for k in np.nonzero(np.isin(idx, [j for j, n in enumerate(names)
@@ -115,7 +121,7 @@ def scan(rdir):
                     else:
                         solid[(x, y, z)] = False
         if fi % 50 == 0 or fi == len(files):
-            print(f"  [{fi}/{len(files)}] {len(rails):,} 根鐵軌", flush=True)
+            print(f"  [{fi}/{len(files)}] {len(rails):,} rails", flush=True)
     return rails, solid
 
 
@@ -133,13 +139,13 @@ def main():
         try:
             (d1, d2), asc = conns(shape)
         except KeyError:
-            bad["形狀無法辨識"] += 1
+            bad["Unknown shape"] += 1
             continue
         if powered and shape in CURVE:
-            bad["動力軌用了彎道形狀"] += 1
+            bad["Powered on curve"] += 1
         if solid.get((x, y, z)) is False:
-            bad["軌道懸空"] += 1
-            sample["軌道懸空"].append(f"({x},{y},{z}) {shape}")
+            bad["Rail over air"] += 1
+            sample["Rail over air"].append(f"({x},{y},{z}) {shape}")
         for d in (d1, d2):
             dx, dz = DIRV[d]
             back = {"north": "south", "south": "north",
@@ -147,8 +153,8 @@ def main():
             want = y + 1 if asc == d else y
             nb = rails.get((x + dx, want, z + dz))
             if nb is None and asc is None:
-                # 斜軌的上端那一格是平的：它的鄰居低一格、而且朝自己爬上來。
-                # 這是原版 RailState 的行為，不是斷點。
+                # The cell at the top of a slope is flat: its neighbor is one block lower
+                # and ascends toward it. This is vanilla RailState behavior, not a break.
                 low = rails.get((x + dx, y - 1, z + dz))
                 if low and low[0] == "ascending_" + back:
                     nb = low
@@ -156,35 +162,36 @@ def main():
                 near = [yy for yy in range(y - 2, y + 3)
                         if (x + dx, yy, z + dz) in rails]
                 if near:
-                    bad["高程對不上"] += 1
-                    sample["高程對不上"].append(f"({x},{y},{z}) {shape} 往{d} -> y{near}")
+                    bad["Height mismatch"] += 1
+                    sample["Height mismatch"].append(f"({x},{y},{z}) {shape} towards {d} -> y{near}")
                 else:
-                    bad["接不到下一根"] += 1
-                    sample["接不到下一根"].append(f"({x},{y},{z}) {shape} 往{d}")
+                    bad["No next rail"] += 1
+                    sample["No next rail"].append(f"({x},{y},{z}) {shape} towards {d}")
                 continue
             nshape = nb[0]
             del back
             back = {"north": "south", "south": "north",
                     "east": "west", "west": "east"}[d]
             if back not in conns(nshape)[0]:
-                bad["對面沒接回來"] += 1
-                sample["對面沒接回來"].append(f"({x},{y},{z}) {shape} 往{d} -> {nshape}")
+                bad["Not linked back"] += 1
+                sample["Not linked back"].append(f"({x},{y},{z}) {shape} towards {d} -> {nshape}")
 
-    ends = bad["接不到下一根"]
-    print(f"\n鐵軌 {len(rails):,} 根（動力軌 {npow:,} 根，"
-          f"{100*npow/max(1,len(rails)):.1f}%）")
+    ends = bad["No next rail"]
+    print(f"\n{len(rails):,} rails ({npow:,} powered, "
+          f"{100*npow/max(1,len(rails)):.1f}%)")
     for k, v in bad.items():
         print(f"  {k:<16} {v:>7,}")
     if not bad:
-        print("  全部通過")
+        print("  All passed")
     for k in bad:
         for t in sample[k][:show]:
             print(f"    · {k} {t}")
         if len(sample[k]) > show:
-            print(f"    …（{k} 還有 {len(sample[k]) - show} 筆，--show 可以多印）")
-    print(f"\n註：「接不到下一根」含各路線的正常端點（每個端點算 1）。"
-          f"目前 {ends} 個，路線／支線端點本來就會有幾十個。")
-    return 1 if (bad - collections.Counter({"接不到下一根": ends})) else 0
+            print(f"    … {len(sample[k]) - show} more '{k}' (--show prints more)")
+    print(f"\nNote: 'No next rail' includes the normal ends of every line (each end counts "
+          f"as 1). There are {ends} now; the ends of lines and branches alone come to a few "
+          f"dozen.")
+    return 1 if (bad - collections.Counter({"No next rail": ends})) else 0
 
 
 if __name__ == "__main__":

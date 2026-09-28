@@ -1,23 +1,29 @@
 #!/usr/bin/env python3
-"""行人可達性：把蓋好的世界當成一張圖，用玩家真的走得動的規則洪水填滿。
+"""Pedestrian reachability: treats the built world as a graph and flood-fills it under the rules
+a player can actually walk by.
 
-地下街「每個出入口都連得到」這件事沒辦法用生成器自己的紀錄證明 ——
-生成器只知道自己放了哪些方塊，不知道那些方塊拼起來走不走得通。少一階樓梯、
-通道被別條線的隧道襯砌切斷、頂板壓到只剩一格淨空，這些在生成紀錄裡通通是
-「已完成」。所以驗證只能反過來做：從方塊本身重建可走的空間。
+That every exit of an underground mall is reachable cannot be proven from the
+generator's own records. The generator knows only which blocks it placed, not whether
+those blocks fit together into something walkable. A missing stair step, a corridor cut
+by another line's tunnel lining, a roof slab that leaves only one block of headroom: in
+the generation records all of these are "done". So verification has to work the other
+way round: rebuild the walkable space from the blocks themselves.
 
-方塊來源用注入的：tools/verify_concourse.py 餵的是從 Anvil 存檔讀回來的方塊，
-tests/test_concourse.py 餵的是 DictSink 裡的方塊。規則只有這一份，兩邊共用。
+The block source is injected: tools/verify_concourse.py feeds blocks read back from the
+Anvil world save, and tests/test_concourse.py feeds the blocks in a DictSink. There is
+only one copy of the rules, shared by both.
 
-移動規則刻意做成對稱的（上下各一格），可達性因此是無向的，可以直接談
-「連通分量」。真實的 Minecraft 可以往下摔任意高度，那是單向的 —— 用它來
-驗連通會把「跳得下去、爬不上來」的斷頭通道判成通過。
+The movement rules are deliberately symmetric (one block up or down), so reachability
+is undirected and connected components can be discussed directly. Real Minecraft lets
+a player drop any height, which is one-way; checking connectivity with it would pass a
+dead-end corridor that you can jump down into but not climb out of.
 
-自我測試: ./.venv/bin/python -m tests.test_walk
+Self-test: ./.venv/bin/python -m tests.test_walk
 """
 import collections
 
-# 不擋路、也撐不住人的方塊：站在它們那一格要靠下面那格。
+# Blocks that neither block the way nor hold a player up: standing in their cell relies on the
+# cell below.
 _PASSABLE_EXACT = {
     "minecraft:air", "minecraft:cave_air", "minecraft:void_air",
     "minecraft:water", "minecraft:light", "minecraft:structure_void",
@@ -29,17 +35,18 @@ _PASSABLE_CONTAINS = ("rail", "sign", "torch", "pressure_plate", "carpet")
 
 
 def base_name(block):
-    """去掉方塊狀態：'minecraft:oak_sign[rotation=4]' -> 'minecraft:oak_sign'"""
+    """Strip the block states: 'minecraft:oak_sign[rotation=4]' -> 'minecraft:oak_sign'."""
     return block.split("[", 1)[0]
 
 
 def is_bottom_slab(block):
-    """下半磚：占半格，人站在這一格裡，頭頂那格仍然是空的。
+    """Tell whether a block is a bottom slab: it fills half a cell, a player stands inside that
+    cell, and the cell above the head is still empty.
 
-    專案的樓梯是「整塊、下半磚」交替鋪的（build_line._stair_run、
-    landmarks.ShaftStair），每公尺升降 0.5 m。少了這一條，整段樓梯會被
-    當成一半實心一半懸空，走起來每兩格斷一次。
-    nbtlib 寫出去的字串沒帶 type= 時預設就是 bottom。
+    The project's stairs alternate full blocks and bottom slabs (build_line._stair_run,
+    landmarks.ShaftStair), rising 0.5 m per meter. Without this rule a whole stair would
+    be read as half solid and half hanging in the air, breaking every second cell.
+    A string written by nbtlib without type= defaults to bottom.
     """
     name = base_name(block)
     if not name.endswith("_slab"):
@@ -49,7 +56,7 @@ def is_bottom_slab(block):
 
 
 def is_passable(block):
-    """人可以穿過去、但踩不住的方塊。"""
+    """Tell whether a block can be walked through but not stood on."""
     name = base_name(block)
     if name in _PASSABLE_EXACT:
         return True
@@ -59,25 +66,28 @@ def is_passable(block):
 
 
 def is_support(block):
-    """能踩在上面的方塊（實心，或本身就是下半磚）。"""
+    """Tell whether a block can be stood on (solid, or itself a bottom slab)."""
     return not is_passable(block) and not is_bottom_slab(block)
 
 
 def standable(get, x, y, z, head=2, floor_ok=None):
-    """(x, y, z) 能不能站人 —— 這一格是「腳」所在的格。
+    """Tell whether a player can stand at (x, y, z), the cell the feet occupy.
 
-    要件：腳這一格與其上 head-1 格通得過；腳底下是實心，或腳這一格
-    本身是下半磚（半磚把人墊高半格，等於自己當自己的地板）。
+    Requirements: the foot cell and the head-1 cells above it are passable, and the block
+    below the feet is solid, or the foot cell is itself a bottom slab (a slab raises the
+    player half a block, so it serves as its own floor).
 
-    floor_ok(方塊名) 可以再限制腳下踩的是什麼。驗證出入口用它擋掉地形：
-    「不踩土」就走不到街上，也就不能沿街繞到別的出入口再下去 ——
-    這樣驗出來的才是「這一座樓梯自己通不通」。
+    floor_ok(block name) can further restrict what the feet stand on. The exit check uses
+    it to rule out terrain: if soil may not be stood on, the street cannot be reached, so
+    nobody can walk along the street to another exit and go down there. Only then does
+    the check show whether this one stair is passable on its own.
     """
     foot = get(x, y, z)
     slab = is_bottom_slab(foot)
     if not slab and not is_passable(foot):
         return False
-    # 站在下半磚上人被墊高半格，頭頂會伸進再上面那一格，所以要多查一格
+    # Standing on a bottom slab raises the player half a block, so the head reaches one cell
+    # higher; check one extra cell
     for dy in range(1, head + (1 if slab else 0)):
         if not is_passable(get(x, y + dy, z)):
             return False
@@ -92,15 +102,17 @@ NEIGHBOURS = ((1, 0), (-1, 0), (0, 1), (0, -1))
 
 def flood(get, starts, bounds=None, head=2, limit=4_000_000, floor_ok=None,
           allow=None):
-    """從 starts 洪水填滿走得到的腳格。
+    """Flood-fill the reachable foot cells from starts.
 
-    get(x, y, z) 回傳方塊名稱字串。bounds 是 (x0, y0, z0, x1, y1, z1) 含端點，
-    用來把搜尋圈在關心的範圍內 —— 少了它，一條通到地面的樓梯會讓洪水漫過
-    整張地圖。allow(x, y, z) 是再細一層的範圍：驗地下街用它擋掉「這一格
-    已經在地表附近」—— 地形有高低，一個固定的 y 上限圈不住起伏的地面。
+    get(x, y, z) returns a block name string. bounds is (x0, y0, z0, x1, y1, z1),
+    inclusive, and keeps the search within the area of interest; without it, one stair
+    leading up to the ground would let the flood spread over the whole map. allow(x, y, z)
+    is a finer limit: the underground mall check uses it to exclude cells already close
+    to the ground surface. The terrain rises and falls, and a fixed y limit cannot follow
+    an uneven ground surface.
 
-    回傳 (dist, came)：dist 是 {腳格: 步數}，came 是 {腳格: 上一格}，
-    後者用來把路徑倒推出來給人看。
+    Return (dist, came): dist is {foot cell: steps} and came is {foot cell: previous cell};
+    the latter is used to trace the path back for display.
     """
     if bounds is not None:
         x0, y0, z0, x1, y1, z1 = bounds
@@ -128,7 +140,7 @@ def flood(get, starts, bounds=None, head=2, limit=4_000_000, floor_ok=None,
         d = dist[(x, y, z)] + 1
         for dx, dz in NEIGHBOURS:
             nx, nz = x + dx, z + dz
-            for ny in (y + 1, y, y - 1):        # 上下各一格，對稱
+            for ny in (y + 1, y, y - 1):        # One block up or down, symmetric
                 n = (nx, ny, nz)
                 if n in dist or not inside(*n):
                     continue
@@ -136,16 +148,17 @@ def flood(get, starts, bounds=None, head=2, limit=4_000_000, floor_ok=None,
                     dist[n] = d
                     came[n] = (x, y, z)
                     q.append(n)
-                    break                        # 同一柱只取最接近的一格
+                    break                        # Take only the closest cell in each column
     return dist, came
 
 
 def nearest_standable(get, x, y, z, radius=6, head=2, dy=8, floor_ok=None):
-    """在 (x, y, z) 附近找一格站得住的地方。
+    """Find a cell near (x, y, z) where a player can stand.
 
-    出入口的座標是 OSM 的節點位置，不保證正好落在樓梯的踏面上；
-    驗證要從「那附近」開始走，而不是要求生成器把地板剛好放在那個點。
-    回傳最近的腳格，找不到回 None。
+    An exit's coordinates are the position of its OSM node and are not guaranteed to land
+    exactly on a stair tread. The check should start walking from somewhere nearby, rather
+    than require the generator to put a floor at exactly that point.
+    Return the nearest foot cell, or None if there is none.
     """
     best = None
     for ddy in range(-dy, dy + 1):
@@ -161,7 +174,7 @@ def nearest_standable(get, x, y, z, radius=6, head=2, dy=8, floor_ok=None):
 
 
 def path(came, cell):
-    """把 flood() 的 came 倒推成一條路徑（起點在前）。"""
+    """Trace flood()'s came back into a path (start first)."""
     out = [cell]
     while cell in came:
         cell = came[cell]
@@ -171,10 +184,10 @@ def path(came, cell):
 
 
 def components(get, cells, bounds=None, head=2, floor_ok=None, allow=None):
-    """把一批腳格分成連通分量。回傳 [[cell, ...], ...]，大的在前。
+    """Split foot cells into connected components. Return [[cell, ...], ...], largest first.
 
-    「所有出入口互相連得到」等價於「只有一個分量」，分不開的時候這個
-    分組直接告訴你是哪幾個出入口被關在一起。
+    "Every exit can reach every other" is equivalent to "there is only one component";
+    when there are more, the grouping shows directly which exits are shut in together.
     """
     todo = [c for c in cells]
     seen, out = set(), []

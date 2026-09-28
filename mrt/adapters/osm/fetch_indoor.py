@@ -1,23 +1,31 @@
 #!/usr/bin/env python3
-"""抓地下人行動線（穿堂、地下街連通道、樓梯、電梯）-> data/indoor.json
+"""Fetch the underground pedestrian routes -> data/indoor.json.
 
-台北車站一帶的地下街在 OSM 上是完整測繪過的：8.8 km 的通道中心線、
-120 條樓梯、16 座電梯，還有台北地下街／站前地下街／中山地下街的商場輪廓面。
-與其自己編一套地下街，不如照著這份資料蓋 —— 這和整個專案「1:1 重建」的
-做法一致。
+The routes are concourses, underground mall corridors, stairs and elevators.
 
-**兩種畫法都要收**。OSM 台北的地下穿堂有兩套並存的標法：
-  A 式  highway=corridor + indoor=yes + level     台北車站、中山、松山、忠孝復興…
-  B 式  highway=footway  + indoor=yes + level     松山新店線南段（景美到中正紀念堂六站）
-只認 A 式會漏掉 3.8 km，那是台北車站以外最大的一塊。
+The underground malls around Taipei Main Station are fully mapped in OSM:
+8.8 km of corridor centerlines, 120 stairs, 16 elevators, and the outline
+polygons of the Taipei City Mall, the Station Front Metro Mall and the
+Zhongshan Metro Mall. Building from this data rather than inventing an
+underground mall matches the project's 1:1 approach.
 
-**用 level<0 過濾，不要用 indoor=yes 過濾**。忠孝新生站旁有一所大學把校舍
-室內圖畫得很完整 —— 92 條 corridor、1.2 km，level 全是 0~14。照 indoor 收
-會在捷運站上面長出一棟十四層的學校。判斷寫在 domain/concourse.underground()。
+**Take both tagging schemes.** Taipei's underground concourses are tagged in
+OSM in two schemes that coexist:
+  Scheme A  highway=corridor + indoor=yes + level
+            Taipei Main Station, Zhongshan, Songshan, Zhongxiao Fuxing...
+  Scheme B  highway=footway  + indoor=yes + level
+            southern Songshan-Xindian Line (six stations, Jingmei to
+            Chiang Kai-Shek Memorial Hall)
+Taking only scheme A misses 3.8 km, the largest area outside Taipei Main Station.
 
-用法:
+**Filter by level<0, not by indoor=yes.** A university next to Zhongxiao
+Xinsheng station has mapped its buildings' interiors in full: 92 corridors,
+1.2 km, all on levels 0 to 14. Filtering by indoor would grow a fourteen-story
+school on top of the metro station. The test is in domain/concourse.underground().
+
+Usage:
     ./.venv/bin/python -m mrt.adapters.osm.fetch_indoor
-    ./.venv/bin/python -m mrt.adapters.osm.fetch_indoor --refresh   # 不讀快取
+    ./.venv/bin/python -m mrt.adapters.osm.fetch_indoor --refresh   # bypass the cache
 """
 import csv
 import math
@@ -30,7 +38,7 @@ from mrt.infrastructure.overpass import BBOX, query_cached
 from mrt.adapters.osm.fetch_details import CACHE, ORIGIN_REF, TF, dump, origin
 
 OUT = os.path.join(config.DATA, "indoor.json")
-NEAR_M = 400            # 判定「屬於某站」的半徑
+NEAR_M = 400            # Radius within which an item counts as belonging to a station.
 
 Q_WAYS = f"""[out:json][timeout:600];
 (
@@ -64,7 +72,7 @@ def pick(tags):
 
 
 def load_stations():
-    """(名稱, ref, x, z)，用來標註每條通道屬於哪一站。"""
+    """Return (name, ref, x, z) rows, used to label which station each corridor belongs to."""
     rows = []
     with open(config.MC_STATIONS_CSV, encoding="utf-8") as f:
         for r in csv.DictReader(f):
@@ -88,7 +96,7 @@ def main():
     refresh = "--refresh" in sys.argv
     oE, oN = origin()
     to_mc = lambda E, N: (round(E - oE), round(-(N - oN)))
-    print(f"原點 台北車站 (ref={ORIGIN_REF}) -> MC (0,0)")
+    print(f"Origin: Taipei Main Station (ref={ORIGIN_REF}) -> MC (0,0)")
 
     stns = load_stations()
     dw = query_cached("indoor_ways", Q_WAYS, cache_dir=CACHE,
@@ -98,8 +106,9 @@ def main():
     dl = query_cached("indoor_lifts", Q_LIFTS, cache_dir=CACHE,
                       refresh=refresh, timeout=300)
     if dw is None:
-        raise SystemExit("通道查詢失敗，data/indoor.json 不動。"
-                         "不可寫出空檔 —— 之後的生成會靜默地少蓋一整座地下街。")
+        raise SystemExit("Corridor query failed; data/indoor.json left unchanged. "
+                         "An empty file must not be written: later builds would silently "
+                         "leave out a whole underground mall.")
 
     ways, dropped = [], 0
     for e in dw["elements"]:
@@ -113,7 +122,7 @@ def main():
         for nid, g in zip(e.get("nodes", []), e["geometry"]):
             x, z = to_mc(*TF.transform(g["lon"], g["lat"]))
             if pts and [x, z] == pts[-1]:
-                continue                      # 併掉重複點，長度才算得準
+                continue                      # Merge duplicate points so the length is accurate.
             pts.append([x, z])
             nodes.append(nid)
         if len(pts) < 2:
@@ -176,19 +185,19 @@ def main():
     dump(OUT, "underground pedestrian corridors, stairs and lifts", ways,
          extra=dict(areas=areas, lifts=lifts,
                     area_count=len(areas), lift_count=len(lifts)))
-    print(f"  通道 {len(ways)} 條（篩掉地上的 {dropped} 條）、"
-          f"商場輪廓 {len(areas)} 面、電梯 {len(lifts)} 座")
+    print(f"  {len(ways)} corridors ({dropped} above ground filtered out), "
+          f"{len(areas)} mall outlines, {len(lifts)} lifts")
 
-    # 摘要：哪幾站真的有東西可以蓋
+    # Summary: which stations actually have something to build.
     per = {}
     for w in ways:
-        st = w["station"] or "（不屬於任何站）"
+        st = w["station"] or "(no station)"
         e = per.setdefault(st, [0, 0.0])
         e[0] += 1
         e[1] += w["length"]
-    print(f"\n{'車站':<12}{'通道數':>6}{'長度 m':>9}")
+    print(f"\n{'station':<12}{'corridors':>10}{'length m':>9}")
     for st, (n, L) in sorted(per.items(), key=lambda kv: -kv[1][1])[:20]:
-        print(f"  {st:<12}{n:>6}{L:>9.0f}")
+        print(f"  {st:<12}{n:>10}{L:>9.0f}")
 
 
 if __name__ == "__main__":

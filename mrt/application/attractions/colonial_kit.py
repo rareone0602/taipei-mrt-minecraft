@@ -1,22 +1,34 @@
 #!/usr/bin/env python3
-"""日治時期洋風建築的共用零件：總統府、國立臺灣博物館、西門紅樓都用得上。
+"""Shared parts for Western-style buildings of the Japanese colonial era, used by the
+Presidential Office Building, the National Taiwan Museum and the Red House.
 
-kit.py 給的是遮罩與高度場；這三座建築要的是「立面」—— 紅磚牆上一條條白色飾帶、
-一個開間一扇拱窗、轉角的隅石、門廊的柱子與山牆。這裡把它們寫成：
+kit.py supplies masks and heightfields; these three buildings need facades: bands of white
+trim across red brick walls, one arched window per bay, quoins at the corners, and the
+columns and pediment of a portico. This module provides them as:
 
-  fit_angle   OSM 外環 -> 讓局部外接矩形面積最小的角度。kit.principal_angle 取整數度，
-              總統府 130 m 長的立面差 0.4° 就歪將近 1 m，這裡取到 0.1°
-  to_local    世界座標的點 -> 局部 (u, v)（不加半格，給 OSM 的頂點用）
-  Mason       在 Frame 上砌東西（寫入一律經過呼叫端給的 w，也就是 Guard）：
-                facade()  遮罩外圈砌 layers 層牆，每格交給 pattern(面, 沿牆座標, 高度, 層)
-                          決定材質 —— 窗是外層挖空、內層玻璃，1:1 的牆才看得出深度
-                roof()    高度場屋頂：整數格放全方塊、半格放半磚、陡坡的邊放樓梯
-                column()  方柱：柱礎、柱身、柱頭
-                gable()   三角形山牆（門廊的山花、紅樓入口）
-                dome()    圓頂殼（臺博館、總統府的衛塔）
-  stair()     樓梯的方塊狀態字串（facing 是「高的那一側」朝哪個方位）
+  fit_angle   OSM outer ring -> the angle that minimizes the area of the local bounding
+              rectangle. kit.principal_angle rounds to whole degrees; on the Presidential
+              Office Building's 130 m facade, 0.4° of error is nearly 1 m of skew, so this
+              works to 0.1°.
+  to_local    World point -> local (u, v) (no half-block offset; for OSM vertices).
+  Mason       Builds on a Frame (every write goes through the w the caller supplies, that
+              is, the Guard):
+                facade()  Builds `layers` layers of wall on the outer ring of the mask,
+                          handing each cell to pattern(face, coordinate along the wall,
+                          height, layer) to choose the material. A window is hollow in
+                          the outer layer and glass in the inner layer, so a 1:1 wall
+                          shows its depth.
+                roof()    Heightfield roof: full blocks at whole heights, slabs at half
+                          heights, stairs along the edges of steep slopes.
+                column()  Square column: base, shaft, capital.
+                gable()   Triangular pediment (the portico pediment, the Red House
+                          entrance).
+                dome()    Dome shell (the National Taiwan Museum, the corner towers of
+                          the Presidential Office Building).
+  stair()     Block state string of a stair (facing is the direction of its high side).
 
-這裡不含任何一座建築的尺寸；尺寸與出處寫在各自的模組裡。
+No building's dimensions are here; dimensions and their sources are in each building's own
+module.
 """
 import math
 
@@ -28,7 +40,8 @@ OPPOSITE = {"north": "south", "south": "north", "east": "west", "west": "east"}
 
 
 def fit_angle(poly, step=0.1):
-    """外環（世界座標）-> u 軸的角度（弧度，落在 -45°～45°）：局部外接矩形面積最小。"""
+    """Outer ring (world coordinates) -> angle of the u axis (radians, within -45° to 45°)
+    that minimizes the area of the local bounding rectangle."""
     pts = np.asarray(poly, dtype=float)
     pts = pts - pts.mean(axis=0)
     best, best_a = None, 0.0
@@ -45,13 +58,14 @@ def fit_angle(poly, step=0.1):
 
 
 def to_local(fr, x, z):
-    """世界座標的「點」-> 局部 (u, v)。Frame.local 是給格子用的（加半格），OSM 頂點用這個。"""
+    """World point -> local (u, v). Frame.local is for cells (it adds half a block); OSM
+    vertices use this."""
     dx, dz = x - fr.cx, z - fr.cz
     return dx * fr.c + dz * fr.s, -dx * fr.s + dz * fr.c
 
 
 def local_extent(fr, poly):
-    """多邊形在局部座標的範圍 (u0, u1, v0, v1)。"""
+    """Extent of a polygon in local coordinates (u0, u1, v0, v1)."""
     L = [to_local(fr, x, z) for x, z in poly]
     us = [p[0] for p in L]
     vs = [p[1] for p in L]
@@ -59,8 +73,9 @@ def local_extent(fr, poly):
 
 
 def convex_corners(pts, min_turn=60.0):
-    """多邊形（局部座標）的凸角：轉角大於 min_turn 度、往外凸的頂點。
-    弧線（半圓門廊、八角形以外的圓）上的頂點每個只轉十幾度，不算角。"""
+    """Convex corners of a polygon (local coordinates): outward vertices that turn by more
+    than min_turn degrees. Vertices on arcs (a semicircular portico, circles other than
+    octagons) each turn only a dozen or so degrees and do not count as corners."""
     n = len(pts)
     if n < 3:
         return []
@@ -90,7 +105,8 @@ def centroid(poly):
 
 
 def stair(name, facing, half="bottom", shape="straight"):
-    """minecraft:<name>_stairs 的狀態字串。facing 是樓梯高的那一側（往那個方向走是上樓）。"""
+    """State string of minecraft:<name>_stairs. facing is the stair's high side (walking in
+    that direction goes up)."""
     return "minecraft:%s[facing=%s,half=%s,shape=%s,waterlogged=false]" % (name, facing, half, shape)
 
 
@@ -99,7 +115,7 @@ def slab(name, kind="bottom"):
 
 
 def shift(m, dz, dx):
-    """遮罩平移：out[i, j] = m[i + dz, j + dx]（出界當 False）。"""
+    """Shift a mask: out[i, j] = m[i + dz, j + dx] (False out of bounds)."""
     out = np.zeros_like(m)
     h, w = m.shape
     i0, i1 = max(0, -dz), min(h, h - dz)
@@ -110,14 +126,15 @@ def shift(m, dz, dx):
 
 
 class Mason:
-    """在 Frame 上砌牆、屋頂、柱子。w 是（已包了 Guard 的）BlockSink。"""
+    """Builds walls, roofs and columns on a Frame. w is a BlockSink (already wrapped in a
+    Guard)."""
 
     def __init__(self, w, fr):
         self.w, self.fr = w, fr
         self.p = Painter(w, fr)
         self._face_cache = {}
 
-    # ---- 基本 ----
+    # ---- Basics ----
     def set(self, x, y, z, block):
         self.w.set(int(x), int(y), int(z), block)
 
@@ -129,7 +146,8 @@ class Mason:
         self.p.fill(mask, y0, y1, block)
 
     def facing(self, du, dv):
-        """局部方向 -> 正方位（有快取：一面牆幾千格都問同一個方向）。"""
+        """Local direction -> cardinal direction (cached: the thousands of cells in one wall
+        all ask for the same direction)."""
         k = (du, dv)
         f = self._face_cache.get(k)
         if f is None:
@@ -138,19 +156,23 @@ class Mason:
 
     @staticmethod
     def along(face):
-        """面的法線 (nu, nv) -> 沿牆的「正方向」(du, dv)：法線沿 u 的牆，沿牆座標是 v。"""
+        """Face normal (nu, nv) -> the positive direction along the wall (du, dv): for a wall
+        whose normal runs along u, the coordinate along the wall is v."""
         return (0, 1) if face[0] else (1, 0)
 
-    # ---- 立面 ----
+    # ---- Facades ----
     def ring_cells(self, mask):
-        """遮罩外圈每格：(x, z, u, v, 面的法線 (nu, nv), 沿牆座標 t)。
+        """Each cell of the mask's outer ring: (x, z, u, v, face normal (nu, nv), coordinate
+        along the wall t).
 
-        法線看四鄰哪幾側在遮罩外，合成世界方向再轉回局部，取最接近的那一軸。
-        Frame 轉了角度時外圈是鋸齒狀的，每一格的法線仍然是那面牆的朝向。"""
+        The normal comes from which of the four neighbors lie outside the mask, combined
+        into a world direction, turned back into local coordinates and snapped to the
+        nearest axis. When the Frame is rotated the outer ring is jagged, yet each cell's
+        normal is still the direction of its wall."""
         m = mask
-        ex = m & ~shift(m, 0, 1)             # 東鄰（x+1）在外面
+        ex = m & ~shift(m, 0, 1)             # East neighbor (x+1) is outside
         wx = m & ~shift(m, 0, -1)
-        sz = m & ~shift(m, 1, 0)             # 南鄰（z+1）
+        sz = m & ~shift(m, 1, 0)             # South neighbor (z+1)
         nz = m & ~shift(m, -1, 0)
         edge = ex | wx | sz | nz
         dx = ex.astype(np.int8) - wx.astype(np.int8)
@@ -160,7 +182,7 @@ class Mason:
         out = []
         for i, j in zip(ii.tolist(), jj.tolist()):
             wx_, wz_ = float(dx[i, j]), float(dz[i, j])
-            if wx_ == 0 and wz_ == 0:            # 一格寬的牆兩側都在外：隨便挑一側
+            if wx_ == 0 and wz_ == 0:            # Both sides of a one-block wall are outside: pick either
                 wx_ = 1.0 if ex[i, j] else 0.0
                 wz_ = 0.0 if ex[i, j] else 1.0
             du = wx_ * fr.c + wz_ * fr.s
@@ -176,8 +198,9 @@ class Mason:
 
     @staticmethod
     def _ngon_cell(cell, ngon):
-        """外圈的一格改用正 n 邊形的面來分：面 = 法線最接近的那條邊的編號 k，
-        沿牆座標 t = 從那條邊的中點量起（逆著 u→v 的方向為負）。"""
+        """Classify a ring cell by the faces of a regular n-gon instead: the face is the index
+        k of the side whose normal is nearest, and the coordinate along the wall t is
+        measured from that side's midpoint (negative against the u→v direction)."""
         x, z, u, v, _, _ = cell
         n, rot, du, dv = ngon
         uu, vv = u - du, v - dv
@@ -192,14 +215,19 @@ class Mason:
         return (x, z, u, v, bk, t)
 
     def facade(self, mask, y0, y1, pattern, base=0, layers=2, corners=None, ngon=None):
-        """遮罩外圈砌牆 y0..y1（含）。第 k 層是遮罩往內縮 k 格之後的外圈。
+        """Build walls on the mask's outer ring from y0 to y1 (inclusive). Layer k is the
+        outer ring of the mask after shrinking it by k cells.
 
-        pattern(face, t, h, layer, u, v, q) -> 方塊字串或 None（None = 不寫，留給別人）；
-        h = y - base（通常 base 給一樓地面，pattern 就只管「離地幾公尺」）。
-        face 平常是法線 (nu, nv)（±u 或 ±v）；給 ngon=(n, rot, du, dv) 就改成正 n 邊形的
-        面編號 k（法線角度 rot + k·360°/n），t 從那一面的中點量起 —— 八角樓的斜面才分得出來。
-        corners 給一串局部座標的凸角（convex_corners 算的），q 就是這一格離最近凸角的
-        切比雪夫距離（隅石用）；沒給就是 None。"""
+        pattern(face, t, h, layer, u, v, q) -> a block string or None (None = write nothing
+        and leave the cell to something else). h = y - base (base is usually the ground
+        floor, so pattern deals only in meters above it).
+        face is normally the normal (nu, nv) (±u or ±v). Given ngon=(n, rot, du, dv), it
+        becomes the face index k of a regular n-gon (normal angle rot + k·360°/n), with t
+        measured from the midpoint of that face; this is what tells apart the diagonal
+        faces of the Red House's Octagon.
+        Given corners, a list of convex corners in local coordinates (from convex_corners),
+        q is the cell's Chebyshev distance to the nearest convex corner (for quoins);
+        otherwise q is None."""
         cur = mask
         C = np.asarray(corners, dtype=float) if corners else None
         for k in range(layers):
@@ -220,19 +248,21 @@ class Mason:
                     if b is not None:
                         self.w.set(x, y, z, b)
 
-    # ---- 屋頂 ----
+    # ---- Roofs ----
     def roof(self, mask, base, h, full, slab_name=None, stair_name=None, shell=2, under=None):
-        """高度場屋頂：每格從 base + h 往下疊 shell 格。
+        """Heightfield roof: each cell stacks shell blocks down from base + h.
 
-        小數 >= 0.5 的地方頂上加半磚（slab_name）；給 stair_name 就在「旁邊有矮一格的鄰居」
-        的格子頂上放樓梯（高的一側朝上坡），45° 的坡面才不會一格一格地跳。"""
+        Where the fraction is >= 0.5 a slab (slab_name) goes on top. Given stair_name, cells
+        with a neighbor one block lower get a stair on top (high side upslope), so a 45°
+        slope does not step one whole block at a time."""
         fr = self.fr
         H = np.asarray(h, dtype=float) * np.ones(fr.shape)
         B = np.broadcast_to(np.asarray(base), fr.shape)
         top = np.where(mask, B + H, -9999.0)
         ti = np.floor(top).astype(int)
         frac = top - ti
-        # 四鄰的頂（遮罩外當成無限低）：上坡 = 最高的鄰居那一側，旁邊有矮一格的才放樓梯
+        # Tops of the four neighbors (infinitely low outside the mask): upslope is toward
+        # the highest neighbor, and a stair goes only where a neighbor is one block lower.
         dirs = ((0, 1, "east"), (0, -1, "west"), (1, 0, "south"), (-1, 0, "north"))
         nbs = [np.where(shift(mask, dz, dx), shift(top, dz, dx), -9999.0) for dz, dx, _ in dirs]
         nb_max = np.max(nbs, axis=0)
@@ -255,10 +285,11 @@ class Mason:
             elif stair_name is not None and lower[i, j] and nb_max[i, j] > top[i, j] + 0.25:
                 s(x, t, z, stair(stair_name, dirs[int(up[i, j])][2]))
 
-    # ---- 柱子、山牆、圓頂 ----
+    # ---- Columns, pediments, domes ----
     def column(self, u, v, y0, y1, shaft, base=None, capital=None, size=1.0):
-        """方柱：中心 (u, v)、邊長 size（公尺）。柱礎一格、柱頭一格（給了才放）。
-        格心落在邊上時只算一側（半開區間），邊長 1 的柱子就是一格、2 就是兩格。"""
+        """Square column: center (u, v), side size (meters). One block of base and one of
+        capital (each only if given). A cell center on the edge counts on one side only (a
+        half-open interval), so a column of side 1 is one block and of side 2 is two."""
         fr = self.fr
         r = size / 2.0
         cx, cz = fr.world(u, v)
@@ -276,11 +307,13 @@ class Mason:
                         self.w.set(x, y, z, b)
 
     def gable(self, u0, u1, v0, v1, y, rise, fill, edge=None, axis="u"):
-        """三角形山牆：沿 axis 從 u0 到 u1、厚度 v0..v1（另一軸）、底邊在 y、中央高 rise。
-        axis="v" 時兩組參數對調意義：沿 v 從 u0 到 u1、厚度是 u 的 v0..v1。
+        """Triangular pediment: along axis from u0 to u1, thickness v0..v1 (on the other
+        axis), base at y, rise at the center. With axis="v" the two parameter pairs swap
+        meaning: along v from u0 to u1, with thickness v0..v1 in u.
 
-        edge 給樓梯名稱就沿兩條斜邊放樓梯（高的一側朝中央），山牆頂才是斜的；
-        正中央那一格改放全方塊加半磚當屋脊。"""
+        Given a stair name as edge, stairs line the two sloping edges (high side toward the
+        center) so the top of the pediment is sloped; the center cell gets a full block and
+        a slab as the ridge instead."""
         fr = self.fr
         if axis == "u":
             A, D = fr.U, fr.V
@@ -308,8 +341,9 @@ class Mason:
                     self.w.set(x, int(y) + top, z, stair(edge, self.facing(*toward)))
 
     def dome(self, du, dv, r, y, rise, block, shell=2, slab_name=None, rib=None, ribs=0, profile=0.5):
-        """圓頂殼：中心 (du, dv)、底圓半徑 r、底在 y、高 rise。profile=0.5 是半球（橢球），
-        < 0.5 比較扁、> 0.5 比較尖。ribs > 0 就在那麼多條經線上換成 rib 的材質（圓頂的肋）。"""
+        """Dome shell: center (du, dv), base radius r, base at y, height rise. profile=0.5 is
+        a hemisphere (an ellipsoid); < 0.5 is flatter, > 0.5 more pointed. With ribs > 0,
+        that many meridians take the rib material (the dome's ribs)."""
         fr = self.fr
         d = np.hypot(fr.U - du, fr.V - dv)
         m = d <= r

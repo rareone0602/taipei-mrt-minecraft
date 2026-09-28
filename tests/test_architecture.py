@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""相依規則檢查：內層不准引用外層。
+"""Dependency rule check: an inner layer must not import an outer one.
 
-分層本身只是目錄名稱，擋不住任何人 —— 真正讓架構站得住的是這支測試。
-少了它，某天 domain 裡多一行 `from mrt.infrastructure import mcworld`
-也不會有人發現，分層就退化成純粹的檔案搬家。
+The layers themselves are only directory names and stop nobody; this test is what
+actually holds the architecture up. Without it, a line such as
+`from mrt.infrastructure import mcworld` could one day appear in domain unnoticed, and
+the layering would degrade into nothing more than moving files around.
 
-用法: ./.venv/bin/python tests/test_architecture.py
+Usage: ./.venv/bin/python tests/test_architecture.py
 """
 import ast
 import os
@@ -15,7 +16,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from mrt import config
 
-# 每一層可以引用哪些層（config 是所有層都能用的組態，不列入）
+# Which layers each layer may import (config is configuration every layer may use, so it is
+# not listed)
 ALLOWED = {
     "ports":          set(),
     "domain":         {"domain", "ports"},
@@ -34,7 +36,7 @@ def layer_of(rel):
 
 
 def imported_layers(path):
-    """這個檔案 import 了哪幾層。"""
+    """Return the layers this file imports."""
     tree = ast.parse(open(path, encoding="utf-8").read(), path)
     found = set()
     for node in ast.walk(tree):
@@ -68,16 +70,16 @@ def main():
                 if other not in ALLOWED[layer]:
                     bad.append(f"  {rel}  ({layer}) -> {full}  ({other})")
 
-    print(f"檢查 {checked} 個模組")
+    print(f"Checked {checked} modules")
     for layer in sorted(ALLOWED):
-        allowed = ", ".join(sorted(ALLOWED[layer])) or "（只能用標準函式庫）"
-        print(f"  {layer:<15} 可引用: {allowed}")
+        allowed = ", ".join(sorted(ALLOWED[layer])) or "(standard library only)"
+        print(f"  {layer:<15} may import: {allowed}")
 
     if bad:
-        print("\n違反相依規則:")
+        print("\nDependency rule violations:")
         print("\n".join(bad))
         return 1
-    print("\n相依方向全部正確：沒有內層引用外層")
+    print("\nAll dependencies point the right way: no inner layer imports an outer one")
     return 0
 
 

@@ -1,26 +1,37 @@
 #!/usr/bin/env python3
-"""世界出生點：站在台北車站捷運出入口亭的門外，面向門口。
+"""The world spawn point: outside the door of a Taipei Main Station MRT exit kiosk, facing the door.
 
-原本出生點是 (0, 地面+2, 0) —— 台北車站捷運站的站點座標，正下方就是地下街、
-連絡梯與兩座站體，是全世界挖得最空的一柱。玩家曾經生在 (0.5, -63, 0.5)。
+The spawn point used to be (0, ground+2, 0), the coordinates of the Taipei Main
+Station MRT node, directly above the underground malls, the link stairs and two
+station boxes: the most hollowed-out column in the world. Players once spawned at
+(0.5, -63, 0.5).
 
-**怎麼挑（照順序，結果是決定性的）**
+**How it is chosen (in order; the result is deterministic)**
 
-1. 只看台北車站捷運出口 M1～M8 的出入口亭（地下街 Stair 的 headhouse，
-   OSM 的 subway_entrance 編號；K、Y、Z、R 開頭的是地下街自己的出口）。
-2. 門外那一格要「直接站在街上」：地形表面剛好是亭的樓板高度（門檻與街面
-   齊平，不必跳也不會掉），而且高於海平面（腳下不是水）。
-3. 門外那一格不能落在任何地面上的地標範圍裡（站體大樓、別座出入口亭、
-   樓梯井、空橋）—— 那一柱頭頂要是開放的天空。出生點的邏輯是查區塊的
-   MOTION_BLOCKING 高度圖取柱頂，頭上有屋頂就會被放到屋頂上。
-4. 剩下的取離台北車站捷運站點（板南線與淡水信義線轉乘的那個站點）最近的；
-   一樣近就比出口編號。
+1. Only the exit kiosks of Taipei Main Station MRT exits M1 to M8 are considered
+   (the headhouses of the underground mall's Stairs, numbered by OSM's
+   subway_entrance; exits starting with K, Y, Z or R belong to the underground
+   malls themselves).
+2. The cell outside the door must stand directly on the street: the terrain
+   surface is exactly at the kiosk's floor level (the threshold is flush with
+   the street, so there is nothing to jump or fall), and above sea level (not
+   standing in water).
+3. The cell outside the door must not fall inside any above-ground landmark (a
+   station building, another exit kiosk, a stair shaft, a skybridge): that
+   column must be open to the sky. The game places the spawn at the top of the
+   column from the chunk's MOTION_BLOCKING heightmap, so a roof overhead puts
+   the player on the roof.
+4. Of the rest, the one nearest the Taipei Main Station MRT node (the transfer
+   node of the Bannan and Tamsui-Xinyi lines) wins; ties go to the lower exit
+   number.
 
-面向：站在門外一格、面朝 -u（梯段延伸方向的反向），正對三格寬的門洞，
-一抬頭就看得到亭內「出口 Exit」的牌子。
+Facing: one cell outside the door, facing -u (opposite to the direction the
+stair run extends), square to the three-wide door opening, so the "出口 Exit"
+sign inside the kiosk is in view.
 
-這裡只用規劃（landmarks.for_world 回傳的地標物件）與地形式子，不讀存檔；
-蓋出來對不對由 tools/verify_spawn.py 從磁碟讀回來驗。
+This uses only the plan (the landmark objects returned by landmarks.for_world)
+and the terrain formula, without reading the save; tools/verify_spawn.py reads
+the result back from disk to check it.
 """
 import math
 
@@ -29,7 +40,7 @@ from mrt.application.landmarks import Passage, RailHall, Slab
 from mrt.domain.terrain import SEA_Y
 
 STATION = "台北車站"
-EXIT_PREFIX = "M"          # 台北車站捷運出口的編號是 M1～M8
+EXIT_PREFIX = "M"          # Taipei Main Station MRT exits are numbered M1 to M8.
 
 
 def _refs(stair):
@@ -40,22 +51,26 @@ def _refs(stair):
 
 
 def _above_ground(o):
-    """這個地標會不會蓋東西到地面以上（會的話它的範圍內頭頂不是天空）。
+    """Whether this landmark builds anything above ground (if so, the sky is not
+    open anywhere within its bounds).
 
-    地下街的物件一律標了 underground，但出入口亭（有 headhouse 的 Stair）
-    是例外：梯子在地下、亭子在街上。B1 大廳（Slab）、臺鐵月台層（RailHall）、
-    地下通道（Passage）沒有標，它們整個在地表以下。
+    Underground mall objects are all marked underground, except the exit kiosks
+    (Stairs with a headhouse): the stairs are underground but the kiosk is in the
+    street. The B1 hall (Slab), the TRA platform level (RailHall) and the
+    underground passages (Passage) are not marked; they lie entirely below the
+    surface.
     """
     if isinstance(o, Stair):
         return bool(o.headhouse)
     if isinstance(o, (Slab, RailHall, Passage)):
         return False
-    return not getattr(o, "underground", False)     # Tile：地下街是地下的，空橋不是
+    return not getattr(o, "underground", False)     # Tile: underground mall tiles are underground, skybridges are not.
 
 
 def station_node(stations, name=STATION):
-    """某站最主要的站點座標：同名的站點裡線別最多的那一個（台北車站是
-    R10;BL12 的轉乘站點，不是機場線 A1）。"""
+    """The main node of a station: of the nodes with that name, the one with the
+    most lines (for Taipei Main Station, the R10;BL12 transfer node, not the
+    Airport MRT's A1)."""
     rows = [r for r in stations if r[1] == name]
     if not rows:
         return None
@@ -64,7 +79,7 @@ def station_node(stations, name=STATION):
 
 
 def candidates(marks, ground_at, prefix=EXIT_PREFIX):
-    """所有符合 2、3 條件的出入口亭門口：[(refs, x, y, z, (fx, fz), 亭)]。"""
+    """Every exit kiosk door that meets conditions 2 and 3: [(refs, x, y, z, (fx, fz), kiosk)]."""
     blockers = [o for o in marks if _above_ground(o)]
     out = []
     for m in marks:
@@ -91,11 +106,12 @@ def candidates(marks, ground_at, prefix=EXIT_PREFIX):
 
 
 def plan_spawn(marks, stations, ground_at):
-    """挑出生點。回傳 dict(x, y, z, facing=(fx, fz), refs, why)，挑不到回 None。
+    """Choose the spawn point. Returns dict(x, y, z, facing=(fx, fz), refs, why), or None if nothing qualifies.
 
-    y 是腳站的那一格（level.dat 的 spawn.pos 就是這一格，遊戲會把玩家放在
-    格子底面中央）。ground_at(x, z) 必須是「實際蓋出來的地形表面」——
-    cli 傳 application.build_world.surface_y 包起來的版本。
+    y is the cell the feet stand in (level.dat's spawn.pos is this cell, and the
+    game puts the player at the center of its bottom face). ground_at(x, z) must
+    be the terrain surface as actually built: the CLI passes a wrapper around
+    application.build_world.surface_y.
     """
     node = station_node(stations)
     if node is None:
@@ -113,6 +129,6 @@ def plan_spawn(marks, stations, ground_at):
 
     refs, x, y, z, face, m = min(cs, key=key)
     return dict(x=int(x), y=int(y), z=int(z), facing=face, refs=refs,
-                why=f"{STATION}捷運出口 {'/'.join(refs)} 的出入口亭門外，"
-                    f"離捷運站點 {math.hypot(x - nx, z - nz):.0f} m，"
-                    f"符合條件的 {len(cs)} 座裡最近的")
+                why=f"outside the kiosk of {STATION} MRT exit {'/'.join(refs)}, "
+                    f"{math.hypot(x - nx, z - nz):.0f} m from the MRT node, "
+                    f"the nearest of the {len(cs)} that qualify")

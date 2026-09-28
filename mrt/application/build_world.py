@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
-"""地形與縱斷面的生成服務。
+"""Terrain and vertical-profile generation services.
 
-整片地形放不進記憶體，所以按 region (512x512 方塊) 分批：
-把取樣點依 region 分桶，逐 region 生地形、蓋結構、寫檔、釋放。
+The full terrain does not fit in memory, so it is processed in batches by region
+(512x512 blocks): sample points are bucketed by region, and each region in turn
+gets its terrain generated, its structures built, its file written and its memory
+released.
 
-地形只生成在路線走廊內，外緣用距離場漸變回平坦海平面，
-免得走廊邊界出現一道垂直懸崖。
+Terrain is generated only inside the line corridors. At the outer edge a distance
+field blends it back to a flat sea level, so the corridor boundary does not become
+a vertical cliff.
 
-串流分批的邏輯與組合根在 cli/build_world.py —— 這裡只留可重用的部分：
-縱斷面規劃 (profile)、走廊漸變場 (blend_field)、地形 chunk 組裝 (terrain_chunk)。
+The streaming batch logic and the composition root live in cli/build_world.py.
+This module keeps only the reusable parts: vertical-profile planning (profile), the
+corridor blend field (blend_field) and terrain chunk assembly (terrain_chunk).
 
-terrain_chunk 的第一個參數 ch 是 ports.block_sink.ChunkSink。
+The first parameter of terrain_chunk, ch, is a ports.block_sink.ChunkSink.
 """
 
 import numpy as np
@@ -20,27 +24,35 @@ from mrt.domain import tunnel_layers as TL
 from mrt.domain.alignment import MAX_GRADE, STEP
 from mrt.domain.terrain import SEA_Y
 
-OFFSET   = {"bridge": 13, "ground": 1, "tunnel": -20}   # 走行面相對地面
+OFFSET   = {"bridge": 13, "ground": 1, "tunnel": -20}   # Track bed relative to the ground.
 
-# 每條線各給一個埋深。全部塞在同一層的話，台北車站、忠孝復興這類交會點
-# 兩條線的隧道與站體會直接互相打通，變成一個上百公尺寬的大空洞。
+# Each line gets its own depth. If every line were at the same level, the tunnels
+# and station boxes of two lines at an interchange such as Taipei Main Station or
+# Zhongxiao Fuxing would break into each other and form one cavity over a hundred
+# meters wide.
 #
-# 埋深不是隨便挑的：先把各線地下段格化成 60 m 網格算出實際交會關係
+# The depths are not arbitrary. The underground segments of each line are first
+# rasterized onto a 60 m grid to find which lines actually cross:
 #   G-O, O-R, BL-G, G-R, BL-R, G-Y
-# 再對這張圖做三著色，讓每一對真的會交叉的路線落在不同層。
-# 出入口樓梯每降 1 m 要 2 m 水平距離，最深那條線因此有一段 76 m 的長梯；
-# 樓梯走在站體外側 off 13~17，不受月台長度限制。
-# 站體現在是「月台層 + 穿堂層」的雙層箱涵，dy -2~10 共 13 格高，
-# 所以層距要 15 m 才不會互相咬到（舊的 10 m 只夠單層月台）。
-# 隧道深度不再是每條線一個常數 —— 見 tunnel_layers.py。
-# 每條線平常走最淺的帶，只有在要穿越別條線的地方才潛下去，
-# 所以全網六成五的隧道停在地下 15 m，而不是整條線陪著最深的交會點一起挖。
-# 這個常數只在 assign_bands() 沒給結果時當退路。
+# That graph is then three-colored, so every pair of lines that really crosses
+# lands on a different level.
+# An exit stair needs 2 m of horizontal run for every 1 m of drop, so the deepest
+# line has a 76 m stair. The stairs run outside the station box at off 13 to 17
+# and are not limited by the platform length.
+# The station box is now a two-level box structure (platform level plus concourse
+# level), 13 blocks tall at dy -2 to 10, so the levels need to be 15 m apart to
+# avoid overlapping. The old 10 m spacing only fit a single platform level.
+# Tunnel depth is no longer one constant per line; see tunnel_layers.py.
+# Each line normally runs in the shallowest band and dives only where it has to
+# cross another line, so 65% of the network's tunnels stay 15 m underground
+# instead of the whole line being dug as deep as its deepest crossing.
+# This constant is only a fallback for when assign_bands() gives no result.
 TUNNEL_FALLBACK = -20
-SMOOTH_M = 400        # 縱斷面先平滑掉幾百公尺內的地形雜訊
-FLAT_Y   = SEA_Y + 2  # 走廊外的預設地面，與 level.dat 的超平坦一致。
-                      # 必須高於海平面，否則漸變區會整圈被判成海灘鋪成沙子。
-BLEND_CELL = 8        # 距離場解析度（公尺）
+SMOOTH_M = 400        # The profile first smooths out terrain noise over a few hundred meters.
+FLAT_Y   = SEA_Y + 2  # Default ground outside the corridors, matching the superflat level.dat.
+                      # It must be above sea level, or the whole blend ring is classed as beach
+                      # and paved with sand.
+BLEND_CELL = 8        # Distance field resolution, in meters.
 
 BEDROCK, STONE, DIRT = "minecraft:bedrock", "minecraft:stone", "minecraft:dirt"
 GRASS, SAND, WATER, AIR = ("minecraft:grass_block", "minecraft:sand",
@@ -56,11 +68,12 @@ def moving_avg(a, win):
 
 
 def profile(samples, terr, ref=None, band=None):
-    """跟著真實地面的縱斷面，受最大坡度限制。
+    """Return a vertical profile that follows the real ground, limited by the maximum grade.
 
-    band 是 tunnel_layers.assign_bands() 給的逐點深度帶（-1 表示不是地下段）。
-    換帶處會被下面的坡度包絡線自動拉成一段 4% 的斜坡，不必另外處理 ——
-    15 m 的帶距剛好對應 375 m 的潛降段，跟真實的立體交會差不多長。
+    band is the per-point depth band from tunnel_layers.assign_bands() (-1 means the
+    point is not underground). The grade envelope below automatically turns each band
+    change into a 4% slope, so it needs no separate handling: the 15 m band spacing
+    becomes a 375 m descent, about as long as a real grade-separated crossing.
     """
     xs = np.array([s[0] for s in samples]); zs = np.array([s[1] for s in samples])
     ground = terr.y_at(xs, zs)
@@ -75,7 +88,7 @@ def profile(samples, terr, ref=None, band=None):
     tgt = g + base
     y = tgt.copy()
     d = MAX_GRADE * STEP
-    for i in range(1, len(y)):                       # 下包絡線，兩次線性掃描
+    for i in range(1, len(y)):                       # Lower envelope, two linear passes.
         if y[i] > y[i - 1] + d: y[i] = y[i - 1] + d
     for i in range(len(y) - 2, -1, -1):
         if y[i] > y[i + 1] + d: y[i] = y[i + 1] + d
@@ -83,12 +96,16 @@ def profile(samples, terr, ref=None, band=None):
 
 
 def runs(mask, min_len):
-    """把 True 的區段抓出來，太短的丟掉（中間 min_len/2 以內的空隙一併吸收）。
+    """Return the runs of True, dropping runs that are too short.
 
-    回傳 [(起, 迄)]，迄不含。內圈停下來時 j 指在最後一個看過的格子之後，
-    扣掉尾端的空隙才是這一段的迄；下一段從 j + gap 接著看 —— 原本多加了 1，
-    每個空隙後面的第一格都沒看到，剛好 min_len/2 長的空隙後面那一段會少一格，
-    差一格就不到門檻的話整段消失。
+    Gaps shorter than min_len/2 inside a run are absorbed into it.
+
+    Returns [(start, end)] with end exclusive. When the inner loop stops, j points
+    just past the last cell examined; subtracting the trailing gap gives the end of
+    this run. The next run is scanned from j + gap. An earlier version added 1 more,
+    so the first cell after every gap was skipped: a run following a gap of exactly
+    min_len/2 lost one cell, and if that one cell put it under the threshold, the
+    whole run disappeared.
     """
     out, i, n = [], 0, len(mask)
     while i < n:
@@ -108,7 +125,7 @@ def runs(mask, min_len):
 
 
 def blend_field(pts, rx, rz, inner, outer):
-    """region 內每格到路線的距離 -> 地形權重 (1 = 完整地形, 0 = 平坦)。"""
+    """Map each cell's distance to the line within a region to a terrain weight (1 = full terrain, 0 = flat)."""
     ox, oz = rx * 512, rz * 512
     n = 512 // BLEND_CELL
     g = (np.arange(n) + 0.5) * BLEND_CELL
@@ -121,10 +138,14 @@ def blend_field(pts, rx, rz, inner, outer):
 
 
 def surface_y(terr, blend, rx, rz, XX, ZZ):
-    """地形表面（草皮那一格）的 y：走廊內是真實地形，往外依 blend 漸變回 FLAT_Y。
+    """Return the y of the terrain surface (the grass block).
 
-    terrain_chunk 蓋地形就是用這個；出生點要知道「門口那一格地面多高」也用
-    同一個式子，不必讀存檔。blend 為 None 就是不漸變的真實地形。
+    Inside the corridors this is the real terrain; farther out it blends back to
+    FLAT_Y according to blend.
+
+    terrain_chunk builds terrain with this. The spawn point uses the same formula to
+    find the height of the ground at the door, without reading the world save. A
+    blend of None gives the real terrain with no blending.
     """
     XX, ZZ = np.asarray(XX), np.asarray(ZZ)
     H = terr.y_at(XX, ZZ).astype(np.float64)
@@ -137,7 +158,7 @@ def surface_y(terr, blend, rx, rz, XX, ZZ):
 
 
 def terrain_chunk(ch, cx, cz, terr, blend, rx, rz):
-    """用 numpy 一次組出整個 chunk 的地形。"""
+    """Assemble the terrain of a whole chunk at once with numpy."""
     xs = np.arange(cx * 16, cx * 16 + 16)
     zs = np.arange(cz * 16, cz * 16 + 16)
     ZZ, XX = np.meshgrid(zs, xs, indexing="ij")
@@ -152,11 +173,13 @@ def terrain_chunk(ch, cx, cz, terr, blend, rx, rz):
         code = np.where(yy > H3, A,
                np.where(yy == H3, np.where(beach, SD, G),
                np.where(yy >= H3 - 3, np.where(beach, SD, D), S)))
-        code = np.where((yy > H3) & (yy <= SEA_Y), W, code)      # 海平面以下灌水
+        code = np.where((yy > H3) & (yy <= SEA_Y), W, code)      # Fill with water below sea level.
         code = np.where(yy == -64, B, code)
-        # 全空氣的 section 也要寫，只要它落在超平坦背景地層的高度以內：
-        # 存檔寫入時沒寫過的 section 會填回背景地層（草皮在 y=64），
-        # 河面上整個 section 都是空氣就跳過的話，基隆河、淡水河面上會
-        # 浮著一層 y=64 的草皮，底下是空氣、再底下才是水。
+        # An all-air section must also be written if it lies within the height of
+        # the superflat background layers. When the world save is written, any
+        # section never written is filled back with the background layers (grass at
+        # y=64). If all-air sections above the rivers were skipped, a layer of grass
+        # at y=64 would float over the Keelung and Tamsui rivers, with air below it
+        # and the water below that.
         if (code != A).any() or sy * 16 <= FLAT_Y:
             ch.set_section(sy, code, names)

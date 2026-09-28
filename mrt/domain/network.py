@@ -1,23 +1,33 @@
 #!/usr/bin/env python3
-"""路網：下一站是哪一站、往哪個終點、在月台的哪裡上車 —— 搭乘系統的純規則。
+"""Network: the next station, the terminus a train heads for, and where on the
+platform to board. These are the pure rules of the ride system.
 
-世界蓋得出 253 km 的路網，可是玩家只靠走路逛不完。搭乘系統讓玩家在月台上
-右鍵點一面告示牌就「坐到下一站」：資料包把人傳送到下一站同一個行車方向的月台上，
-正好站在繼續往前那一面告示牌的前面 —— 連點幾下就是坐好幾站。
+The world holds 253 km of network, more than a player can cover on foot. The
+ride system lets a player right-click a sign on a platform to "ride to the next
+station": the datapack teleports the player to the platform for the same
+direction of travel at the next station, standing right in front of the sign
+for the onward journey. A few clicks in a row ride several stations.
 
-三件事都得跟生成器蓋出來的東西一格不差，所以都在這裡算、只算一次：
+All three of the following must match what the generator builds to the block,
+so they are computed here, once:
 
-  · **行車方向**：北捷靠右行駛，往取樣順序 +u 開的列車走 +off 那股道
-    （``stacked.upper_side`` 同一條規則）。島式月台上 +側的月台門對著往 +u 的
-    列車；疊式站則是「哪一層」由 upper_toward 決定、「哪一側」由路線決定。
-  · **月台上的位置**：告示牌立在月台門那一排（取代那一格玻璃，跟原本的站名牌
-    同一個位置），人站在往月台內側兩格、面向月台門。
-  · **下一站與終點**：沿每一個選用變體的取樣順序排出車站序列，相鄰兩站就是
-    一段車程。同一條線的支線在分歧站自然長出第三個方向（大橋頭往蘆洲、
-    往迴龍都在同一側月台，各佔一面牌）。
+  · **Direction of travel**: Taipei Metro runs on the right. A train heading
+    +u along the sampling order uses the +off track (the same rule as
+    ``stacked.upper_side``). On an island platform, the platform screen doors
+    on the + side face trains heading +u. At a stacked station, upper_toward
+    decides the level and the line decides the side.
+  · **Position on the platform**: the sign stands in the row of platform screen
+    doors (replacing that pane of glass, where the station-name sign used to
+    be). The player stands two blocks in from it, facing the doors.
+  · **Next station and terminus**: the stations are listed along the sampling
+    order of each selected variant, and each adjacent pair is one ride. A
+    branch of the same line naturally adds a third direction at the junction
+    station (at Daqiaotou, trains toward Luzhou and toward Huilong use the
+    same side platform, and each direction gets its own sign).
 
-這一層不知道 Minecraft 的指令長怎樣：函式 id 只是一個路徑（"ride/bl12_bl13"），
-命名空間在 config、指令字串由 application 組、檔案由 infrastructure 寫。
+This layer knows nothing about Minecraft command syntax: a function id is only
+a path ("ride/bl12_bl13"). The namespace lives in config, the command strings
+are assembled by application, and the files are written by infrastructure.
 """
 import math
 
@@ -26,9 +36,10 @@ from mrt.domain.alignment import (
     PLATFORM_LEN, PLAT_HALF, STEP, structure_for_ground,
 )
 
-# 路線名稱是事實資料（臺北捷運、新北捷運、桃園捷運的正式路線名）。
-# 顏色不寫在這裡：沿用 data/mc_lines.json 裡 OSM 的 colour 標籤（跟 README 的
-# 全網圖同一份），由 cli 讀進來傳給 line_colours()。
+# Line names are factual data (the official line names of Taipei Metro, New
+# Taipei Metro and Taoyuan Metro). Colors are not stored here: they come from
+# the OSM `colour` tag in data/mc_lines.json (the same data as the network map
+# in the README), which cli reads and passes to line_colours().
 LINE_NAMES = {
     "BR": ("文湖線", "Wenhu Line"),
     "R":  ("淡水信義線", "Tamsui-Xinyi Line"),
@@ -42,32 +53,41 @@ LINE_NAMES = {
     "LB": ("三鶯線", "Sanying Line"),
 }
 
-# OSM 的 colour 偶爾寫 CSS 色名（中和新蘆線是 "orange"）
+# The OSM `colour` tag is sometimes a CSS color name (the Zhonghe-Xinlu Line
+# uses "orange").
 _CSS = {"orange": "#FFA500", "red": "#FF0000", "green": "#008000", "blue": "#0000FF",
         "yellow": "#FFFF00", "brown": "#A52A2A", "purple": "#800080"}
 
-# 月台上告示牌的位置（離站體 lo 端幾公尺）。第一個是「主位」：從上一站坐過來的人
-# 就站在主位那面牌的前面。避開島式月台的兩座樓梯（沿線 24..34、48..58 m，離線位
-# −3..3）與側式月台 hi 端的樓梯（最早從 53 m 起）；也不能落在月台門的門洞上
-# （沿線每 7 m 開一次、開 2 m：along % 7 < 2 的那幾格是空氣）。地下站的三個位置
-# 就是原本站名牌的位置。
+# Sign positions on the platform (meters from the lo end of the station box).
+# The first is the primary position: a player who rides in from the previous
+# station stands in front of the sign there. The positions avoid the two stairs
+# of an island platform (24..34 and 48..58 m along the line, offsets −3..3) and
+# the stairs at the hi end of a side platform (from 53 m at the earliest). They
+# also must not fall on a door opening in the platform screen doors (a 2 m
+# opening every 7 m along the line: the cells where along % 7 < 2 are air). The
+# three underground positions are where the station-name signs used to be.
 SLOTS_UNDER = (40, 20, 60)
 SLOTS_SIDE = (37, 16, 51)
-# 前面三個位置被別的結構吃掉時（七張南端被小碧潭支線的隧道穿過、北投的一側月台
-# 被新北投支線的高架橋壓過）依序補位，每一側最多三面。一樣避開樓梯與門洞；
-# 疊式站 22 m 以前是上下層之間的樓梯與它的欄杆，不補那一段。
+# When other structures take the first three positions (a tunnel of the
+# Xiaobitan branch passes through the south end of Qizhang, and the viaduct of
+# the Xinbeitou branch passes over one side platform at Beitou), these fill in
+# order, up to three signs per side. They also avoid the stairs and the door
+# openings. At a stacked station, the first 22 m hold the stairs between the
+# two levels and their railings, so no position there is filled.
 SLOTS_UNDER_MORE = (37, 45, 65, 13, 16, 10)
 SLOTS_SIDE_MORE = (30, 23, 44, 9)
 SLOTS_PER_SIDE = 3
-DOOR_EVERY, DOOR_OPEN = 7.0, 2.0     # 與 build_line 的月台門同一個節奏
-STAND_IN = 2          # 人站在月台門往月台內側幾格
-SEQ_AHEAD_M = 40.0    # 判斷「往那一站是站體的哪個方向」時，沿路線往前看幾公尺
+DOOR_EVERY, DOOR_OPEN = 7.0, 2.0     # Same rhythm as the platform screen doors in build_line.
+STAND_IN = 2          # Blocks in from the platform screen doors to where the player stands.
+# How far ahead along the line (meters) to look when deciding whether a
+# neighbor lies at +u or −u of the station box.
+SEQ_AHEAD_M = 40.0
 
 
-# ---------- 小工具 ----------
+# ---------- Helpers ----------
 
 def line_code(full_ref, ref):
-    """"R10;BL12" 在 BL 線上的站號 -> "BL12"（沒有就 None）。"""
+    """The station code on line ref: "R10;BL12" on BL -> "BL12" (None if absent)."""
     for t in str(full_ref).split(";"):
         t = t.strip()
         if t.startswith(ref) and len(t) > len(ref) and t[len(ref)].isdigit():
@@ -76,11 +96,13 @@ def line_code(full_ref, ref):
 
 
 def fn_code(code):
-    """站號 -> 函式路徑用的小寫代號（資料包的資源路徑只准 a-z0-9_.-/）。"""
+    """Station code -> lowercase code for function paths (datapack resource paths
+    allow only a-z0-9_.-/)."""
     return "".join(ch for ch in code.lower() if ch.isalnum() or ch == "_")
 
 
-# 路線圖對話框（售票機的告示牌、快捷鍵、暫停選單都打開這一個）與各線的站表
+# The route map dialog (the ticket machine signs, the hotkey and the pause menu
+# all open this one) and each line's station list.
 MENU_DIALOG = "network"
 
 
@@ -97,17 +119,18 @@ def go_fn(code):
 
 
 def turn_fn(code, d):
-    """終點站：點了換到對面月台（d 是這一側在站體座標系的方向）。"""
+    """At a terminus, a click moves the player to the opposite platform (d is this
+    side's direction in the station box's frame)."""
     return "turn/%s_%s" % (fn_code(code), "p" if d > 0 else "m")
 
 
 def yaw_of(fx, fz):
-    """面向 (fx, fz) 的 Minecraft 偏航角：0 = 南、90 = 西、180 = 北、-90 = 東。"""
+    """Minecraft yaw for facing (fx, fz): 0 = south, 90 = west, 180 = north, -90 = east."""
     return round(math.degrees(math.atan2(-fx, fz)), 1)
 
 
 def code_sort_key(code):
-    """站號自然排序：G03 < G03A < G04、O21 < O50。"""
+    """Natural sort key for station codes: G03 < G03A < G04, O21 < O50."""
     i = 0
     while i < len(code) and not code[i].isdigit():
         i += 1
@@ -118,8 +141,9 @@ def code_sort_key(code):
 
 
 def line_colours(lines_json):
-    """{路線: "#rrggbb"}：每條線取最長那個變體的 OSM colour（支線常有自己的顏色，
-    例如小碧潭支線、新北投支線，不能讓它們蓋掉幹線的）。"""
+    """{line: "#rrggbb"}: each line takes the OSM `colour` of its longest variant.
+    Branches often have their own color (the Xiaobitan and Xinbeitou branches,
+    for example), and it must not replace the trunk's."""
     out = {}
     for ref, variants in lines_json.items():
         best = max(variants, key=lambda v: len(v.get("points", ())), default=None)
@@ -131,49 +155,55 @@ def line_colours(lines_json):
     return out
 
 
-# ---------- 車站序列與方向 ----------
+# ---------- Station sequence and direction ----------
 
 def _seq_of(sg):
-    """路段沿取樣順序的車站：[(取樣索引, 站名, 英文名, 站號字串)]。
+    """The stations of a segment in sampling order: [(sample index, name,
+    English name, station code string)].
 
-    用 stn_seq（去重之前的快照）：支線與幹線共用的車站在支線那一段已經被去重
-    砍掉，但「支線從七張出發」這件事還是要從支線自己的序列看出來。
+    Uses stn_seq (the snapshot taken before deduplication). A station the branch
+    shares with the trunk has already been removed from the branch segment by
+    deduplication, but the fact that the branch starts at Qizhang must still be
+    read from the branch's own sequence.
     """
     stn = sg.get("stn_seq", sg["stn"])
     return [(bi, v[1], v[2], v[0]) for bi, v in sorted(stn.items())]
 
 
 class Station:
-    """一條線上的一座車站（轉乘站在每條線上各一個）。"""
+    """One station on one line (a transfer station has one on each line)."""
 
     def __init__(self, ref, name, en, code):
         self.ref, self.name, self.en, self.code = ref, name, en, code
-        self.dirs = {}               # 鄰站名 -> Direction
-        self.box = None              # Box：蓋出來的站體（沒蓋就是 None）
+        self.dirs = {}               # Neighbor name -> Direction.
+        self.box = None              # Box: the built station box (None if not built).
 
     def __repr__(self):
         return "Station(%s %s)" % (self.code, self.name)
 
 
 class Direction:
-    """從某站往某個鄰站：next 是鄰站名，terminals 是這個方向各變體的終點站名。"""
+    """From a station toward one neighbor: next is the neighbor's name, and
+    terminals are the terminus names of the variants in this direction."""
 
     def __init__(self, nxt):
         self.next = nxt
         self.terminals = []
-        self.via = []                # [(路段索引, 本站取樣索引, 鄰站取樣索引)]
-        self.d = 0                   # 在站體座標系是 +u (1) 還是 -u (-1)
+        self.via = []                # [(segment index, sample index here, neighbor's sample index)]
+        self.d = 0                   # +u (1) or -u (-1) in the station box's frame.
 
     def __repr__(self):
-        return "Direction(->%s 往%s d=%+d)" % (self.next, "/".join(self.terminals), self.d)
+        return "Direction(->%s to %s d=%+d)" % (self.next, "/".join(self.terminals), self.d)
 
 
-# mc_stations.csv 的英文站名偶有瑕疵，顯示在牌子上之前修一下
+# English station names in mc_stations.csv are occasionally flawed; fix them
+# before they appear on signs.
 _EN_FIX = {"Taipei main station": "Taipei Main Station"}
 
 
 def display_en(en):
-    """顯示用的英文站名：去掉括號註記（廣慈/奉天宮的 "(Under construction)"）。"""
+    """English station name for display, without parenthetical notes (such as
+    "(Under construction)" on Guangci/Fengtian Temple)."""
     en = _EN_FIX.get(en, en)
     if "(" in en:
         en = en[:en.index("(")].rstrip()
@@ -181,8 +211,11 @@ def display_en(en):
 
 
 def build_network(segs):
-    """{(路線, 站名): Station}，含每站往各鄰站的方向與終點站。"""
-    # 英文名欄位偶爾是中文（環狀線的大坪林），同名車站在別條線上有英文名就借來用
+    """{(line, name): Station}, with each station's directions and termini toward
+    each neighbor."""
+    # The English name field is occasionally Chinese (Dapinglin on the Circular
+    # Line). If a station of the same name on another line has an English name,
+    # borrow it.
     en_of = {}
     for sg in segs:
         for _, name, en, _ in _seq_of(sg):
@@ -213,16 +246,20 @@ def build_network(segs):
     return net
 
 
-# ---------- 站體與月台 ----------
+# ---------- Station boxes and platforms ----------
 
 class Box:
-    """一座蓋出來的站體，與生成器（build_line.build_station）用同一組座標：
+    """A built station box, in the same coordinates as the generator
+    (build_line.build_station):
 
-    samples  站體座標系的取樣點（共用疊式站是兩線中線的 frame）
-    ys       軌面（共用站體用 primary 的，兩線本來就釘成一樣）
-    lo, hi   站體範圍的取樣索引
-    kind     "island" 地下島式、"side" 高架／平面側式、"stacked_side" 側式疊式、
-             "stacked_shared" 兩線共用的島式疊式
+    samples  sample points in the station box's frame (for a shared stacked
+             station, the frame of the centerline between the two lines)
+    ys       rail top (a shared station box uses the primary's; the two lines
+             are pinned to the same values anyway)
+    lo, hi   sample indices of the station box's extent
+    kind     "island" underground island platform, "side" elevated or at-grade
+             side platforms, "stacked_side" stacked side platforms,
+             "stacked_shared" stacked island platform shared by two lines
     """
 
     def __init__(self, li, bi, samples, ys, kind, lay=None, side=0):
@@ -232,7 +269,7 @@ class Box:
         self.samples, self.ys = samples, ys
         self.lo, self.hi = max(0, bi - half), min(n - 1, bi + half)
         self.kind, self.lay, self.side = kind, lay, side
-        self.lines = []              # 在這座站體停靠的路線
+        self.lines = []              # Lines that stop at this station box.
 
     @property
     def key(self):
@@ -243,7 +280,8 @@ class Box:
         return x, z
 
     def cell(self, i, off):
-        """取樣點 i、離線位 off 的方塊 (x, z) —— 與 build_line 的取整完全相同。"""
+        """The block (x, z) at sample i and offset off, rounded exactly as
+        build_line rounds it."""
         x, z, ux, uz, _ = self.samples[i]
         nx, nz = -uz, ux
         return round(x + nx * off), round(z + nz * off)
@@ -254,10 +292,13 @@ class Box:
 
 
 def find_boxes(segs):
-    """{(路線, 站名): Box}：每條線的每座車站停在哪一座站體。
+    """{(line, name): Box}: the station box that each station of each line
+    stops at.
 
-    一般車站就是 sg["stn"] 裡剩下的那一座；共用疊式站的 partner 在自己的路段上
-    已經沒有車站了（stacked.plan_shared 把它拿掉），它停在 primary 蓋的那座站體裡。
+    An ordinary station is the one left in sg["stn"]. The partner of a shared
+    stacked station no longer has a station on its own segment
+    (stacked.plan_shared removes it); it stops in the station box the primary
+    builds.
     """
     out = {}
     for li, sg in enumerate(segs):
@@ -292,11 +333,15 @@ def find_boxes(segs):
 
 
 def _box_direction(box, segs, via):
-    """某個方向（沿路段 li 從取樣 i_here 往 i_next）在站體座標系是 +u 還是 −u。
+    """Whether a direction (along segment li from sample i_here toward i_next)
+    is +u or −u in the station box's frame.
 
-    沿路段往前看 SEQ_AHEAD_M 公尺的那個點，投影到站體中心的切線上看正負。
-    不直接比兩站的座標：線形在兩站之間可能大轉彎；也不只比切線：支線在分歧站
-    的切線可能跟幹線差很多。
+    Takes the point SEQ_AHEAD_M meters ahead along the segment and checks the
+    sign of its projection onto the tangent at the station box's center. It
+    does not compare the two stations' coordinates directly, because the
+    alignment may turn sharply between them. Nor does it compare tangents
+    alone, because a branch's tangent at the junction station can differ
+    greatly from the trunk's.
     """
     li, i_here, i_next = via
     sm = segs[li]["samples"]
@@ -310,17 +355,20 @@ def _box_direction(box, segs, via):
     return 1 if dot > 0 else -1
 
 
-# ---------- 上車位置 ----------
+# ---------- Berths ----------
 
 class Slot:
-    """月台上的一面搭車告示牌與它前面的站位。
+    """A ride sign on the platform and the berth in front of it.
 
-    sign    告示牌的方塊 (x, y, z)（在月台門那一排）
-    face    牌面朝向 (dx, dz)：朝著站位
-    stand   人的腳所在的方塊 (x, y, z)
-    yaw     站在那裡正對著牌子那一格的偏航角（斜的線形跟月台門的法向差幾度）
-    dest    Direction（None = 這一側沒有下一站，是終點站的到站側）
-    lang    "zh" / "en"：同一個方向的牌中英文輪流
+    sign    the sign's block (x, y, z) (in the row of platform screen doors)
+    face    the direction the sign faces (dx, dz): toward the berth
+    stand   the block (x, y, z) of the player's feet
+    yaw     the yaw that faces the sign's block from the berth (on a skewed
+            alignment it differs by a few degrees from the doors' normal)
+    dest    Direction (None = no next station on this side: the arrival side
+            of a terminus)
+    lang    "zh" / "en": signs for the same direction alternate between
+            Chinese and English
     """
 
     def __init__(self, sign, face, stand, yaw, dest, lang):
@@ -332,11 +380,12 @@ class Slot:
 
 
 class Berth:
-    """一座站體裡、一條線、一個行車方向的月台邊：幾面牌、各往哪裡。"""
+    """The platform edge for one line and one direction of travel in one station
+    box: how many signs it has, and where each one goes."""
 
     def __init__(self, station, box, d, dy0, psd, inward):
         self.station, self.box, self.d, self.dy0 = station, box, d, dy0
-        self.psd, self.inward = psd, inward      # 月台門離線位；月台在它的哪一側（±1）
+        self.psd, self.inward = psd, inward      # Door offset; the platform's side of the doors (±1).
         self.dests = []
         self.slots = []
 
@@ -345,7 +394,8 @@ class Berth:
         return self.station.ref
 
     def primary(self, dest_next=None):
-        """主位：dest_next 那個方向的第一面牌（沒指定就是整側的第一面）。"""
+        """The primary position: the first sign toward dest_next (the first sign
+        on this side if dest_next is not given)."""
         for s in self.slots:
             if dest_next is None or (s.dest is not None and s.dest.next == dest_next):
                 return s
@@ -357,10 +407,14 @@ class Berth:
 
 
 def _geometry(box, d):
-    """(dy0, 月台門離線位, 月台在月台門的哪一側) —— 島式／側式站往 d 方向的月台邊。
+    """(dy0, offset of the platform screen doors, the side of the doors the
+    platform is on) for the platform edge toward d at an island or side
+    platform station.
 
-    島式：軌道 ±8、月台門 ±6、島在中間（月台在月台門的內側）。
-    側式：軌道 ±3、月台門 ±5、月台在 6..10（月台在月台門的外側）。
+    Island: tracks at ±8, doors at ±6, the island in the middle (the platform
+    is inside the doors).
+    Side: tracks at ±3, doors at ±5, the platform at 6..10 (the platform is
+    outside the doors).
     """
     if box.kind == "island":
         return 0, d * PLAT_HALF, -d
@@ -368,45 +422,60 @@ def _geometry(box, d):
 
 
 def _stacked_geometry(box, ref, d, upper_d):
-    """疊式站：上層是往 upper_toward 那個方向，另一個方向在下層。"""
+    """Stacked station: the direction toward upper_toward is on the upper level,
+    and the other direction is on the lower level."""
     dy0 = 0 if d == upper_d else -SK.LEVEL_H
     if box.kind == "stacked_side":
         psd = box.lay["psd"][0]
-        return dy0, psd, -1 if psd > 0 else 1            # 月台在月台門靠站體中線那一側
-    # 共用島式：primary 那條線的股道在 −side，partner 在 +side；島在中間
+        # The platform is on the side of the doors nearer the station box's
+        # centerline.
+        return dy0, psd, -1 if psd > 0 else 1
+    # Shared island: the primary line's track is at −side and the partner's at
+    # +side, with the island in the middle.
     primary = ref == box.lines[0]
     psd = (-box.side if primary else box.side) * PLAT_HALF
     return dy0, psd, -1 if psd > 0 else 1
 
 
 def _stand_cell(sx, sz, wx, wz):
-    """牌子那一格往月台內側（單位向量 (wx, wz)）走 STAND_IN 格的站位。
+    """The berth STAND_IN blocks from the sign's block toward the platform
+    interior (unit vector (wx, wz)).
 
-    不能拿「離線位 psd ± 2」各自取整：線形斜的時候兩個離線位可能取整到相鄰的兩格，
-    人就貼著牌子站（忠孝新生、安康、丹鳳都是這樣）。從牌子那一格出發、把步長放大到
-    主軸剛好走 STAND_IN 格，站位與牌子的切比雪夫距離一定是 STAND_IN。
+    Rounding the offsets psd and psd ± 2 separately does not work: on a skewed
+    alignment the two offsets can round to adjacent blocks, and the player
+    stands right against the sign (this happened at Zhongxiao Xinsheng, Ankang
+    and Danfeng). Starting from the sign's block and scaling the step so that
+    the major axis moves exactly STAND_IN blocks guarantees that the Chebyshev
+    distance between berth and sign is STAND_IN.
     """
     m = max(abs(wx), abs(wz)) or 1.0
     return sx + int(round(wx / m * STAND_IN)), sz + int(round(wz / m * STAND_IN))
 
 
 def plan_berths(segs, blocked=None):
-    """整個路網的上車位置。回傳 (net, berths)：
+    """Berths for the whole network. Returns (net, berths):
 
-    net      build_network 的結果，每個 Station 補上 box 與各方向的 d
-    berths   [Berth]，每座站體每條線每個方向一個（沒有車站的方向也有：終點站的
-             到站側要立一面「本站終點」的牌，點了換到對面月台）
-    blocked  (x, y, z, box) -> bool：這一格在這座站體蓋好之後會被別的東西蓋掉
-             （組合根拿地標的範圍、之後才蓋的別的路段的斷面做）。
-             台北車站的臺鐵／高鐵月台層跟板南線站體在同一個深度，西端北側那一段
-             月台門被它整個吃掉 —— 牌子立在那裡是懸在大廳半空中，人也站不住
+    net      the result of build_network, with each Station's box and each
+             direction's d filled in
+    berths   [Berth], one per station box, line and direction (including a
+             direction without a station: the arrival side of a terminus gets
+             a terminus sign that moves the player to the opposite platform)
+    blocked  (x, y, z, box) -> bool: whether this block will be overwritten by
+             something else after this station box is built (the composition
+             root builds it from the landmark extents and the cross-sections
+             of other segments built later). At Taipei Main Station, the
+             TRA/HSR platform level is at the same depth as the Bannan Line
+             station box and swallows the whole stretch of platform screen
+             doors on the north side of the west end. A sign there would hang
+             in mid-air in the hall, and the player could not stand there.
     """
     net = build_network(segs)
     boxes = find_boxes(segs)
     for key, st in net.items():
         st.box = boxes.get(key)
-    # 鄰站沒有蓋出站體的方向搭不了（不會發生在 stn_seq 裡的車站上，但別讓
-    # 一面牌指向不存在的車程）
+    # A direction whose neighbor has no built station box cannot be ridden.
+    # This does not happen for stations in stn_seq, but no sign may point to a
+    # ride that does not exist.
     for (ref, name), st in net.items():
         for nb in [nb for nb in st.dirs if net.get((ref, nb)) is None
                    or net[(ref, nb)].box is None]:
@@ -435,7 +504,8 @@ def plan_berths(segs, blocked=None):
             else:
                 dy0, psd, inward = _stacked_geometry(box, ref, d, upper_d)
             b = Berth(st, box, d, dy0, psd, inward)
-            # 分歧站同一側有兩個方向時，幹線（最長的那個變體）拿主位
+            # When a junction station has two directions on the same side, the
+            # trunk (the longest variant) takes the primary position.
             b.dests = sorted((dr for dr in st.dirs.values() if dr.d == d),
                              key=lambda dr: (-max(len(segs[li]["samples"]) for li, _, _ in dr.via),
                                              dr.next))
@@ -453,8 +523,8 @@ def plan_berths(segs, blocked=None):
                 tx, tz = _stand_cell(sx, sz, nx * inward, nz * inward)
                 if blocked is not None and (blocked(sx, y, sz, box) or blocked(tx, y, tz, box)):
                     continue
-                face = (nx * inward, nz * inward)            # 牌面朝站位
-                yaw = yaw_of(sx - tx, sz - tz)               # 人正對著牌子那一格
+                face = (nx * inward, nz * inward)            # The sign faces the berth.
+                yaw = yaw_of(sx - tx, sz - tz)               # The player faces the sign's block.
                 dest = b.dests[j % k] if b.dests else None
                 lang = "zh" if (j // k) % 2 == 0 else "en"
                 b.slots.append(Slot((sx, y, sz), face, (tx, y, tz), yaw, dest, lang))
@@ -464,16 +534,20 @@ def plan_berths(segs, blocked=None):
 
 
 def berth_index(berths):
-    """{(路線, 站名, d): Berth}"""
+    """{(line, name, d): Berth}"""
     return {(b.line, b.station.name, b.d): b for b in berths}
 
 
 def arrival(net, bidx, ref, frm, to):
-    """從 frm 坐到 to：下車的 Slot（站在繼續往前那面牌的前面）。
+    """The Slot for alighting after a ride from frm to to (in front of the sign
+    for the onward journey).
 
-    到站的列車在 to 的站體裡朝「遠離 frm」的方向開，所以下車的月台邊是
-    d = −(to 往 frm 的方向)。那一側若有好幾個方向（分歧站），優先挑跟這段車程
-    同一個變體的那一個 —— 從台北橋坐到大橋頭，繼續往前是往民權西路，不是往三重國小。
+    The arriving train travels through the station box of to away from frm, so
+    the platform edge to alight at is d = −(direction from to toward frm). If
+    that side has several directions (a junction station), prefer the one on
+    the same variant as this ride: riding from Taipei Bridge to Daqiaotou, the
+    onward direction is toward Minquan West Road, not toward Sanchong
+    Elementary School.
     """
     st = net.get((ref, to))
     if st is None or st.box is None or frm not in st.dirs:
@@ -490,7 +564,8 @@ def arrival(net, bidx, ref, frm, to):
 
 
 def rides(net, berths):
-    """所有車程：[(路線, 起站 Station, 迄站 Station, 下車 Slot, Direction)]。"""
+    """All rides: [(line, origin Station, destination Station, alighting Slot,
+    Direction)]."""
     bidx = berth_index(berths)
     out = []
     for (ref, name), st in sorted(net.items(), key=lambda kv: code_sort_key(kv[1].code)):
@@ -507,7 +582,8 @@ def rides(net, berths):
 
 
 def home_slot(bidx, st):
-    """「去某一站」的目的地：有下一站的那一側的主位（終點站就是出發那一側）。"""
+    """The destination for "go to a station": the primary position on the side
+    with a next station (at a terminus, the departure side)."""
     for d in (1, -1):
         b = bidx.get((st.ref, st.name, d))
         if b is not None and b.dests and b.slots:

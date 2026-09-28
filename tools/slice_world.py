@@ -1,8 +1,9 @@
-"""從已產生的存檔切剖面，用 ASCII 檢查車站／隧道結構是否正確。
+"""Cut a section through a generated world save and check the station or tunnel
+structure in ASCII.
 
-用法:
-  python tools/slice_world.py 台北車站            # 垂直橫剖面（垂直於路線）
-  python tools/slice_world.py 台北車站 --long     # 縱剖面（沿路線）
+Usage:
+  python tools/slice_world.py 台北車站            # Cross-section (perpendicular to the line)
+  python tools/slice_world.py 台北車站 --long     # Longitudinal section (along the line)
   python tools/slice_world.py --xz 0 0 --dir 1 0
 """
 import io, os, sys, json, csv, math, zlib, argparse
@@ -40,10 +41,10 @@ GLYPH = [
     ("bedrock",             "b"),
     ("sign",                "!"),
     ("rail",                "r"),
-    ("bricks",              "T"),   # 必須排在 deepslate_bricks 之後
+    ("bricks",              "T"),   # Must come after deepslate_bricks.
     ("white_concrete",      "w"),
     ("black_concrete",      "k"),
-    ("terracotta",          "t"),   # 路線色帶（signage.band_block），排在最後
+    ("terracotta",          "t"),   # Line color bands (signage.band_block); kept last.
     ("concrete",            "c"),
 ]
 
@@ -123,20 +124,21 @@ class Reader:
 def load_station(name):
     with open(config.MC_STATIONS_CSV, encoding="utf-8") as f:
         rows = [r for r in csv.DictReader(f)]
-    # 先找完全相同的站名，找不到才退回包含比對 —— 「中山」包含在「中山國中」
-    # 裡、「松山」包含在「松山機場」裡，CSV 又是依代號排序，包含比對會先
-    # 撞到別的站，切出來的剖面根本不是你要看的那一座。
+    # Look for an exact station name first, and fall back to substring matching only
+    # when there is none. Zhongshan is a substring of Zhongshan Junior High School and
+    # Songshan of Songshan Airport, and the CSV is sorted by station code, so substring
+    # matching would hit another station first and cut a section through the wrong one.
     hit = [r for r in rows if (r.get("name_zh") or r.get("name") or "") == name]
     if not hit:
         hit = [r for r in rows if name in (r.get("name_zh") or r.get("name") or "")]
     if not hit:
         keys = list(rows[0].keys())
-        raise SystemExit(f"找不到車站 {name}；欄位={keys}")
+        raise SystemExit(f"Station {name} not found. Columns: {keys}")
     r = hit[0]
     return int(r["mc_x"]), int(r["mc_z"]), r
 
 def line_dir(x, z):
-    """從 mc_lines.json 找最近的線段方向"""
+    """Return the direction of the nearest line segment in mc_lines.json."""
     lines = json.load(open(config.MC_LINES_JSON, encoding="utf-8"))
     best, bd = (1.0, 0.0), 1e18
     for ref, variants in lines.items():
@@ -160,7 +162,7 @@ def main():
     ap.add_argument("--half", type=int, default=22)
     ap.add_argument("--ylo", type=int)
     ap.add_argument("--yhi", type=int)
-    ap.add_argument("--save", help="改讀其他存檔（測試用）")
+    ap.add_argument("--save", help="Read a different world save (for testing)")
     a = ap.parse_args()
 
     if a.station:
@@ -174,15 +176,15 @@ def main():
         dist = 0
     else:
         (ux, uz), dist = line_dir(x, z)
-        print(f"# 路線方向 ({ux:+.2f},{uz:+.2f})  站點離線 {dist:.1f} m")
+        print(f"# Line direction ({ux:+.2f},{uz:+.2f})  station is {dist:.1f} m from the line")
 
     if a.long:
-        dx, dz = ux, uz               # 沿線
+        dx, dz = ux, uz               # Along the line
     else:
-        dx, dz = -uz, ux              # 垂直於線
+        dx, dz = -uz, ux              # Perpendicular to the line
 
     rd = Reader(config.region_dir(a.save) if a.save else RDIR)
-    # 先掃出這條剖面上有東西的 y 範圍
+    # First find the y range in which this section holds anything.
     cols = []
     for off in range(-a.half, a.half + 1):
         bx, bz = round(x + dx * off), round(z + dz * off)
@@ -195,19 +197,21 @@ def main():
         for y in range(ylo, yhi + 1):
             grid[(off, y)] = glyph(rd.block(bx, y, bz))
 
-    # 自動裁切：只留有非 stone/dirt/air 結構的 y 帶 ± 6
-    # w（白混凝土）與 B（磨砂石）是地下街的地坪與店面隔牆 —— 不列進來的話
-    # 自動裁切會把整層地下街切掉，要看它就得每次手動給 --ylo/--yhi。
+    # Automatic crop: keep only the y band with structure other than stone, dirt or air,
+    # from 4 below it to 6 above. w (white concrete) and B (smooth sandstone) are the paving
+    # and shopfront partitions of the underground malls. Without them the crop would cut away
+    # the whole underground mall level, and seeing it would need a manual --ylo/--yhi every time.
     interesting = [y for (off, y), g in grid.items() if g in set("*|#=DPYCW_SAr!wB")]
     if interesting and a.ylo is None:
         ylo = max(config.Y_MIN, min(interesting) - 4)
         yhi = min(config.Y_MAX, max(interesting) + 6)
 
-    print(f"# {'縱' if a.long else '橫'}剖面  y {ylo}..{yhi}  寬 {2*a.half+1} m")
+    print(f"# {'Longitudinal section' if a.long else 'Cross-section'}  y {ylo}..{yhi}  width {2*a.half+1} m")
     print("      " + "".join(str(abs(o) % 10) if o % 5 == 0 else " " for o, _, _ in cols))
     for y in range(yhi, ylo - 1, -1):
         print(f"{y:>5} " + "".join(grid[(o, y)] for o, _, _ in cols))
-    print("圖例 . 空氣  = 道碴  D 隧道襯砌  C/W 混凝土  P 月台  Y 警示帶  | 月台門/玻璃"
-          "  * 燈  _ 半磚  S 平滑石  A 橋墩  # 欄杆  ! 告示牌  g/d/s/b 地表")
+    print("Key: . air  = ballast  D tunnel lining  C/W concrete  P platform  Y warning strip"
+          "  | screen doors/glass  * lamp  _ slab  S smooth stone  A pier  # railing  ! sign"
+          "  g/d/s/b ground")
 
 main()

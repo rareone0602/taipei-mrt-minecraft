@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""從已寫好的存檔獨立讀回區域檔，算出俯視圖 — 驗證幾何而不是相信生成器。
+"""Read the region files of a finished world save back independently and render a
+top-down map, to check the geometry instead of trusting the generator.
 
-全向量化：滿地形的世界有上億個方塊，逐格 Python 迴圈跑不完。
-每根柱子只取最高的非空氣方塊，用 (高度, 顏色) 打包成單一鍵值做 maximum 掃描。
+Fully vectorized: a world with full terrain has hundreds of millions of blocks, and a
+per-block Python loop would never finish. Each column keeps only its highest non-air
+block, packing (height, color) into a single key and scanning with maximum.
 
-用法: ./.venv/bin/python tools/verify_render.py <save_dir> <out.png> [--scale M]
+Usage: ./.venv/bin/python tools/verify_render.py <save_dir> <out.png> [--scale M]
 """
 import os, io, glob, sys, zlib, argparse, re
 import numpy as np, nbtlib
@@ -12,11 +14,11 @@ from PIL import Image
 
 PALETTE = [
     ("minecraft:air",                          (  0,   0,   0)),
-    ("minecraft:smooth_stone",                 (196, 200, 205)),   # 走行面
-    ("minecraft:gray_concrete",                ( 88,  93, 100)),   # 導引牆
-    ("minecraft:light_gray_concrete",          (150, 155, 160)),   # 橋面/屋頂
-    ("minecraft:polished_andesite",            (120, 110,  98)),   # 橋墩
-    ("minecraft:polished_diorite",             (235, 235, 230)),   # 月台
+    ("minecraft:smooth_stone",                 (196, 200, 205)),   # Track bed
+    ("minecraft:gray_concrete",                ( 88,  93, 100)),   # Guide wall
+    ("minecraft:light_gray_concrete",          (150, 155, 160)),   # Deck / roof
+    ("minecraft:polished_andesite",            (120, 110,  98)),   # Pier
+    ("minecraft:polished_diorite",             (235, 235, 230)),   # Platform
     ("minecraft:yellow_concrete",              (230, 190,  40)),
     ("minecraft:light_gray_stained_glass_pane",(170, 205, 215)),
     ("minecraft:glass_pane",                   (200, 225, 235)),
@@ -36,38 +38,42 @@ PALETTE = [
     ("minecraft:powered_rail",                 (172, 128,  70)),
     ("minecraft:redstone_block",               (170,  30,  30)),
     ("minecraft:lime_concrete",                ( 94, 168,  64)),
-    ("minecraft:smooth_sandstone",             (222, 206, 158)),   # 站體大樓外牆
-    ("minecraft:bricks",                       (170,  92,  74)),   # 紅磚色陶瓦屋頂
-    ("minecraft:white_concrete",               (232, 232, 232)),   # 屋頂白邊／地坪
-    ("minecraft:black_concrete",               ( 30,  30,  34)),   # 大廳黑白棋盤
-    ("minecraft:deepslate_tiles",              ( 62,  62,  68)),   # 宮殿式屋頂
-    ("minecraft:polished_deepslate",           ( 78,  78,  84)),   # 屋脊
-    # 告示牌（application/signage.py）：搭車告示牌、穿堂指引、出口牌都是淡色木頭
+    ("minecraft:smooth_sandstone",             (222, 206, 158)),   # Station building facade
+    ("minecraft:bricks",                       (170,  92,  74)),   # Red-brick clay tile roof
+    ("minecraft:white_concrete",               (232, 232, 232)),   # White roof trim / paving
+    ("minecraft:black_concrete",               ( 30,  30,  34)),   # Checkerboard hall floor
+    ("minecraft:deepslate_tiles",              ( 62,  62,  68)),   # Palace-style roof
+    ("minecraft:polished_deepslate",           ( 78,  78,  84)),   # Roof ridge
+    # Signs (application/signage.py): ride signs, concourse directions and exit signs
+    # are all pale wood.
     ("minecraft:pale_oak_sign",                (226, 216, 212)),
-    # 路線色帶（月台門門楣、軌道外側牆）：signage.band_block 挑的混凝土與陶瓦
-    ("minecraft:red_concrete",                 (142,  33,  33)),   # 淡水信義線
-    ("minecraft:orange_concrete",              (224,  97,   1)),   # 中和新蘆線
-    ("minecraft:light_blue_concrete",          ( 36, 137, 199)),   # 板南線
-    ("minecraft:green_concrete",               ( 73,  91,  36)),   # 松山新店線
-    ("minecraft:purple_concrete",              (100,  32, 156)),   # 機場捷運
-    ("minecraft:cyan_concrete",                ( 21, 119, 136)),   # 三鶯線
-    ("minecraft:orange_terracotta",            (162,  84,  38)),   # 文湖線
-    ("minecraft:yellow_terracotta",            (186, 133,  35)),   # 環狀線
-    ("minecraft:white_terracotta",             (210, 178, 161)),   # 安坑、淡海輕軌
+    # Line color bands (PSD headers, outer track walls): the concrete and terracotta
+    # that signage.band_block picks.
+    ("minecraft:red_concrete",                 (142,  33,  33)),   # Tamsui-Xinyi Line
+    ("minecraft:orange_concrete",              (224,  97,   1)),   # Zhonghe-Xinlu Line
+    ("minecraft:light_blue_concrete",          ( 36, 137, 199)),   # Bannan Line
+    ("minecraft:green_concrete",               ( 73,  91,  36)),   # Songshan-Xindian Line
+    ("minecraft:purple_concrete",              (100,  32, 156)),   # Taoyuan Airport MRT
+    ("minecraft:cyan_concrete",                ( 21, 119, 136)),   # Sanying Line
+    ("minecraft:orange_terracotta",            (162,  84,  38)),   # Wenhu Line
+    ("minecraft:yellow_terracotta",            (186, 133,  35)),   # Circular Line
+    ("minecraft:white_terracotta",             (210, 178, 161)),   # Ankeng and Danhai LRT
 ]
 NAME2C = {n: i for i, (n, _) in enumerate(PALETTE)}
-NC = 4096                        # 顏色索引的容量（鍵值 = (y+YOFF)*NC + 索引）
-UNKNOWN = NC - 1                 # 洋紅：手填配色沒有、遊戲材質也算不出來的方塊
+NC = 4096                        # Capacity of the color index (key = (y+YOFF)*NC + index)
+UNKNOWN = NC - 1                 # Magenta: a block that neither the hand-picked palette nor the
+                                 # game textures can color.
 COLOR_LIST = [c for _, c in PALETTE]
 BG = (18, 20, 26)
-YOFF = 100                       # 讓 y 恆為正，才能打包進鍵值
+YOFF = 100                       # Keeps y positive so that it can be packed into the key.
 
-# 手填配色以外的方塊（景點建築一次用上上百種）：從裝好的遊戲材質算平均色
-# （tools/blockcolors.py）。算不出來的才畫洋紅 —— 洋紅仍然代表「這個方塊沒有顏色」，
-# 不是「沒列進手填表」
+# Blocks outside the hand-picked palette (an attraction building uses a hundred or more
+# at once) get the average color of the installed game's textures (tools/blockcolors.py).
+# Only a block whose color cannot be computed is drawn magenta, so magenta still means
+# "this block has no color", not "this block is missing from the hand-picked table".
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 _BC = None
-AUTO = set()                     # 靠遊戲材質上色的方塊
+AUTO = set()                     # Blocks colored from the game textures.
 
 
 def color_index(name):
@@ -108,7 +114,7 @@ def region_files(rdir):
 
 
 def iter_chunks(rdir):
-    """保留舊介面：逐一產出 chunk 的 NBT root。"""
+    """Yield the NBT root of each chunk in turn (kept for the old interface)."""
     for p, _, _ in region_files(rdir):
         raw = open(p, "rb").read()
         if len(raw) < 8192:
@@ -129,15 +135,15 @@ def iter_chunks(rdir):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("save"); ap.add_argument("out")
-    ap.add_argument("--scale", type=int, default=4, help="每像素幾公尺")
+    ap.add_argument("--scale", type=int, default=4, help="Metres per pixel")
     ap.add_argument("--bbox", nargs=4, type=int, metavar=("X0", "Z0", "X1", "Z1"),
-                    help="只畫這個範圍（Minecraft 座標），用來出局部特寫")
+                    help="Draw only this area (Minecraft coordinates), for a close-up")
     a = ap.parse_args()
     rdir = os.path.join(a.save, "dimensions/minecraft/overworld/region")
 
     files = list(region_files(rdir))
     if not files:
-        raise SystemExit(f"{rdir} 下沒有區域檔")
+        raise SystemExit(f"No region files in {rdir}")
     rxs = [r[1] for r in files]; rzs = [r[2] for r in files]
     x0, x1 = min(rxs) * 512, (max(rxs) + 1) * 512 - 1
     z0, z1 = min(rzs) * 512, (max(rzs) + 1) * 512 - 1
@@ -147,11 +153,11 @@ def main():
         files = [f for f in files
                  if f[1] * 512 <= x1 and (f[1] + 1) * 512 > x0
                  and f[2] * 512 <= z1 and (f[2] + 1) * 512 > z0]
-        print(f"局部特寫：只處理 {len(files)} 個區域檔")
+        print(f"Close-up: reading {len(files)} region files")
     s = a.scale
     W = (x1 - x0) // s + 1; H = (z1 - z0) // s + 1
-    key = np.zeros(H * W, dtype=np.int64)        # (y+YOFF)*NC + 顏色索引
-    print(f"{len(files)} 個區域檔  X[{x0},{x1}] Z[{z0},{z1}] -> {W}x{H} px @ {s} m/px")
+    key = np.zeros(H * W, dtype=np.int64)        # (y+YOFF)*NC + color index
+    print(f"{len(files)} region files  X[{x0},{x1}] Z[{z0},{z1}] -> {W}x{H} px @ {s} m/px")
 
     seen = {}
     nch = 0
@@ -215,7 +221,7 @@ def main():
             k = (best_y[zz, xx] + YOFF) * NC + best_c[zz, xx]
             np.maximum.at(key, flat, k)
         if fi % 50 == 0 or fi == len(files):
-            print(f"  [{fi}/{len(files)}] {nch:,} 區塊")
+            print(f"  [{fi}/{len(files)}] {nch:,} chunks")
 
     img = np.zeros((H * W, 3), dtype=np.uint8); img[:] = BG
     hit = key > 0
@@ -228,19 +234,21 @@ def main():
     img[hit] = (colors[cs] * shade).astype(np.uint8)
     Image.fromarray(img.reshape(H, W, 3)).save(a.out)
 
-    print(f"\n讀入 {nch:,} 區塊，出現的方塊種類：")
+    print(f"\nRead {nch:,} chunks. Block types found (top 20):")
     for n, c in sorted(seen.items(), key=lambda kv: -kv[1])[:20]:
-        mark = ("   <-- 沒有顏色（洋紅）" if NAME2C.get(n) == UNKNOWN
-                else "   （遊戲材質配色）" if n in AUTO else "")
-        print(f"  {n:<45} {c:>8} 個 section{mark}")
+        mark = ("   <-- no colour (magenta)" if NAME2C.get(n) == UNKNOWN
+                else "   (coloured from game textures)" if n in AUTO else "")
+        print(f"  {n:<45} {c:>8} sections{mark}")
     none = sorted(n for n in seen if NAME2C.get(n) == UNKNOWN)
     if AUTO:
-        print(f"另有 {len(AUTO)} 種方塊不在手填配色裡，照遊戲材質上色")
+        print(f"{len(AUTO)} other block types are not in the hand-picked palette "
+              "and are coloured from the game textures")
     if none:
-        print(f"⚠ {len(none)} 種方塊算不出顏色、畫成洋紅：" + "、".join(none))
+        print(f"warning: {len(none)} block types have no computable colour "
+              "and are drawn magenta: " + ", ".join(none))
     if _BC is not None:
         _BC.save()
-    print(f"已輸出 {a.out}")
+    print(f"Wrote {a.out}")
 
 
 if __name__ == "__main__":

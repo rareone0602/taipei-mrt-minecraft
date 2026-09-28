@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Overpass API 客戶端：鏡像輪替、重試、快取。
+"""Overpass API client: mirror rotation, retries and caching.
 
-五支 fetch_*.py 原本各自帶一份幾乎相同的鏡像清單與重試迴圈（重試次數
-6~9、逾時 180~500 秒、有的檢查 stdout 開頭是不是 "{"、有的沒有）。
-合成這一份之後差異用參數表示。
+The five fetch_*.py scripts each used to carry a nearly identical mirror list
+and retry loop (6 to 9 retries, timeouts of 180 to 500 seconds, some checking
+whether stdout starts with "{" and some not). They are merged here, and the
+differences are expressed as parameters.
 
-用 curl 子行程而不是 urllib/requests：sandbox 擋掉 **/*.pem 的讀取，
-Python 的 SSL 模組載入 certifi 的 CA bundle 會直接失敗。
+This uses a curl subprocess rather than urllib/requests: the sandbox blocks
+reads of **/*.pem, so Python's SSL module fails outright when it loads the
+certifi CA bundle.
 """
 import json
 import os
@@ -19,17 +21,18 @@ MIRRORS = [
     "https://overpass.private.coffee/api/interpreter",
 ]
 
-# 全台北盆地 + 桃園機捷西段
+# The whole Taipei Basin plus the western section of the Taoyuan Airport MRT.
 BBOX = "24.85,121.15,25.32,121.75"
 
-# pyproj 會把 CURL_CA_BUNDLE 指到 /dev/null（見 adapters/projection.py），
-# 那會讓 curl 驗不過憑證 —— 傳給子行程前先拿掉。
+# The pyproj setup points CURL_CA_BUNDLE at /dev/null (see adapters/projection.py),
+# which makes curl fail certificate verification, so it is removed before the
+# environment is passed to the subprocess.
 CURL_ENV = {k: v for k, v in os.environ.items() if k != "CURL_CA_BUNDLE"}
 
 DEFAULT_CACHE = os.environ.get("OVERPASS_CACHE")
 
-# overpass-api.de 對 curl 預設的 User-Agent 一律回 406 Not Acceptable（2026 起）。
-# 只報專案名稱 —— 不帶任何個人資料（姓名、email）
+# overpass-api.de answers curl's default User-Agent with 406 Not Acceptable
+# (since 2026). Report the project name only, with no personal data (name, email).
 USER_AGENT = "taipei-mrt-minecraft/1.0 (OpenStreetMap data build script)"
 
 
@@ -38,10 +41,11 @@ def host(url):
 
 
 def query(q, label="query", tries=9, timeout=300, backoff=4):
-    """送出一次 Overpass 查詢，回傳解析好的 dict；全部失敗回 None。
+    """Send one Overpass query and return the parsed dict, or None if every attempt fails.
 
-    只有 json.loads 成功才算數 —— 鏡像過載時會回 200 加一段截斷的 JSON，
-    光看 returncode 會把半截資料當成功寫進 data/。
+    Only a successful json.loads counts: an overloaded mirror returns 200 with
+    truncated JSON, and checking the return code alone would write the partial
+    data into data/ as a success.
     """
     for i in range(tries):
         url = MIRRORS[i % len(MIRRORS)]
@@ -53,7 +57,7 @@ def query(q, label="query", tries=9, timeout=300, backoff=4):
             try:
                 return json.loads(p.stdout)
             except json.JSONDecodeError:
-                print(f"    {label}: 回應截斷/非 JSON ({len(p.stdout)}B) @ {host(url)}")
+                print(f"    {label}: response truncated or not JSON ({len(p.stdout)}B) @ {host(url)}")
         else:
             err = (p.stderr or "").strip()[:80]
             print(f"    {label}: curl rc={p.returncode} @ {host(url)} {err}")
@@ -62,7 +66,11 @@ def query(q, label="query", tries=9, timeout=300, backoff=4):
 
 
 def query_cached(name, q, cache_dir=None, refresh=False, **kw):
-    """同 query()，但先看快取。抓細部資料時一輪要打十幾次，重跑不該再打 API。"""
+    """Same as query(), but check the cache first.
+
+    Fetching the station details makes a dozen or more queries per run, and a
+    rerun should not call the API again.
+    """
     cache_dir = cache_dir or DEFAULT_CACHE
     if not cache_dir:
         return query(q, label=name, **kw)
@@ -73,15 +81,15 @@ def query_cached(name, q, cache_dir=None, refresh=False, **kw):
         try:
             d = json.load(open(path, encoding="utf-8"))
         except json.JSONDecodeError:
-            print(f"{name:<14} 快取毀損，重抓")
+            print(f"{name:<14} cache corrupt, fetching again")
         else:
-            print(f"{name:<14} 使用快取 {len(d['elements']):>6} 個元素  {path}")
+            print(f"{name:<14} from cache {len(d['elements']):>6} elements  {path}")
             return d
 
     d = query(q, label=name, **kw)
     if d is not None:
         json.dump(d, open(path, "w", encoding="utf-8"), ensure_ascii=False)
-        print(f"{name:<14} 取得    {len(d['elements']):>6} 個元素")
+        print(f"{name:<14} fetched    {len(d['elements']):>6} elements")
     else:
-        print(f"{name:<14} 失敗，這份資料會是空的")
+        print(f"{name:<14} failed; this data will be empty")
     return d

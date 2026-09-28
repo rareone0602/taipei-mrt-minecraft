@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""單獨蓋幾條路線（不含地形）—— 快速檢查斷面與車站樣板用。
+"""Builds a few lines on their own, without terrain, for a quick check of the
+cross-sections and the station template.
 
-要真實地形與全網請用 cli/build_world.py。
+For real terrain and the full network, use cli/build_world.py.
 
-用法:
+Usage:
     ./.venv/bin/python -m cli.build_line --lines BR R Y
     ./.venv/bin/python -m cli.build_line --all
 """
@@ -51,7 +52,7 @@ def main():
     total_km = 0.0
     for ref in refs:
         if ref not in lines:
-            print(f"{ref}: 沒有幾何資料，略過"); continue
+            print(f"{ref}: no geometry, skipped"); continue
         chosen = select_variants(lines[ref])
         all_samples, all_ys, cnt = [], [], {"viaduct": 0, "surface": 0, "tunnel": 0}
         km = 0.0
@@ -70,10 +71,10 @@ def main():
             all_ys += ys
             km += len(samples) * STEP / 1000
         if not all_samples:
-            print(f"{ref}: 取樣點太少，略過"); continue
+            print(f"{ref}: too few samples, skipped"); continue
         total_km += km
         samples, ys = all_samples, all_ys
-        branch = f" (+{len(chosen)-1} 支線/分歧)" if len(chosen) > 1 else ""
+        branch = f" (+{len(chosen)-1} branches/forks)" if len(chosen) > 1 else ""
         mine = [s for s in stations if any(t.startswith(ref) and
                 (len(t) > len(ref) and t[len(ref)].isdigit()) for t in s[0])]
         built = 0
@@ -91,10 +92,10 @@ def main():
             built += 1
         tot = max(1, sum(cnt.values()))
         print(f"{ref:<3} {km:>6.2f} km  y{min(ys):>3}~{max(ys):<3}  "
-              f"高架{100*cnt['viaduct']//tot:>3}% 平面{100*cnt['surface']//tot:>3}% "
-              f"地下{100*cnt['tunnel']//tot:>3}%  車站 {built}/{len(mine)}{branch}")
+              f"elevated {100*cnt['viaduct']//tot:>3}%  at-grade {100*cnt['surface']//tot:>3}%  "
+              f"underground {100*cnt['tunnel']//tot:>3}%  stations {built}/{len(mine)}{branch}")
 
-    print(f"\n合計 {total_km:.1f} km，寫入存檔…")
+    print(f"\nTotal {total_km:.1f} km, writing the world save…")
     w.save()
 
 

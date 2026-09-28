@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""單線軌道生成器：把浮點中心線轉成 Minecraft 的鐵軌方塊與 shape 狀態。
+"""Single-track generator: turns a floating-point centerline into rail blocks and shape states.
 
-存檔是直接寫 NBT、沒有方塊更新，遊戲不會幫忙把鐵軌接起來 —— 每一格的 shape
-都得自己算對。算錯的那一格不會報錯，只會讓礦車默默停在那裡。
+The world save is written directly as NBT with no block updates, so the game does not
+connect the rails; the shape of every cell has to be computed correctly here. A wrong
+cell raises no error; a minecart simply stops there without a word.
 
-用法（跑自我測試）:
+Usage (runs the self-test):
     ./.venv/bin/python -m mrt.domain.rails
 """
 import math
@@ -12,7 +13,7 @@ import math
 RAIL    = "minecraft:rail"
 POWERED = "minecraft:powered_rail"
 
-# 北 = −Z、南 = +Z、東 = +X、西 = −X
+# North = −Z, south = +Z, east = +X, west = −X
 DIRS     = {"north": (0, -1), "south": (0, 1), "east": (1, 0), "west": (-1, 0)}
 _DIR_OF  = {v: k for k, v in DIRS.items()}
 OPPOSITE = {"north": "south", "south": "north", "east": "west", "west": "east"}
@@ -23,11 +24,11 @@ STRAIGHT_SHAPES = {"north_south", "east_west"}
 CURVE_SHAPES    = {"north_east", "north_west", "south_east", "south_west"}
 ASCEND_SHAPES   = {"ascending_" + d for d in DIRS}
 ALL_SHAPES      = STRAIGHT_SHAPES | CURVE_SHAPES | ASCEND_SHAPES
-# powered_rail 的 shape 列舉裡沒有彎道，硬塞會變成無效方塊狀態
+# The shape enumeration of powered_rail has no curves; forcing one gives an invalid block state
 POWERED_SHAPES  = STRAIGHT_SHAPES | ASCEND_SHAPES
 
 
-# ---------- 對外 API ----------
+# ---------- Public API ----------
 
 def rail_path(pts, booster_every=12):
     """pts: iterable of (x, y, z) floats, ordered along the track.
@@ -35,10 +36,10 @@ def rail_path(pts, booster_every=12):
     pts = [(float(x), float(y), float(z)) for x, y, z in pts]
     if not pts:
         return []
-    cells = _quantize(pts)          # 取整、併掉同一格的連續取樣
-    cells = _orthogonalize(cells)   # 對角步拆成兩個正交步
-    cells = _despike(cells)         # 拿掉 a-b-a 的折返尖點
-    ys     = _plan_profile(cells)   # 縱斷面：夾坡度、把高差挪離彎道
+    cells = _quantize(pts)          # Round, and merge consecutive samples in the same cell
+    cells = _orthogonalize(cells)   # Split diagonal steps into two orthogonal steps
+    cells = _despike(cells)         # Remove a-b-a reversal spikes
+    ys     = _plan_profile(cells)   # Vertical profile: clamp grades, keep height changes off curves
     shapes = _shapes(cells, ys)
     power  = _boosters(shapes, booster_every)
     return [(c[0], ys[i], c[1], shapes[i], power[i]) for i, c in enumerate(cells)]
@@ -48,16 +49,16 @@ def block_string(shape, powered):
     """-> 'minecraft:rail[shape=north_south]' or
           'minecraft:powered_rail[shape=east_west,powered=true]'"""
     if shape not in ALL_SHAPES:
-        raise ValueError("未知的 rail shape: %r" % (shape,))
+        raise ValueError("unknown rail shape: %r" % (shape,))
     if powered:
         if shape not in POWERED_SHAPES:
-            raise ValueError("powered_rail 不能是彎道: %r" % (shape,))
+            raise ValueError("powered_rail cannot be a curve: %r" % (shape,))
         return "%s[shape=%s,powered=true]" % (POWERED, shape)
     return "%s[shape=%s]" % (RAIL, shape)
 
 
 def shape_connections(shape):
-    """回傳 (這個 shape 接出去的兩個方向, 上坡方向或 None)。"""
+    """Return (the two directions this shape connects to, the uphill direction or None)."""
     if shape in STRAIGHT_SHAPES:
         return (("north", "south") if shape == "north_south"
                 else ("east", "west")), None
@@ -67,22 +68,23 @@ def shape_connections(shape):
     if shape in CURVE_SHAPES:
         ns, ew = shape.split("_")
         return (ns, ew), None
-    raise ValueError("未知的 rail shape: %r" % (shape,))
+    raise ValueError("unknown rail shape: %r" % (shape,))
 
 
-# ---------- 平面線形 ----------
+# ---------- Horizontal alignment ----------
 
 def _r(v):
-    """半數往上取整。內建 round() 是 banker's rounding —— round(0.5)=0 但
-    round(1.5)=2，用在 0.5 m 取樣上會讓方塊的長度忽長忽短。"""
+    """Round half up. The built-in round() uses banker's rounding: round(0.5)=0 but
+    round(1.5)=2, which on 0.5 m samples makes block runs alternately long and short."""
     return int(math.floor(v + 0.5))
 
 
 def _quantize(pts):
-    """取整成方塊格，並把落在同一格的連續取樣併成一點。
+    """Round to block cells, merging consecutive samples in the same cell into one point.
 
-    0.5 m 取樣時同一格常出現兩三個點；高度取群組平均而不是第一個，
-    緩坡的縱斷面才不會整條往格子的前緣偏半格。
+    At 0.5 m sampling a cell often gets two or three points. The height is the group
+    mean rather than the first sample, so that the vertical profile of a gentle slope
+    is not shifted half a cell toward the leading edge of each cell.
     """
     out = []
     for x, y, z in pts:
@@ -97,10 +99,11 @@ def _quantize(pts):
 
 
 def _ortho_walk(a, b, state):
-    """從 a 走到 b 只走上下左右，回傳沿途格子（不含 a、含 b）。
+    """Walk from a to b in orthogonal steps; return the cells on the way (without a, with b).
 
-    每一步挑離 a→b 直線比較近的那個軸；兩邊一樣近時（正 45°）改走上一步
-    沒走的軸 —— 對角線因此走成規律階梯，而不是先直行一長段再急轉。
+    Each step takes the axis that stays closer to the straight line a→b. When both are
+    equally close (exactly 45°), it takes the axis the previous step did not, so a
+    diagonal becomes a regular staircase instead of a long straight run and a sharp turn.
     """
     ax, az = a
     bx, bz = b
@@ -129,20 +132,21 @@ def _ortho_walk(a, b, state):
 
 
 def _orthogonalize(cells):
-    """把相鄰格補成 4-連通。鐵軌沒有斜向接點，對角步一定要拆成兩步。"""
+    """Fill in cells so that neighbors are 4-connected. Rails have no diagonal connections, so a
+    diagonal step must be split in two."""
     out = [cells[0]]
     state = [None]
     for bx, bz, by in cells[1:]:
         ax, az, ay = out[-1]
         steps = _ortho_walk((ax, az), (bx, bz), state)
         for k, (x, z) in enumerate(steps, 1):
-            # 插進去的中間點沒有原始高度，沿曼哈頓進度線性內插
+            # Inserted cells have no original height; interpolate along the Manhattan progress
             out.append((x, z, ay + (by - ay) * k / len(steps)))
     return out
 
 
 def _despike(cells):
-    """拿掉 a-b-a 的折返：同一格出現兩個朝同方向的鄰居，shape 無解。"""
+    """Remove a-b-a reversals: a cell with both neighbors on the same side has no valid shape."""
     out = []
     for c in cells:
         if out and (out[-1][0], out[-1][1]) == (c[0], c[1]):
@@ -155,8 +159,9 @@ def _despike(cells):
 
 
 def _straight_flags(cells):
-    """每一格是不是直線段（兩個鄰居在正相反方向）。端點視為直線 —— 只有
-    一個鄰居，一定能挑到直線或斜軌的 shape。"""
+    """Return whether each cell is on a straight run (its two neighbors exactly opposite).
+    End cells count as straight: with only one neighbor, a straight or ascending shape can
+    always be chosen."""
     n = len(cells)
     flags = [True] * n
     for i in range(1, n - 1):
@@ -166,10 +171,11 @@ def _straight_flags(cells):
     return flags
 
 
-# ---------- 縱斷面 ----------
+# ---------- Vertical profile ----------
 
 def _limit_grade(ys):
-    """把每步高差夾在 ±1：斜軌一次只能升一格，輸入再陡也不能照抄。"""
+    """Clamp the height change per step to ±1: an ascending rail rises only one block at a time,
+    however steep the input."""
     out = list(ys)
     for i in range(1, len(out)):
         out[i] = max(out[i - 1] - 1, min(out[i - 1] + 1, out[i]))
@@ -177,7 +183,7 @@ def _limit_grade(ys):
 
 
 def _nearest_ok(ok, idx, lo):
-    """找離 idx 最近、且 >= lo 的合法邊；同距離時偏好往回挪（比較不落後）。"""
+    """Find the valid edge nearest to idx and >= lo; on a tie, prefer moving back (less lag)."""
     n = len(ok)
     for r in range(n):
         for j in ((idx,) if r == 0 else (idx - r, idx + r)):
@@ -189,20 +195,22 @@ def _nearest_ok(ok, idx, lo):
 
 
 def _plan_profile(cells):
-    """規劃每一格的 y。
+    """Plan the y of every cell.
 
-    高差只能落在「低的那一格是直線段」的邊上：斜軌不能同時是彎道，
-    而上坡的斜軌永遠是低的那一格。另外相鄰兩條邊不准都有高差 ——
-    這樣每個斜軌的另一端必定同高，也順便消掉山谷與山峰。
-    真實坡度 4% 時兩次升降相距 25 格以上，這個限制不會綁到手。
+    A height change may only fall on an edge whose lower cell is on a straight run: an
+    ascending rail cannot also be a curve, and the ascending rail is always the lower
+    cell. In addition, two adjacent edges may not both change height. This guarantees
+    that the other end of every ascending rail is level, and it also removes valleys and
+    peaks. At a real grade of 4%, two height changes are at least 25 cells apart, so this
+    constraint never gets in the way.
     """
     n = len(cells)
     tgt = _limit_grade([_r(c[2]) for c in cells])
     if n < 2:
         return tgt
     straight = _straight_flags(cells)
-    up_ok   = [straight[i]     for i in range(n - 1)]   # 升：斜軌是第 i 格
-    down_ok = [straight[i + 1] for i in range(n - 1)]   # 降：斜軌是第 i+1 格
+    up_ok   = [straight[i]     for i in range(n - 1)]   # Up: the ascending rail is cell i
+    down_ok = [straight[i + 1] for i in range(n - 1)]   # Down: the ascending rail is cell i+1
 
     placed, last = [], -2
     for i in range(n - 1):
@@ -211,7 +219,8 @@ def _plan_profile(cells):
             continue
         j = _nearest_ok(up_ok if d > 0 else down_ok, i, last + 2)
         if j is None:
-            continue        # 整段都在彎道上，只能放棄這次高差（軌道仍然可通行）
+            continue        # The whole stretch is on curves, so this height change is dropped
+                            # (the track remains passable)
         placed.append((j, d))
         last = j
 
@@ -224,7 +233,7 @@ def _plan_profile(cells):
     return ys
 
 
-# ---------- shape 與動力軌 ----------
+# ---------- Shapes and powered rails ----------
 
 def _shapes(cells, ys):
     n = len(cells)
@@ -236,16 +245,17 @@ def _shapes(cells, ys):
                 d = _DIR_OF[(cells[j][0] - cells[i][0], cells[j][1] - cells[i][1])]
                 nbs.append((d, ys[j]))
         if not nbs:
-            out.append("north_south")   # 只有一格的軌道，軸向隨便挑
+            out.append("north_south")   # A one-cell track; either axis will do
             continue
         is_straight = len(nbs) == 1 or nbs[0][0] == OPPOSITE[nbs[1][0]]
         up = [d for d, y in nbs if y == ys[i] + 1]
         if up:
-            # 這兩種情形代表 _plan_profile 沒擋住，寧可炸掉也不要生出走不了的軌道
+            # Either case means _plan_profile failed to prevent it; better to fail loudly than to
+            # produce an impassable track
             if not is_straight:
-                raise ValueError("#%d 斜軌落在彎道上" % i)
+                raise ValueError("#%d ascending rail on a curve" % i)
             if len(up) > 1:
-                raise ValueError("#%d 兩側都比自己高（山谷）" % i)
+                raise ValueError("#%d both neighbours are higher (a valley)" % i)
             out.append("ascending_" + up[0])
         elif is_straight:
             out.append(AXIS[nbs[0][0]])
@@ -257,14 +267,15 @@ def _shapes(cells, ys):
 
 
 def _boosters(shapes, every):
-    """每隔 every 格放一根動力軌；落在彎道就順延到下一格直線。
+    """Place a powered rail every `every` cells; one that lands on a curve moves to the next straight.
 
-    整條網路 240 km，礦車不補速就會在半路停住，所以寧可多放。
+    The whole network is 240 km, and a minecart that is not boosted stops partway, so
+    it is better to place too many.
     """
     out = [False] * len(shapes)
     if not every or every <= 0:
         return out
-    since = every       # 第一格就先給一根，礦車才推得動
+    since = every       # Start with one on the first cell so the minecart can get moving
     for i, s in enumerate(shapes):
         if since >= every and s in POWERED_SHAPES:
             out[i] = True
@@ -273,10 +284,11 @@ def _boosters(shapes, every):
     return out
 
 
-# ---------- 通用檢查器 ----------
+# ---------- General checker ----------
 
 def check_rails(blocks):
-    """礦車可通行性檢查。回傳錯誤訊息清單，空清單代表這條軌道走得過去。"""
+    """Check that a minecart can pass. Return a list of error messages; an empty list means the
+    track is passable."""
     errs = []
     n = len(blocks)
     if n == 0:
@@ -285,21 +297,21 @@ def check_rails(blocks):
     seen = {}
     for i, (x, y, z, shape, pw) in enumerate(blocks):
         if shape not in ALL_SHAPES:
-            errs.append("#%d 未知的 shape %r" % (i, shape))
+            errs.append("#%d unknown shape %r" % (i, shape))
         if pw and shape in CURVE_SHAPES:
-            errs.append("#%d 彎道 %s 不能是 powered_rail" % (i, shape))
+            errs.append("#%d curve %s cannot be powered_rail" % (i, shape))
         if (x, z) in seen:
-            errs.append("#%d 與 #%d 佔用同一格 (%d,%d)" % (i, seen[(x, z)], x, z))
+            errs.append("#%d and #%d occupy the same cell (%d,%d)" % (i, seen[(x, z)], x, z))
         seen[(x, z)] = i
 
     for i in range(n - 1):
         ax, _, az = blocks[i][:3]
         bx, _, bz = blocks[i + 1][:3]
         if abs(ax - bx) + abs(az - bz) != 1:
-            errs.append("#%d (%d,%d) -> #%d (%d,%d) 不是正交相鄰"
+            errs.append("#%d (%d,%d) -> #%d (%d,%d) are not orthogonally adjacent"
                         % (i, ax, az, i + 1, bx, bz))
     if errs:
-        return errs     # 連通性都壞了，接下來的 shape 檢查沒有意義
+        return errs     # Connectivity is already broken, so the shape checks below mean nothing
 
     for i, (x, y, z, shape, pw) in enumerate(blocks):
         dirs, asc = shape_connections(shape)
@@ -313,37 +325,42 @@ def check_rails(blocks):
             back = OPPOSITE[d]
             jdirs, jasc = shape_connections(blocks[j][3])
             if d not in dirs:
-                errs.append("#%d %s 沒有朝 %s 的接點（鄰居 #%d）" % (i, shape, d, j))
+                errs.append("#%d %s has no connection towards %s (neighbour #%d)"
+                            % (i, shape, d, j))
             if back not in jdirs:
-                errs.append("#%d %s 沒有接回 %s（鄰居 #%d）"
+                errs.append("#%d %s does not connect back towards %s (neighbour #%d)"
                             % (j, blocks[j][3], back, i))
             if asc == d:
                 if ny != y + 1:
-                    errs.append("#%d %s 的 %s 側鄰居應該高 1 格，實際 %+d"
+                    errs.append("#%d %s: neighbour on the %s side should be 1 block higher, got %+d"
                                 % (i, shape, d, ny - y))
             elif jasc == back:
-                # 斜坡頂端：鄰居低 1 格但它正朝我上坡。規格書寫「非斜軌的兩側
-                # 都同高」，照字面走的話任何高度變化都不成立 —— 這格必須放行。
+                # Top of a slope: the neighbor is 1 block lower but ascends toward this cell. The
+                # specification says both sides of a non-ascending rail are level; taken literally,
+                # no height change could ever work, so this cell must be allowed.
                 if ny != y - 1:
-                    errs.append("#%d 的鄰居 #%d 宣稱朝我上坡，卻不是低 1 格" % (i, j))
+                    errs.append("#%d: neighbour #%d claims to ascend towards it "
+                                "but is not 1 block lower" % (i, j))
             elif ny != y:
-                errs.append("#%d 與 #%d 高差 %+d，但兩邊都不是斜軌"
+                errs.append("#%d and #%d differ in height by %+d, but neither is an ascending rail"
                             % (i, j, ny - y))
 
         if asc:
             ndirs = [d for _, d in nbs]
             if asc not in ndirs:
-                errs.append("#%d %s 朝 %s 上坡，那個方向卻沒有軌道" % (i, shape, asc))
+                errs.append("#%d %s ascends towards %s, but there is no track in that direction"
+                            % (i, shape, asc))
             if len(nbs) == 2 and nbs[0][1] != OPPOSITE[nbs[1][1]]:
-                errs.append("#%d 斜軌不能同時是彎道" % i)
+                errs.append("#%d an ascending rail cannot also be a curve" % i)
             for j, d in nbs:
                 if d != asc and blocks[j][1] != y:
-                    errs.append("#%d %s 的另一端鄰居 #%d 必須同高" % (i, shape, j))
+                    errs.append("#%d %s: neighbour #%d at the other end must be level with it"
+                                % (i, shape, j))
 
         if len(nbs) == 2:
             y0, y1 = blocks[nbs[0][0]][1], blocks[nbs[1][0]][1]
             if y < y0 and y < y1:
-                errs.append("#%d 比兩側都低（山谷）" % i)
+                errs.append("#%d is lower than both neighbours (a valley)" % i)
             if y > y0 and y > y1:
-                errs.append("#%d 比兩側都高（山峰）" % i)
+                errs.append("#%d is higher than both neighbours (a peak)" % i)
     return errs

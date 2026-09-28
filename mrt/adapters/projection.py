@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""WGS84 -> TWD97/TM2 (EPSG:3826) -> Minecraft 方塊座標 (1 方塊 = 1 公尺)
+"""Project WGS84 -> TWD97/TM2 (EPSG:3826) -> Minecraft block coordinates (1 block = 1 meter).
 
-原點: 台北車站 (OSM ref="R10")。輸出 data/mc_stations.csv 與 data/mc_lines.json。
-軸向: MC X = 東、Z = 南（北方為 -Z）。
+Origin: Taipei Main Station (OSM ref="R10"). Writes data/mc_stations.csv and data/mc_lines.json.
+Axes: MC X = east, Z = south (north is -Z).
 
-用法: ./.venv/bin/python -m mrt.adapters.projection
+Usage: ./.venv/bin/python -m mrt.adapters.projection
 """
 import json, csv, glob, os, math
-# pyproj 匯入時會讀 certifi 的 cacert.pem，被 sandbox 的 **/*.pem 規則擋下；
-# 這裡只做本地投影不需連網，先把 CA bundle 指走並關閉 PROJ 網路。
+# Importing pyproj reads certifi's cacert.pem, which the sandbox's **/*.pem
+# rule blocks. Only local projection happens here and no network is needed, so
+# point the CA bundle elsewhere and turn off PROJ networking first.
 os.environ.setdefault("CURL_CA_BUNDLE", "/dev/null")
 os.environ.setdefault("PROJ_NETWORK", "OFF")
 from pyproj import Transformer
@@ -16,13 +17,17 @@ from pyproj import Transformer
 from mrt import config
 
 TF = Transformer.from_crs("EPSG:4326", "EPSG:3826", always_xy=True)
-ORIGIN_REF = "R10"        # 台北車站 (OSM: ref="R10;BL12", name:en="Taipei main station")
+ORIGIN_REF = "R10"        # Taipei Main Station (OSM: ref="R10;BL12", name:en="Taipei main station")
 
 def load_way_tags():
-    """way 標籤（隧道／高架）。還沒跑過 fetch_way_tags 就回空的，全部當平面處理。
+    """Return the way tags (tunnel / elevated).
 
-    這份表以前是模組層級的常數，匯入 projection 就會讀檔 —— 只想用 proj()
-    換算一個座標的人也得付這個代價，而且檔案是什麼時候讀的取決於誰先 import。
+    Returns an empty dict if fetch_way_tags has not run yet, so every segment
+    is treated as at-grade.
+
+    This table used to be a module-level constant, so importing projection read
+    the file: anyone who only wanted proj() to convert one coordinate paid that
+    cost, and when the file was read depended on who imported it first.
     """
     if not os.path.exists(config.WAY_TAGS_JSON):
         return {}
@@ -31,7 +36,7 @@ def load_way_tags():
 
 
 def proj(lon, lat):
-    """回傳 TWD97 (E, N) 公尺"""
+    """Return TWD97 (E, N) in meters."""
     return TF.transform(lon, lat)
 
 def load_stations():
@@ -48,11 +53,13 @@ def load_stations():
     return out
 
 def stitch(ways, tol=3):
-    """把 OSM relation 的 way 依端點接起來。
+    """Join the ways of an OSM relation by their endpoints.
 
-    OSM route relation 的成員順序不保證、方向也可能相反，直接串接會產生
-    橫跨地圖的假直線。這裡貪婪地找端點相接的 way（必要時反轉），接不上
-    的就另開一條 chain — 寧可留下缺口，也不要用直線硬連。
+    The member order of an OSM route relation is not guaranteed and a way may
+    run in the opposite direction, so concatenating them directly produces false
+    straight lines across the map. This greedily finds ways whose endpoints meet
+    (reversing them when needed); a way that does not connect starts a new
+    chain. A gap is better than a forced straight line.
     """
     d2 = lambda a, b: (a[0]-b[0])**2 + (a[1]-b[1])**2
     t2 = tol * tol
@@ -81,10 +88,11 @@ def main():
     stns = load_stations()
     org = next((s for s in stns if ORIGIN_REF in s["ref"].split(";")), None)
     if org is None:
-        raise SystemExit(f"找不到原點站 ref={ORIGIN_REF}；不可靜默退回質心，"
-                         f"否則所有絕對座標都會偏移。請檢查 data/stations.json")
+        raise SystemExit(f"Origin station ref={ORIGIN_REF} not found. It must not fall back "
+                         f"silently to the centroid: every absolute coordinate would shift. "
+                         f"Check data/stations.json.")
     oE, oN = org["E"], org["N"]
-    # Minecraft: X = 東, Z = 南 (北方為 -Z)
+    # Minecraft: X = east, Z = south (north is -Z).
     to_mc = lambda E, N: (round(E - oE), round(-(N - oN)))
 
     with open(config.MC_STATIONS_CSV, "w", newline="", encoding="utf-8") as f:
@@ -99,21 +107,23 @@ def main():
     empty = []
     for path in sorted(glob.glob(os.path.join(config.LINES_DIR, "*.json"))):
         ref = os.path.basename(path)[:-5]
-        # 讀不到就直接停。原本這裡是 except: continue，一個截斷的 G.json
-        # 會讓整條松山新店線從世界裡消失，而輸出只是少一行、不會有人發現。
+        # Stop outright if the file cannot be read. This used to be
+        # `except: continue`: one truncated G.json made the whole Songshan-Xindian
+        # Line vanish from the world, and the output was merely one line shorter,
+        # so nobody noticed.
         try:
             with open(path, encoding="utf-8") as f:
                 d = json.load(f)
         except (OSError, ValueError) as e:
-            raise SystemExit(f"路線檔讀取失敗 {path}: {e}\n"
-                             f"不可靜默跳過，否則 {ref} 線會整條從輸出中消失。"
-                             f"請重跑 fetch_network 取回這個檔案。")
+            raise SystemExit(f"Could not read the route file {path}: {e}\n"
+                             f"It must not be skipped silently: line {ref} would vanish "
+                             f"from the output entirely. Rerun fetch_network to fetch this file.")
         variants = []
         for rel in d["elements"]:
             t = rel.get("tags", {})
             ways = []
             for m in rel.get("members", []):
-                # 只要軌道 way，排除月台/停靠點成員
+                # Keep only track ways; exclude platform and stop members.
                 if m.get("type") != "way":
                     continue
                 role = m.get("role", "")
@@ -136,7 +146,7 @@ def main():
                     name=t.get("name",""), name_zh=t.get("name:zh",""),
                     colour=t.get("colour",""),
                     points=[[p[0], p[1]] for p in best],
-                    kinds=[p[2] for p in best],           # 每點的地下/高架/平面分類
+                    kinds=[p[2] for p in best],           # Per-point underground/elevated/at-grade class.
                     chains=[[[p[0], p[1]] for p in c] for c in chains]))
         if variants:
             lines[ref] = variants
@@ -147,16 +157,19 @@ def main():
         json.dump(lines, f, ensure_ascii=False)
 
     if empty:
-        # 檔案在但一條路線都拼不出來。三鶯線（LB）曾經是這樣：它的 relation
-        # 到 2026-06-30 才補上 route=subway，在那之前用 route 篩的查詢一條都
-        # 抓不到；而且 fetch_network 看到檔案存在就略過，空檔案永遠不會重抓。
-        # 抓到空檔案時把它刪掉再重跑 fetch_network，並確認鏡像的資料日期夠新。
-        # 印出來是為了讓「少了一條線」這件事出現在執行輸出裡，而不是只有 README 知道。
-        print(f"注意：{', '.join(empty)} 的路線檔沒有可用的 route relation，"
-              f"這幾條線不會出現在世界裡\n")
+        # The file exists, but no route can be assembled from it. The Sanying
+        # Line (LB) was like this: its relation only gained route=subway on
+        # 2026-06-30, and before that a query filtered by route returned nothing.
+        # fetch_network also skipped any file that existed, so an empty file was
+        # never fetched again. When an empty file turns up, delete it, rerun
+        # fetch_network, and check that the mirror's data date is recent enough.
+        # This is printed so that a missing line shows up in the run's output,
+        # rather than only in docs/building.md.
+        print(f"warning: the route files for {', '.join(empty)} have no usable route relation; "
+              f"these lines will not appear in the world\n")
 
-    print(f"車站 {len(stns)} 座 -> data/mc_stations.csv")
-    print(f"原點: {org['name_zh']} ({org['ref']})  TWD97 E={oE:.1f} N={oN:.1f}  -> MC (0,0)\n")
+    print(f"{len(stns)} stations -> data/mc_stations.csv")
+    print(f"Origin: {org['name_zh']} ({org['ref']})  TWD97 E={oE:.1f} N={oN:.1f}  -> MC (0,0)\n")
     tot = 0
     for ref, vs in lines.items():
         v = max(vs, key=lambda v: len(v["points"]))
@@ -164,9 +177,9 @@ def main():
         tot += length
         k = v.get("kinds", [])
         pct = lambda w: 100.0 * sum(1 for x in k if x == w) / max(1, len(k))
-        print(f"{ref:<3} {v['colour']:<9} 主線 {len(v['points']):>5} 點  {length/1000:>6.1f} km  "
-              f"地下 {pct('tunnel'):>4.0f}%  高架 {pct('bridge'):>4.0f}%  平面 {pct('ground'):>4.0f}%")
-    print(f"\n全網單向總長約 {tot/1000:.1f} km ({tot:,.0f} 方塊)")
+        print(f"{ref:<3} {v['colour']:<9} main line {len(v['points']):>5} points  {length/1000:>6.1f} km  "
+              f"underground {pct('tunnel'):>4.0f}%  elevated {pct('bridge'):>4.0f}%  at-grade {pct('ground'):>4.0f}%")
+    print(f"\nWhole network, one direction: about {tot/1000:.1f} km ({tot:,.0f} blocks)")
 
 if __name__ == "__main__":
     main()

@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""只蓋文湖線（BR）—— 全線高架、無隧道，是最乾淨的垂直切片。
+"""Builds only the Wenhu Line (BR): fully elevated with no tunnels, it is the
+cleanest vertical slice.
 
-保留這支是因為它蓋出來的東西可以和通用生成器 (cli/build_line.py) 對照，
-高架斷面改壞了會立刻看出來。
+This script is kept because its output can be compared with that of the
+general generator (cli/build_line.py), so a broken elevated cross-section
+shows up at once.
 
-用法: ./.venv/bin/python -m cli.build_br [--out DIR] [--limit N]
+Usage: ./.venv/bin/python -m cli.build_br [--out DIR] [--limit N]
 """
 import argparse
 import csv
@@ -23,7 +25,8 @@ from mrt.infrastructure.mcworld import World
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=config.DEFAULT_SAVE)
-    ap.add_argument("--limit", type=int, default=0, help="只蓋前 N 公尺（測試用）")
+    ap.add_argument("--limit", type=int, default=0,
+                    help="Build only the first N metres, for testing")
     a = ap.parse_args()
 
     lines = json.load(open(config.MC_LINES_JSON, encoding="utf-8"))
@@ -33,9 +36,10 @@ def main():
     if a.limit:
         samples = samples[:int(a.limit / STEP)]
     length_m = len(samples) * STEP
-    print(f"文湖線 BR: 折線 {len(pts)} 點 -> 取樣 {len(samples)} 點, 長度 {length_m/1000:.2f} km")
+    print(f"Wenhu Line (BR): {len(pts)} polyline points -> {len(samples)} samples, "
+          f"{length_m/1000:.2f} km long")
 
-    # 找出 BR 車站，對應到最近的取樣點
+    # Find the BR stations and match each one to its nearest sample.
     stns = []
     with open(config.MC_STATIONS_CSV, encoding="utf-8") as f:
         for r in csv.DictReader(f):
@@ -43,13 +47,14 @@ def main():
                 stns.append((r["name_zh"] or r["name_en"], int(r["mc_x"]), int(r["mc_z"])))
 
     shutil.rmtree(a.out, ignore_errors=True)
-    # 出生點放在大安站出入口樓梯底，走上去就是月台
-    w = World(a.out, name="Taipei MRT — 文湖線", spawn=(2633, 66, 1387))
+    # The spawn point is at the foot of the exit stair at Daan station; the
+    # stair leads straight up to the platform.
+    w = World(a.out, name="Taipei MRT — 文湖線 Wenhu Line", spawn=(2633, 66, 1387))
 
-    print("鋪設高架橋…")
+    print("Laying the viaduct…")
     build_viaduct(w, samples, set())
 
-    print(f"設置車站 ({len(stns)} 座)…")
+    print(f"Placing {len(stns)} stations…")
     built = 0
     for name, sx, sz in stns:
         best, bd = None, 1e18
@@ -57,16 +62,17 @@ def main():
             d = (x - sx) ** 2 + (z - sz) ** 2
             if d < bd:
                 bd, best = d, i
-        if bd ** 0.5 > 150:      # 離線太遠 = 不屬於這條線的變體，跳過
-            print(f"  略過 {name}（離線 {bd**0.5:.0f} m）")
+        # Too far from the line: a variant that is not on this line, so skip it.
+        if bd ** 0.5 > 150:
+            print(f"  Skipped {name}: {bd**0.5:.0f} m from the line")
             continue
         build_station(w, samples, best, name)
         built += 1
-    print(f"  完成 {built} 座車站")
+    print(f"  Built {built} stations")
 
-    print("寫入存檔…")
+    print("Writing the world save…")
     w.save()
-    print(f"\n路線長度 {length_m/1000:.2f} km，{len(w.chunks)} 個區塊")
+    print(f"\nLine length {length_m/1000:.2f} km, {len(w.chunks)} chunks")
 
 
 if __name__ == "__main__":

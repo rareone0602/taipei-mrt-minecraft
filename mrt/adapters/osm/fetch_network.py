@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""抓取台北捷運/機場捷運/輕軌路線幾何 (OSM Overpass) -> data/lines/*.json"""
+"""Fetch route geometry from OSM Overpass -> data/lines/*.json.
+
+Covers the Taipei Metro, the Taoyuan Airport MRT and the light rail lines.
+"""
 import json, os, time
 
 from mrt import config
@@ -20,16 +23,18 @@ def main():
     for ref in REFS:
         path = f"{OUT}/{ref}.json"
         if os.path.exists(path):
-            # 空的結果（elements 是空清單）不算已存在：三鶯線曾經因為鏡像的資料
-            # 太舊而抓到空檔案，之後每次重跑都被這一行略過，永遠補不回來。
+            # An empty result (an empty elements list) does not count as existing:
+            # the Sanying Line once came back as an empty file because a mirror's
+            # data was stale, and every rerun after that skipped it here, so it
+            # was never filled in.
             try:
                 if json.load(open(path, encoding="utf-8")).get("elements"):
-                    print(f"{ref:<3} 已存在，略過"); continue
-                print(f"{ref:<3} 檔案是空的，重抓")
+                    print(f"{ref:<3} already exists, skipped"); continue
+                print(f"{ref:<3} file is empty, fetching again")
             except Exception: pass
         d = fetch(ref)
         if d is None:
-            print(f"{ref:<3} 失敗"); continue
+            print(f"{ref:<3} failed"); continue
         json.dump(d, open(path, "w", encoding="utf-8"), ensure_ascii=False)
         rels = d["elements"]
         pts = sum(len(w.get("geometry", [])) for r in rels for w in r.get("members", []))

@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""串流式世界生成器：真實地形 + 全路網結構（組合根）。
+"""Streaming world generator: real terrain plus the whole network's structures (composition root).
 
-整片地形放不進記憶體，所以按 region (512x512 方塊) 分批：把取樣點依 region
-分桶，逐 region 生地形、蓋結構、寫檔、釋放。
+The whole terrain does not fit in memory, so the world is built in batches by region
+(512x512 blocks): the sample points are bucketed by region, and each region in turn
+gets its terrain and structures, is written to disk and is freed.
 
-這一層是唯一看得到全部實作的地方 —— 決定要把方塊寫進哪個 World、
-從哪裡讀資料。真正的規則在 mrt/domain，蓋東西的程式在 mrt/application。
+This layer is the only place that sees every implementation: it decides which World
+the blocks are written into and where the data is read from. The actual rules live in
+mrt/domain, and the code that builds things lives in mrt/application.
 
-用法:
+Usage:
     ./.venv/bin/python -m cli.build_world [--corridor 160] [--lines BR ...]
-    ./.venv/bin/python -m cli.build_world --rails      # 順便鋪鐵軌
+    ./.venv/bin/python -m cli.build_world --rails      # also lay rails
 """
 import argparse
 import collections
@@ -44,7 +46,7 @@ from mrt.domain.terrain import Terrain
 from mrt.infrastructure import datapack as DP
 from mrt.infrastructure.mcworld import Chunk, World
 
-# main() 沿用原本的模組層常數
+# main() keeps using the original module-level constants.
 BLEND_CELL = BW.BLEND_CELL
 FLAT_Y = BW.FLAT_Y
 STEP = BW.STEP
@@ -57,7 +59,7 @@ terrain_chunk = BW.terrain_chunk
 
 
 def load_stations():
-    """mc_stations.csv -> [(refs, 中文名, mc_x, mc_z, 英文名, ref字串)]"""
+    """mc_stations.csv -> [(refs, Chinese name, mc_x, mc_z, English name, ref string)]."""
     stations = []
     with open(config.MC_STATIONS_CSV, encoding="utf-8") as f:
         for r in csv.DictReader(f):
@@ -67,21 +69,29 @@ def load_stations():
 
 
 def landmark_blocker(marks):
-    """(x, y, z) -> bool：這一格落在某個地下大廳（臺鐵／高鐵月台層、地下大廳樓板）
-    的箱體裡，或某座折返梯井的井身裡。搭車告示牌與站位要避開 —— 台北車站的
-    臺鐵／高鐵月台層跟板南線站體在同一個深度，西端北側那一段月台門被它吃掉了；
-    地下街往淡水信義線穿堂的連絡梯井（y62 一路下到 y44）從板南線月台正中間穿過去，
-    井是在車站之後蓋的，那一段月台面、月台門跟牌子全變成井裡的空氣
-    （tools/verify_rides.py 讀回來才看到：牌子的方塊實體還在，方塊是空氣）。"""
+    """(x, y, z) -> bool: whether the cell lies inside the box of an underground hall
+    (the Taiwan Railway or High Speed Rail platform level, an underground hall's floor
+    slab) or inside the shaft of a switchback stair shaft. Ride signs and berths must
+    avoid these. At Taipei Main Station the railway and HSR platform level sits at the
+    same depth as the Bannan Line station box and swallowed the stretch of platform
+    screen doors on the north side of the west end. The link stair shaft from the
+    underground mall to the Tamsui-Xinyi Line concourse (from y62 down to y44) passes
+    through the middle of the Bannan Line platform. The shaft is built after the
+    station, so that stretch of platform surface, the platform screen doors and the
+    signs all became air inside the shaft (tools/verify_rides.py found this on read-back:
+    the sign's block entity was still there, but the block was air)."""
     vols = []
     for m in marks:
         if hasattr(m, "cells") and hasattr(m, "clear") and hasattr(m, "y"):
             lo = m.y - getattr(m, "thick", 1)
             vols.append((set(m.cells), lo, m.y + m.clear + 1))
         elif hasattr(m, "g0") and hasattr(m, "y_to") and hasattr(m, "bbox"):
-            # 折返梯井（build_concourse.ShaftStair）：井口平台到井底，含頂蓋與底板。
-            # 地下街的連絡梯曾經把板南線月台挖掉一段；規劃時現在會避開別條線，這裡
-            # 再擋一次，而且用含邊距的 bbox —— 穿堂告示牌也不該立在井底的門前
+            # Switchback stair shaft (build_concourse.ShaftStair): from the landing at the
+            # shaft head to the shaft bottom, including the cap and the base slab. A link
+            # stair from the underground mall once dug away a stretch of the Bannan Line
+            # platform. Planning now avoids other lines; this blocks it once more, using
+            # the bbox with its margin, because concourse signs should not stand in front
+            # of the door at the shaft bottom either.
             x0, z0, x1, z1 = (int(v) for v in m.bbox())
             cells = {(x, z) for x in range(x0, x1 + 1) for z in range(z0, z1 + 1)}
             vols.append((cells, min(m.g0, m.y_to) - 2, max(m.g0, m.y_to) + 6))
@@ -92,21 +102,25 @@ def landmark_blocker(marks):
 
 
 def later_section_blocker(segs, reach=48.0):
-    """(x, y, z, box) -> bool：這一格在站體蓋好之後，會被別的路段的斷面蓋掉。
+    """(x, y, z, box) -> bool: whether the cell will be overwritten by another segment's
+    cross-section after the station box is built.
 
-    region 迴圈照路段順序一段一段蓋，每一段先掃斷面、再蓋自己的車站 —— 所以
-    後面路段（li 比站體的大）的隧道或高架橋只要穿過站體，就會把月台挖掉。
-    七張南端被小碧潭支線的隧道穿過、北投一側月台被新北投支線的高架橋壓過，
-    都是這樣；搭車告示牌立在那裡不是懸空就是被牆吃掉。這裡照 sec_tunnel /
-    sec_multi / sec_bridge / sec_ground 各自刷的範圍，只算站體附近真的會蓋的
-    取樣點（build 遮罩），記下哪幾格在什麼高度會被後面的路段蓋掉。
+    The region loop builds the segments one at a time in order, and each segment first
+    sweeps its cross-section and then builds its own stations. So a tunnel or viaduct of
+    a later segment (li greater than the station box's) that passes through a station box
+    digs out the platform. The south end of Qizhang was crossed by the Xiaobitan branch
+    tunnel, and one platform at Beitou was covered by the Xinbeitou branch viaduct, both
+    in this way; a ride sign placed there either floats or is swallowed by a wall. This
+    follows the extent that sec_tunnel / sec_multi / sec_bridge / sec_ground each sweep,
+    counts only the sample points near a station box that are actually built (the build
+    mask), and records which cells later segments will overwrite, and at what heights.
     """
     boxes = {}
     for li, sg in enumerate(segs):
         for bi in sg["stn"]:
             x, z = SK.station_samples(sg, bi)[bi][:2]
             boxes[(li, bi)] = (x, z)
-    hit = {}                                     # (站體路段 li, x, z) -> [(y0, y1)]
+    hit = {}                                     # (station box segment li, x, z) -> [(y0, y1)]
     for lj, sj in enumerate(segs):
         near = [(li, bx, bz) for (li, bi), (bx, bz) in boxes.items() if li < lj]
         if not near:
@@ -148,16 +162,22 @@ def later_section_blocker(segs, reach=48.0):
 
 
 def sight_keepout(marks, segs, sights, pad=2):
-    """(x, y, z) -> bool：景點不准寫的格子。景點比車站、出入口、地下街都晚蓋，
-    寫到這些格子就會把人家蓋掉 —— 新光摩天大樓的基座壓在站前地下街正上方，
-    台北車站的出入口亭就在它門口。
+    """(x, y, z) -> bool: the cells an attraction may not write. Attractions are built
+    after the stations, exits and underground malls, so writing these cells would
+    overwrite them: the base of Shin Kong Life Tower sits right above the Station Front
+    Metro Mall, and a Taipei Main Station exit kiosk stands at its door.
 
-      · 地下街與空橋（Tile）：照實際的地板與外牆格子，地板下一格到頂板上一格
-      · 出入口樓梯井、平面出入口：外擴 pad 格（門口要留走道），街面上 6 格以下
-      · 其餘地標（站體大樓、地下大廳、通道）：bbox 整根柱子或它的高度範圍
-      · 路線的斷面（地下、高架、平面）：景點附近的取樣點照半寬外擴 3 格
+      · Underground malls and skybridges (Tile): the actual floor and outer wall cells,
+        from one below the floor to one above the roof slab
+      · Exit stair shafts and at-grade exits: expanded by pad cells (the doorway needs a
+        walkway), up to 6 cells above street level
+      · Other landmarks (station buildings, underground halls, passages): the whole bbox
+        column, or its height range
+      · Line cross-sections (underground, elevated, at-grade): the sample points near an
+        attraction, expanded 3 cells beyond the half-width
 
-    只收景點範圍附近的東西；景點範圍以外一律回 False。
+    Only things near an attraction are collected; outside the attractions' extents this
+    always returns False.
     """
     boxes = [s.bbox() for s in sights]
     if not boxes:
@@ -187,7 +207,7 @@ def sight_keepout(marks, segs, sights, pad=2):
                      min(m.g0, m.y_to) - 2, max(m.g0, m.y_to) + 6)
         elif isinstance(m, GroundGate):
             add_rect(x0 - pad, z0 - pad, x1 + pad, z1 + pad, config.Y_MIN, config.Y_MAX)
-        elif hasattr(m, "y") and hasattr(m, "clear"):          # Slab、RailHall
+        elif hasattr(m, "y") and hasattr(m, "clear"):          # Slab, RailHall
             add_rect(x0, z0, x1, z1, m.y - getattr(m, "thick", 1) - 1, m.y + m.clear + 2)
         elif hasattr(m, "y") and hasattr(m, "head"):           # Passage
             add_rect(x0, z0, x1, z1, m.y - 2, m.y + m.head + 1)
@@ -207,9 +227,12 @@ def sight_keepout(marks, segs, sights, pad=2):
             y, g = int(ys[i]), int(gnd[i])
             hw = (hws[i] if hws is not None else 6) + 3
             st = AL.structure_for_ground(y, g)
-            if st == "tunnel":            # 隧道與地下站體（穿堂在 +7、頂板再上去幾格），都在地面下
+            # Tunnels and underground station boxes (the concourse at +7, the roof slab a
+            # few cells above) are all below ground. A viaduct covers its piers from the
+            # ground up, the deck and the elevated station's roof.
+            if st == "tunnel":
                 y0, y1 = y - 3, min(y + 14, g - 1)
-            elif st == "viaduct":         # 橋墩從地面起、橋面與高架站的屋頂
+            elif st == "viaduct":
                 y0, y1 = g - 3, y + 9
             else:
                 y0, y1 = min(y, g) - 3, max(y, g) + 6
@@ -227,11 +250,13 @@ def sight_keepout(marks, segs, sights, pad=2):
 
 
 def plan_segments(refs=None, terr=None, verbose=True):
-    """規劃全網但不蓋：取樣、深度帶、縱斷面、車站對應、去重、離線位、共用幹線遮罩。
+    """Plan the whole network without building it: sampling, depth bands, profiles,
+    station matching, deduplication, track offsets and the shared-trunk mask.
 
-    回傳 (segs, stations, terr)。每個路段是 dict(ref, samples, ys, ground, stn,
-    band, toff, hw, build, fresh)。工具與測試靠這個拿到跟生成器一模一樣的路段
-    （出入口、轉乘通道的規劃都以它為準），不必真的產生世界。
+    Returns (segs, stations, terr). Each segment is a dict(ref, samples, ys, ground, stn,
+    band, toff, hw, build, fresh). Tools and tests use this to get exactly the same
+    segments as the generator (exit and transfer passage planning are both based on it)
+    without generating a world.
     """
     terr = terr or Terrain()
     lines = json.load(open(config.MC_LINES_JSON, encoding="utf-8"))
@@ -239,9 +264,10 @@ def plan_segments(refs=None, terr=None, verbose=True):
     stations = load_stations()
     say = print if verbose else (lambda *a, **k: None)
 
-    # ---- 規劃：所有線的取樣點、縱斷面、車站對應 ----
-    # 先把所有線的平面取樣做完，才能決定深度帶：某條線要不要潛下去，
-    # 取決於別條線在哪裡，一條一條各自算是看不出來的。
+    # ---- Planning: every line's sample points, profile and station matching ----
+    # Every line must be sampled in plan before depth bands can be assigned: whether a
+    # line has to dive depends on where the other lines are, which no line can tell on
+    # its own.
     raw = []
     n_ext = 0.0
     for ref in refs:
@@ -254,8 +280,10 @@ def plan_segments(refs=None, terr=None, verbose=True):
             samples = AL.resample(pts, kinds, STEP)
             if len(samples) >= 10:
                 raw.append((ref, samples))
-    # 終點站的線形在站點就斷了，站體只蓋得出半座：往外延伸一段尾軌。
-    # 支線接上幹線的那一端（七張、北投）不是終點，延伸出去會插進幹線的站體
+    # A terminus's alignment ends at the station node, so only half a station box could
+    # be built: extend a tail track outward. The end where a branch joins the trunk
+    # (Qizhang, Beitou) is not a terminus; extending it would drive into the trunk's
+    # station box.
     for k, (ref, samples) in enumerate(raw):
         spts = [(sx, sz) for rs, _, sx, sz, _, _ in stations
                 if any(t.startswith(ref) and len(t) > len(ref) and t[len(ref)].isdigit()
@@ -268,27 +296,31 @@ def plan_segments(refs=None, terr=None, verbose=True):
             n_ext += n0 + n1
 
     if n_ext:
-        say(f"終點站尾軌：線形端點共延伸 {n_ext:.0f} m，讓終點站蓋得出整座站體")
+        say(f"Terminus tail tracks: alignment ends extended by {n_ext:.0f} m in total, "
+            f"so that each terminus gets a whole station box")
     pins = TL.station_pins()
     n_osm = len(pins)
-    # 疊式車站（府中、西門）釘在最淺的帶；共用站體的兩條線釘在同一帶，站體範圍
-    # 再替下一帶占位 —— 雙層箱涵比一帶還高，別條線不能從底下鑽過去
+    # Stacked stations (Fuzhong, Ximen) are pinned to the shallowest band. The two lines
+    # of a shared station box are pinned to the same band, and the station box reserves
+    # the next band as well: the two-level box structure is taller than one band, so no
+    # other line may pass beneath it.
     stk_refs = {}
     for name, ref in SK.STACKED:
         stk_refs.setdefault(name, set()).add(ref)
     pins += SK.stacked_pins(stations, stk_refs)
-    # 共用站體的兩條線在站區附近彼此不算占用（見 assign_bands 的 shared）
+    # Near the station, the two lines of a shared station box do not count as occupying
+    # each other (see `shared` in assign_bands).
     shared_bands = [(row[2], row[3], SK.ALLY_M, frozenset(refs))
                     for row in stations for name, refs in stk_refs.items()
                     if row[1] == name and len(refs) >= 2]
     bands = TL.assign_bands(raw, pins=pins, shared=shared_bands)
     if pins:
-        say(f"隧道深度釘樁 {len(pins)} 根（{n_osm} 根依 OSM 月台 level 還原真實上下關係，"
-            f"{len(pins) - n_osm} 根是疊式車站）")
+        say(f"Tunnel depth pins: {len(pins)} ({n_osm} restore the real vertical order from "
+            f"OSM platform levels, {len(pins) - n_osm} are for stacked stations)")
     nb = np.bincount(np.concatenate([b[b >= 0] for b in bands]) if bands else [0],
                      minlength=1)
-    say("隧道深度帶：" + "  ".join(
-        f"地下{TL.BAND0 + TL.BAND_DY * k} m {c * STEP / 1000:.1f} km"
+    say("Tunnel depth bands: " + ", ".join(
+        f"{c * STEP / 1000:.1f} km at {TL.BAND0 + TL.BAND_DY * k} m below ground"
         for k, c in enumerate(nb) if c))
 
     segs = []
@@ -303,16 +335,21 @@ def plan_segments(refs=None, terr=None, verbose=True):
             bi = int(np.argmin(d))
             if math.sqrt(d[bi]) <= 200:
                 stn[bi] = (full, name, en)
-        # stn_seq 是去重之前的快照：搭乘系統要從每個變體自己的車站序列排出
-        # 「下一站」（小碧潭支線從七張出發，七張在支線這一段馬上就會被去重砍掉）
+        # stn_seq is a snapshot from before deduplication: the ride system derives each
+        # variant's "next station" from that variant's own station sequence (the
+        # Xiaobitan branch starts at Qizhang, and deduplication removes Qizhang from the
+        # branch segment straight away).
         segs.append(dict(ref=ref, samples=samples, ys=ys, ground=ground,
                          stn=stn, stn_seq=dict(stn), band=band))
 
-    # 同一座車站可能同時落在幹線與支線上（如北投、七張），中和新蘆線的共用
-    # 幹線更是整段重複。兩處若差了十幾公尺，會疊出兩座歪掉的站體。
+    # The same station can fall on both the trunk and a branch (such as Beitou and
+    # Qizhang), and the Zhonghe-Xinlu Line's shared trunk is duplicated in its entirety.
+    # If the two copies are more than 10 m apart, two skewed station boxes are stacked on
+    # top of each other.
     #
-    # 鍵一定要帶上 ref：忠孝復興這種轉乘站在 BL 和 BR 上各有一座真實站體，
-    # 只用站名去重會把整批轉乘站砍掉（實測 182 -> 159 座）。
+    # The key must include ref: a transfer station such as Zhongxiao Fuxing has a real
+    # station box on both BL and BR, and deduplicating by station name alone removes the
+    # whole set of transfer stations (measured: 182 -> 159 stations).
     claimed = set()
     dropped = 0
     for sg in segs:
@@ -320,20 +357,23 @@ def plan_segments(refs=None, terr=None, verbose=True):
             key = (sg["ref"], sg["stn"][bi][1])
             if key in claimed:
                 del sg["stn"][bi]; dropped += 1
-                sg.setdefault("junction", []).append(bi)     # 見下面 build 遮罩
+                sg.setdefault("junction", []).append(bi)     # see the build mask below
             else:
                 claimed.add(key)
     if dropped:
-        say(f"（跨支線重複的車站略過 {dropped} 座，避免站體重疊）")
+        say(f"Skipped {dropped} stations duplicated across branches, "
+            f"so that their station boxes do not overlap")
 
-    # 去重之後、任何人動 stn 之前的快照：共用站體會把 partner 的車站從 stn 拿掉
-    # （西門的 G、中正紀念堂的 G），可是後面還要問「G 線上的中正紀念堂在哪一格」
-    # 才知道古亭的上層往哪邊開。查鄰站一律看快照，不看還剩下什麼
+    # A snapshot taken after deduplication and before anything else touches stn: a shared
+    # station box removes the partner's station from stn (G at Ximen, G at Chiang
+    # Kai-shek Memorial Hall), yet later code still has to ask "which sample is Chiang
+    # Kai-shek Memorial Hall on the G line" to know which way Guting's upper level opens.
+    # Neighbor lookups always use the snapshot, never whatever is left.
     stn0 = [{nm: bi for bi, (_, nm, _) in sg["stn"].items()} for sg in segs]
     li_of = {id(sg): li for li, sg in enumerate(segs)}
 
     def idx_on(sg, name):
-        """這一段路線上某站的取樣索引（沒有就 None）。"""
+        """The sample index of a station on this segment (None if it is not there)."""
         return stn0[li_of[id(sg)]].get(name)
 
     def find(ref, name):
@@ -342,73 +382,93 @@ def plan_segments(refs=None, terr=None, verbose=True):
                 return li, stn0[li][name]
         return None
 
-    # ---- 疊式車站（domain/stacked.py）：府中的兩股道分到上下兩層；西門由板南線
-    # 蓋一座雙層島式站體、松山新店線併進來，兩線的軌面釘成一樣。要在去重之後
-    # （索引才是最後的）、算離線位之前（分層段的離線位自己算）。
+    # ---- Stacked stations (domain/stacked.py): Fuzhong's two tracks go on an upper and
+    # a lower level. At Ximen the Bannan Line builds a two-level island-platform station
+    # box, the Songshan-Xindian Line merges into it, and both lines' rail tops are pinned
+    # to the same height. This must run after deduplication (when the indices are final)
+    # and before the track offsets are computed (split-level sections compute their own).
     shared_at = []
     for (name, ref), spec in SK.STACKED.items():
         if spec["kind"] == "shared" and "partner" not in spec:
-            continue                                  # partner 那一筆由 primary 處理
+            continue                                  # the primary handles the partner's entry
         key = find(ref, name)
         if key is None:
-            say(f"疊式車站 {name}（{ref}）：路線上找不到這一站，略過")
+            say(f"Stacked station {name} ({ref}): station not found on the line, skipped")
             continue
         li, bi = key
         sg = segs[li]
         if AL.structure_for_ground(int(sg["ys"][bi]), int(sg["ground"][bi])) != "tunnel":
-            say(f"疊式車站 {name}（{ref}）：不是地下站，略過")
+            say(f"Stacked station {name} ({ref}): not an underground station, skipped")
             continue
         j_to = idx_on(sg, spec["upper_toward"])
         if j_to is None:
-            say(f"疊式車站 {name}（{ref}）：同一段路線上找不到 {spec['upper_toward']}，略過")
+            say(f"Stacked station {name} ({ref}): {spec['upper_toward']} not found "
+                f"on the same segment, skipped")
             continue
         d = SK.direction_sign(bi, j_to)
         if spec["kind"] == "side":
             SK.plan_side(sg, bi, d, spec["plat"])
-            say(f"疊式車站 {name}（{ref}）：側式疊式，上層往{spec['upper_toward']}、"
-                f"月台在行進方向{'左' if spec['plat'] == 'left' else '右'}側，軌面 y{int(sg['ys'][bi])}")
+            say(f"Stacked station {name} ({ref}): stacked side platforms, upper level towards "
+                f"{spec['upper_toward']}, platform on the "
+                f"{'left' if spec['plat'] == 'left' else 'right'} of the direction of travel, "
+                f"rail top y{int(sg['ys'][bi])}")
             continue
         pref = spec["partner"]
         pkey, pspec = find(pref, name), SK.STACKED.get((name, pref))
         if pkey is None or pspec is None:
-            say(f"疊式車站 {name}（{ref}）：找不到共用站體的 {pref}，略過")
+            say(f"Stacked station {name} ({ref}): shared station box partner {pref} "
+                f"not found, skipped")
             continue
         pli, pbi = pkey
         psg = segs[pli]
         pj_to = idx_on(psg, pspec["upper_toward"])
         if pj_to is None:
-            say(f"疊式車站 {name}（{pref}）：同一段路線上找不到 {pspec['upper_toward']}，略過")
+            say(f"Stacked station {name} ({pref}): {pspec['upper_toward']} not found "
+                f"on the same segment, skipped")
             continue
         r = SK.plan_shared(sg, bi, d, psg, pbi, SK.direction_sign(pbi, pj_to))
         if r is None:
-            say(f"疊式車站 {name}（{ref}+{pref}）：兩線中線距離不在 "
-                f"{SK.SEP_MIN}～{SK.SEP_MAX} m 之間，蓋不成共用站體，略過")
+            say(f"Stacked station {name} ({ref}+{pref}): the two centre lines are not "
+                f"{SK.SEP_MIN}–{SK.SEP_MAX} m apart, so no shared station box can be built, "
+                f"skipped")
             continue
         lay, m, side, prng = r
         x, z = sg["samples"][bi][:2]
         shared_at.append((x, z, ref, pref))
-        # 出入口通道沿站體外側走會擦到 partner 的分層過渡段，那不算撞到別線
+        # An exit passage running along the outside of the station box grazes the partner's
+        # split-level transition; that does not count as hitting another line.
         sg.setdefault("ally_segs", {})[bi] = (pli,)
-        say(f"疊式車站 {name}（{ref}+{pref}）：共用雙層島式站體，站體中線偏 {side * m:+d} m、"
-            f"{pref} 在站體內不另蓋（取樣 {prng[0]}..{prng[1]}），軌面 y{int(sg['ys'][bi])}")
+        say(f"Stacked station {name} ({ref}+{pref}): shared two-level island-platform box, "
+            f"centre line offset {side * m:+d} m, {pref} not built separately inside it "
+            f"(samples {prng[0]}..{prng[1]}), rail top y{int(sg['ys'][bi])}")
 
-    # 軌道離線位（進站張開成島式月台）與隧道半寬，必須在車站去重後才算，
-    # 否則被砍掉的重複車站也會在區間隧道上開出一段莫名其妙的張開段。
+    # Track offsets (the tracks spreading apart around an island platform at a station)
+    # and tunnel half-widths must be computed after station deduplication; otherwise the
+    # removed duplicate stations would still open a stray spread section in the running
+    # tunnel.
     nmask = 0
-    # 同一條線的變體常常共用一大段幹線（中和新蘆、淡海輕軌）。兩份幾何差個
-    # 一兩公尺就會互相蓋掉對方的鐵軌，把幹線打成碎片。做法是先鋪最長的那一段，
-    # 之後的變體只鋪「連續 200 m 以上真正沒鋪過」的區段 —— 也就是支線本身。
-    # 交會處會斷一格（沒有真的道岔），但至少幹線與支線各自都是連通的。
+    # Variants of the same line often share a long stretch of trunk (Zhonghe-Xinlu Line,
+    # Danhai LRT). If the two geometries differ by a meter or two, each overwrites the
+    # other's rails and breaks the trunk into fragments. So the longest variant is laid
+    # first, and each later variant lays only stretches that run for 200 m or more over
+    # ground that has genuinely not been laid: in other words, the branch itself. The
+    # junction has a one-cell gap (there is no real turnout), but the trunk and the branch
+    # are each connected.
     #
-    # 斷面也一樣只蓋「真正沒蓋過」的區段（sg["build"]）。原本共用幹線的
-    # 斷面蓋兩次，以為只是浪費時間 —— 其實第二份是在第一份的車站蓋好之後
-    # 才掃過去的，而它的重複車站已經被上面去重砍掉、沒有張開段，於是一條
-    # 15 m 寬的素隧道直直穿過 25 m 寬的站體：月台、月台門、穿堂樓板全部
-    # 被挖成空氣，頂板襯砌橫在穿堂層的高度。中和新蘆線共用幹線上的 12 座
-    # 車站（頂溪到大橋頭）就這樣整座被抹掉，七張、北投與淡海輕軌七站被
-    # 抹掉一部分 —— 從存檔切剖面才看出來，生成紀錄上每一站都是「已完成」。
-    # 袋狀軌的幾何優先照 OSM（data/sidings.json，fetch_sidings 抓的）；沒有就用
-    # domain/stacked.POCKETS 手填的距離
+    # Cross-sections likewise are built only on stretches not already built
+    # (sg["build"]). Originally the shared trunk's cross-section was built twice, which
+    # was thought to only waste time. In fact the second copy was swept after the first
+    # copy's stations had been built, and its duplicate stations had already been removed
+    # by the deduplication above and had no spread section. So a plain 15 m wide tunnel
+    # went straight through a 25 m wide station box: the platform, the platform screen
+    # doors and the concourse floor slab were all dug into air, and the roof lining lay
+    # across at concourse height. The 12 stations on the Zhonghe-Xinlu Line's shared
+    # trunk (Dingxi to Daqiaotou) were wiped out entirely this way, and Qizhang, Beitou
+    # and seven Danhai LRT stations were partly wiped out. This showed up only in a
+    # cross-section cut from the world save; the build log listed every station as done.
+    # Pocket track geometry follows OSM first (data/sidings.json, fetched by
+    # fetch_sidings); failing that, it uses the hand-entered distances in
+    # domain/stacked.POCKETS.
     sidings = {}
     if os.path.exists(config.SIDINGS_JSON):
         for it in json.load(open(config.SIDINGS_JSON, encoding="utf-8"))["items"]:
@@ -421,14 +481,15 @@ def plan_segments(refs=None, terr=None, verbose=True):
         toff = AL.track_offsets(samples, ys, sg["ground"],
                                 [i for i in sorted(sg["stn"]) if i not in stk])
         sg["toff"] = toff
-        # 袋狀軌：正線就地張開、第三股道記進 extras。要在 track_offsets 之後、hw 之前
+        # Pocket tracks: the main tracks spread apart in place and the third track is
+        # recorded in extras. This must run after track_offsets and before hw.
         for pk in SK.POCKETS:
             if pk["ref"] != sg["ref"]:
                 continue
             ia, ib = idx_on(sg, pk["a"]), idx_on(sg, pk["b"])
             if ia is None or ib is None:
                 continue
-            rng, src = None, "手填距離"
+            rng, src = None, "hand-entered distances"
             way = sidings.get(pk.get("osm"))
             if way is not None:
                 lo_i, hi_i = min(ia, ib) - 400, max(ia, ib) + 400
@@ -437,12 +498,14 @@ def plan_segments(refs=None, terr=None, verbose=True):
                 rng, src = (min(j0, j1), max(j0, j1)), f"OSM way {way['id']}"
             r = SK.plan_pocket(sg, ia, ib, pk["start"], pk["length"], rng=rng)
             if r is None:
-                say(f"袋狀軌 {pk['a']}—{pk['b']}：兩站之間放不下，略過")
+                say(f"Pocket track {pk['a']}–{pk['b']}: does not fit between the two stations, "
+                    f"skipped")
                 continue
             x0, z0 = samples[r[0]][:2]
             d0, d1 = sorted((abs(r[0] - ia) * STEP, abs(r[1] - ia) * STEP))
-            say(f"袋狀軌 {pk['a']}—{pk['b']}（{src}）：第三股道 {(r[1] - r[0]) * STEP:.0f} m，"
-                f"離{pk['a']}站體中心 {d0:.0f}～{d1:.0f} m，({x0:.0f},{z0:.0f})")
+            say(f"Pocket track {pk['a']}–{pk['b']} ({src}): third track "
+                f"{(r[1] - r[0]) * STEP:.0f} m long, {d0:.0f}–{d1:.0f} m from the centre "
+                f"of the {pk['a']} station box, at ({x0:.0f},{z0:.0f})")
         sg["hw"] = [AL.half_width(t) for t in toff]
         grid = seen.setdefault(sg["ref"], set())
         fresh = [(int(x) >> 3, int(z) >> 3) not in grid
@@ -453,71 +516,88 @@ def plan_segments(refs=None, terr=None, verbose=True):
         for lo_i, hi_i in runs(fresh, 400):
             for i in range(lo_i, hi_i):
                 build[i] = True
-        for i in sg.get("nobuild", ()):      # 共用站體裡 partner 那條線不蓋斷面
+        # Inside a shared station box, the partner line's cross-section is not built.
+        for i in sg.get("nobuild", ()):
             build[i] = False
-        # 支線在分歧站的那一段也不蓋：車站在幹線上蓋（上面去重），支線的幾何若在站體
-        # 範圍裡偏出幹線 8 m 以上，照「沒蓋過」的遮罩會再掃一條隧道或高架橋過去，
-        # 而它是在幹線車站之後才蓋的 —— 七張南端被小碧潭支線的隧道挖掉半邊月台、
-        # 北投東側月台被新北投支線的高架橋壓掉一半，都是這樣（搭車告示牌的站位
-        # 讀回來站不住才抓到）。支線從站體端牆外才開始；鐵軌同一段也不鋪
+        # Nor is a branch built on the stretch at its junction station. The station is
+        # built on the trunk (deduplication above), but if the branch geometry strays 8 m
+        # or more from the trunk within the station box, the "not yet built" mask would
+        # sweep another tunnel or viaduct through it, after the trunk station has been
+        # built. That is how the Xiaobitan branch tunnel dug away half the platform at the
+        # south end of Qizhang, and how the Xinbeitou branch viaduct covered half the east
+        # platform at Beitou (caught when the ride sign berths read back as places nobody
+        # could stand). The branch starts outside the station box's end wall, and rails
+        # are not laid on that stretch either.
         jhalf = int(AL.PLATFORM_LEN / 2 / STEP) + 4
         for bj in sg.get("junction", ()):
             for i in range(max(0, bj - jhalf), min(len(samples), bj + jhalf + 1)):
                 build[i] = False
                 fresh[i] = False
         sg["build"] = build
-        sg["fresh"] = fresh                  # 鐵軌也照這張遮罩鋪，見 main()
+        sg["fresh"] = fresh                  # rails are laid by this mask too; see main()
         nmask += len(samples) - sum(build)
     if nmask:
-        say(f"支線與幹線共用的路廊只蓋一次：略過 {nmask * STEP / 1000:.1f} km 的重複斷面")
+        say(f"Corridors shared by a branch and the trunk are built once: "
+            f"skipped {nmask * STEP / 1000:.1f} km of duplicate cross-section")
 
-    # 帶號沒衝突不代表箱涵沒交疊：疊式站的雙層箱涵比一帶還高、釘平的縱斷面會離開
-    # 帶的深度。拿每一點真正的箱涵範圍再算一次。疊得比襯砌還深才是撞進去，
-    # 要大聲說；只咬到襯砌的照講但不必掛警示 —— 一直亮的警示等於沒有警示
+    # A depth band assignment without conflicts does not mean the box structures do not
+    # overlap: a stacked station's two-level box structure is taller than one band, and a
+    # pinned, flattened profile leaves its band's depth. Check again against each point's
+    # actual box structure extent. An overlap deeper than the lining is a real collision
+    # and must be reported loudly; one that only bites into the lining is reported without
+    # a warning, because a warning that is always on is no warning at all.
     bad = TL.check_clearance(segs, shared_at)
     deep = [b for b in bad if b[8] > TL.LINING_DY]
     graze = len(bad) - len(deep)
     if deep:
-        say(f"⚠ 跨線淨距：{len(deep)} 處不同路線的地下結構在空間裡交疊 —— "
-            + "；".join(f"{a}×{b} ({x:.0f},{z:.0f}) y{a0}..{a1} / y{b0}..{b1} 疊 {d} 格"
+        say(f"warning: cross-line clearance: underground structures of different lines "
+            f"overlap in {len(deep)} places: "
+            + "; ".join(f"{a}×{b} ({x:.0f},{z:.0f}) y{a0}..{a1} / y{b0}..{b1}, {d}-block overlap"
                         for a, b, x, z, a0, a1, b0, b1, d in deep[:6]))
     elif graze:
-        say(f"跨線淨距：沒有箱涵撞進別條線裡；{graze} 處上下貼著走、"
-            f"共用一兩排襯砌（{'；'.join(f'{a}×{b} ({x:.0f},{z:.0f}) 疊 {d} 格' for a, b, x, z, *_, d in bad[:4])}）")
+        say(f"Cross-line clearance: no box structure intrudes into another line; {graze} places "
+            f"run one directly above the other and share a row or two of lining "
+            f"({'; '.join(f'{a}×{b} ({x:.0f},{z:.0f}) {d}-block overlap' for a, b, x, z, *_, d in bad[:4])})")
     else:
-        say("跨線淨距：不同路線的地下結構沒有交疊")
+        say("Cross-line clearance: no underground structures of different lines overlap")
     return segs, stations, terr
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=config.DEFAULT_SAVE)
-    ap.add_argument("--corridor", type=int, default=96, help="完整地形的半寬（公尺）")
-    ap.add_argument("--fade", type=int, default=64, help="再往外漸變回平坦的寬度")
+    ap.add_argument("--corridor", type=int, default=96,
+                    help="Half-width of the full-terrain corridor, in metres")
+    ap.add_argument("--fade", type=int, default=64,
+                    help="Width of the band beyond the corridor that fades back to flat, in metres")
     ap.add_argument("--lines", nargs="*", default=None)
     ap.add_argument("--bbox", nargs=4, type=int, metavar=("X0", "Z0", "X1", "Z1"),
-                    help="只產生落在這個範圍內的 region（測試單一站區用，"
-                         "省得為了看台北車站等三十分鐘）")
+                    help="Only generate the regions that fall within this box (for testing "
+                         "one station area without waiting 30 minutes to see Taipei Main Station)")
     ap.add_argument("--rails", action="store_true",
-                    help="順便鋪鐵軌。預設不鋪 —— 走行面留白，方便用模組自己鋪")
+                    help="Also lay rails. Off by default: the track bed is left bare, "
+                         "so that you can lay track with a mod")
     ap.add_argument("--sights", nargs="*", default=None, metavar="ID",
-                    help="只蓋這幾座觀光景點（data/attractions.json 的 id）；不給就全蓋")
-    ap.add_argument("--no-sights", action="store_true", help="不蓋觀光景點")
+                    help="Build only these attractions (ids from data/attractions.json); "
+                         "without it, all are built")
+    ap.add_argument("--no-sights", action="store_true", help="Build no attractions")
     a = ap.parse_args()
     outer = a.corridor + a.fade
 
     segs, stations, terr = plan_segments(a.lines)
 
-    # 預設不鋪鐵軌：走行面（smooth_stone）照留，軌道要不要鋪、鋪成什麼樣
-    # 交給玩家用模組決定。--rails 才會鋪。鋪的範圍照 plan_segments 的
-    # sg["fresh"]：只鋪「連續 200 m 以上真正沒鋪過」的區段，幹線與支線各自連通。
+    # Rails are not laid by default: the track bed (smooth_stone) is kept, and whether and
+    # how to lay track is left to the player's mods. Only --rails lays them. What gets laid
+    # follows plan_segments' sg["fresh"]: only stretches of 200 m or more that have
+    # genuinely not been laid, so the trunk and the branches are each connected.
     rail_b = {}
     nrail = nskip = 0
     if a.rails:
         for sg in segs:
             samples, fresh = sg["samples"], sg["fresh"]
-            # 每股道一條：兩股正線整段各一（分層段各走自己的離線位與軌面），
-            # 袋狀軌的第三股道另外一條
+            # One strand per track: each of the two main tracks runs its whole length
+            # (split-level sections follow their own track offset and rail top), and a
+            # pocket track's third track is a separate strand.
             for i0, i1, off_at, y_at in SK.strands(sg):
                 for lo_i, hi_i in runs(fresh, 400):
                     a0, a1 = max(lo_i, i0), min(hi_i, i1 + 1)
@@ -532,10 +612,10 @@ def main():
                         rail_b.setdefault((e[0] >> 9, e[2] >> 9), []).append(e)
                         nrail += 1
             nskip += 2 * (len(samples) - sum(h - l for l, h in runs(fresh, 400)))
-        print(f"鐵軌 {nrail:,} 段（雙線，含加速軌）"
-              + (f"，與幹線重疊而未重鋪 {nskip:,} 段" if nskip else ""))
+        print(f"Rails: {nrail:,} blocks (double track, including powered rails)"
+              + (f", {nskip:,} not relaid where they overlap the trunk" if nskip else ""))
     else:
-        print("不鋪鐵軌（--rails 可開啟）；走行面保留為 smooth_stone")
+        print("No rails laid (use --rails to lay them); the track bed stays smooth_stone")
 
     by_ref = {}
     for sg in segs:
@@ -546,12 +626,15 @@ def main():
         e[4] = min(e[4], int(sg["ground"].min())); e[5] = max(e[5], int(sg["ground"].max()))
     for ref in sorted(by_ref):
         km, ns, y0, y1, g0, g1 = by_ref[ref]
-        print(f"{ref:<3} {km:>6.2f} km  軌面 y{y0:>3}~{y1:<3}  地面 y{g0:>3}~{g1:<3}  車站 {ns}")
-    print(f"\n合計 {sum(v[0] for v in by_ref.values()):.1f} km，車站 {sum(v[1] for v in by_ref.values())} 座")
+        print(f"{ref:<3} {km:>6.2f} km  rail top y{y0:>3}~{y1:<3}  "
+              f"ground y{g0:>3}~{g1:<3}  stations {ns}")
+    print(f"\nTotal {sum(v[0] for v in by_ref.values()):.1f} km, "
+          f"{sum(v[1] for v in by_ref.values())} stations")
 
-    # ---- 依 region 分桶 ----
-    # 車站的影響範圍不再只有月台長度：出入口長梯可以伸出去 76 m，
-    # 分桶半徑不夠的話那些 region 根本不會呼叫 build_station，樓梯就斷了。
+    # ---- Bucket by region ----
+    # A station's reach is no longer just its platform length: a long exit stair can
+    # extend 76 m, and if the bucket radius is too small, those regions never call
+    # build_station and the stair is cut off.
     reach = {}
     for li, sg in enumerate(segs):
         for bi in sg["stn"]:
@@ -569,16 +652,17 @@ def main():
             for rx in range((x - r) >> 9, ((x + r) >> 9) + 1):
                 for rz in range((z - r) >> 9, ((z + r) >> 9) + 1):
                     struct_b.setdefault((rx, rz), {}).setdefault(li, []).append(i)
-            if i % 8 == 0:                        # 距離場用不著每 0.5 m 一點
+            if i % 8 == 0:                        # the distance field needs no point every 0.5 m
                 for rx in range((x - outer) >> 9, ((x + outer) >> 9) + 1):
                     for rz in range((z - outer) >> 9, ((z + outer) >> 9) + 1):
                         terr_pts.setdefault((rx, rz), []).append((x, z))
 
-    # 路線色（OSM 的 colour，跟 README 的全網圖同一份）：出口牌、搭車告示牌、
-    # 站體裡的色帶都從這裡拿
+    # Line colors (OSM `colour`, the same data as the network map in the README): exit
+    # signs, ride signs and the color bands inside station boxes all take them from here.
     colours = NW.line_colours(json.load(open(config.MC_LINES_JSON, encoding="utf-8")))
 
-    # ---- 地標：不是沿線掃出來的東西（車站大樓、地下大廳、實際位置的出入口）----
+    # ---- Landmarks: things not swept along the line ----
+    # Station buildings, underground halls and exits at their real positions.
     marks, real_exits = LM.for_world(segs, stations, terr, colours=colours)
     mark_b = {}
     for m in marks:
@@ -587,12 +671,16 @@ def main():
             for rz in range(mz0 >> 9, (mz1 >> 9) + 1):
                 mark_b.setdefault((rx, rz), []).append(m)
     if marks:
-        # 地標常常伸出路線走廊之外（台北車站大樓離板南線 240 m），
-        # 走廊外的地形是平的，房子會蹲在一塊高低不合的平台上。
-        # 把地標的範圍也餵進距離場，讓那一帶生成真實地形。
+        # Landmarks often reach beyond the line corridor (the Taipei Main Station
+        # building is 240 m from the Bannan Line). Terrain outside the corridor is flat,
+        # so a building would squat on a platform at the wrong height. Feed the
+        # landmarks' extents into the distance field as well, so that real terrain is
+        # generated there.
         for m in marks:
-            # 地下街整片都在地表以下，不需要為它生成真實地形；而且它切成
-            # 上百塊，每塊都餵距離場的話點數會多一個數量級，地形反而變慢。
+            # An underground mall lies entirely below the ground surface and needs no
+            # real terrain. It is also cut into hundreds of pieces, and feeding every
+            # piece into the distance field would add an order of magnitude more points
+            # and make the terrain slower.
             if getattr(m, "underground", False):
                 continue
             mx0, mz0, mx1, mz1 = m.bbox()
@@ -601,10 +689,11 @@ def main():
                     for rx in range((x - outer) >> 9, ((x + outer) >> 9) + 1):
                         for rz in range((z - outer) >> 9, ((z + outer) >> 9) + 1):
                             terr_pts.setdefault((rx, rz), []).append((x, z))
-        print(f"地標 {len(marks)} 座，涵蓋 {len(mark_b)} 個 region")
+        print(f"Landmarks: {len(marks)}, covering {len(mark_b)} regions")
 
-    # ---- 觀光景點（application/attractions/）：台北101、中正紀念堂、城門……----
-    # 位置與輪廓是 OSM 的（data/attractions.json）；長相是各景點模組照公開的建築事實寫的
+    # ---- Attractions (application/attractions/) ----
+    # Taipei 101, Chiang Kai-shek Memorial Hall, the city gates and others. Positions and footprints come from OSM (data/attractions.json); each attraction's
+    # module writes its appearance from published architectural facts.
     sights = [] if a.no_sights else AT.for_world(stations, only=a.sights)
     sight_b = {}
     for s_ in sights:
@@ -612,8 +701,10 @@ def main():
         for rx in range(sx0 >> 9, (sx1 >> 9) + 1):
             for rz in range(sz0 >> 9, (sz1 >> 9) + 1):
                 sight_b.setdefault((rx, rz), []).append(s_)
-        # 景點四周要生成真實地形。範圍多給 terrain_margin（預設 48 m；圓山大飯店在劍潭山腰，
-        # 給得大，背後的山才不會在建築後面被削成一道斜坡），淡出的那一圈不會切在建築腳下
+        # Attractions need real terrain around them. The extent gets an extra
+        # terrain_margin (48 m by default; the Grand Hotel on the slope of Mount Jiantan
+        # gets a large one, so that the mountain behind it is not shaved into a slope
+        # behind the building), so that the fade ring does not cut in at the building's foot.
         tm = int(getattr(s_, "terrain_margin", 48))
         for x in range(sx0 - tm, sx1 + tm + 1, 8):
             for z in range(sz0 - tm, sz1 + tm + 1, 8):
@@ -621,49 +712,57 @@ def main():
                     for rz in range((z - outer) >> 9, ((z + outer) >> 9) + 1):
                         terr_pts.setdefault((rx, rz), []).append((x, z))
     if sights:
-        print(f"觀光景點 {len(sights)} 座，涵蓋 {len(sight_b)} 個 region")
+        print(f"Attractions: {len(sights)}, covering {len(sight_b)} regions")
 
-    # ---- 搭乘系統：每座站體每條線每個行車方向的上車位置（domain/network.py）----
-    # 月台上的搭車告示牌與資料包的傳送目的地都從這一份來，只算一次
+    # ---- Ride system: berths (domain/network.py) ----
+    # One berth for each line and direction of travel at each station box. The ride signs
+    # on the platforms and the datapack's teleport destinations both come from this one
+    # plan, computed once.
     blocked = landmark_blocker(marks)
     later = later_section_blocker(segs)
     net, berths = NW.plan_berths(
         segs, blocked=lambda x, y, z, box=None: blocked(x, y, z) or later(x, y, z, box))
     n_slot = sum(len(b.slots) for b in berths)
-    print(f"搭乘系統：{sum(1 for s in net.values() if s.box is not None)} 站、"
-          f"{len(berths)} 個月台邊、{n_slot} 面搭車告示牌、{len(NW.rides(net, berths))} 段車程")
-    # 告示牌以站體為單位立（application/signage.py）：box.key 就是 build_station 蓋的
-    # 那座站體的 (路段索引, 取樣索引)，共用疊式站兩條線的月台邊都在 primary 的站體裡
+    print(f"Ride system: {sum(1 for s in net.values() if s.box is not None)} stations, "
+          f"{len(berths)} platform edges, {n_slot} ride signs, {len(NW.rides(net, berths))} rides")
+    # Signs are placed per station box (application/signage.py): box.key is the (segment
+    # index, sample index) of the station box that build_station builds, and the platform
+    # edges of both lines of a shared stacked station are in the primary's station box.
     berths_of = collections.defaultdict(list)
     for b in berths:
         berths_of[b.box.key].append(b)
 
-    # ---- 出生點：台北車站捷運出入口亭的門外（規則見 application/spawn.py）----
-    # 門口那一格的地面高度要跟真的蓋出來的一樣：走廊外會漸變回平地，所以照
-    # terrain_chunk 同一個式子、同一張距離場算，不讀存檔
+    # ---- Spawn point (rules in application/spawn.py) ----
+    # Outside the door of a Taipei Main Station metro exit kiosk. The ground height at the doorway must match what is actually built. Outside the
+    # corridor the terrain fades back to flat, so it is computed with the same formula and
+    # the same distance field as terrain_chunk, not read from the save.
     blend_cache = {}
 
     def built_ground(x, z):
         rx, rz = int(x) >> 9, int(z) >> 9
         pts = terr_pts.get((rx, rz))
         if not pts:
-            return FLAT_Y                       # 這個 region 沒有地形：超平坦背景
+            return FLAT_Y                       # no terrain in this region: superflat background
         if (rx, rz) not in blend_cache:
             blend_cache[(rx, rz)] = blend_field(pts, rx, rz, a.corridor, outer)
         return int(BW.surface_y(terr, blend_cache[(rx, rz)], rx, rz, x, z))
 
     spawn = SP.plan_spawn(marks, stations, built_ground)
     if spawn is None:
-        # 挑不到就退回台北車站捷運站點正上方的地面（至少是高度圖算得出來的一格）
+        # If no kiosk qualifies, fall back to the ground right above the Taipei Main
+        # Station metro node (at least a cell the heightmap can compute).
         nx, nz = SP.station_node(stations) or (0, 0)
         spawn = dict(x=nx, y=built_ground(nx, nz) + 1, z=nz, facing=None,
-                     why="找不到合格的出入口亭，退回捷運站點上方的地面")
-    # 景點定案（一樓樓板高度、觀景點）要用同一個「蓋出來的地面」，也要在清快取之前
+                     why="no suitable exit kiosk found, so fell back to the ground "
+                         "above the metro station node")
+    # Finalizing the attractions (ground floor level, viewpoints) must use the same
+    # "built ground", and must happen before the cache is cleared.
     sight_keep = sight_keepout(marks, segs, sights)
     if sights:
         AT.plan_all(sights, built_ground, sight_keep)
-    # 只清內容、不刪變數：景點的 build() 也可能再查 site.g()（built_ground 還要用這個快取），
-    # del 掉的話會變成 NameError: free variable 'blend_cache'
+    # Clear the contents only and keep the variable: an attraction's build() may query
+    # site.g() again (built_ground still needs this cache), and deleting it would raise
+    # NameError: free variable 'blend_cache'.
     blend_cache.clear()
 
     regions = sorted(set(struct_b) | set(terr_pts) | set(mark_b) | set(sight_b))
@@ -672,31 +771,36 @@ def main():
         keep = [(rx, rz) for rx, rz in regions
                 if rx * 512 <= x1 and (rx + 1) * 512 > x0
                 and rz * 512 <= z1 and (rz + 1) * 512 > z0]
-        print(f"--bbox {x0},{z0}..{x1},{z1}：{len(regions)} 個 region 只留 {len(keep)} 個")
+        print(f"--bbox {x0},{z0}..{x1},{z1}: keeping {len(keep)} of {len(regions)} regions")
         regions = keep
         if (spawn["x"] >> 9, spawn["z"] >> 9) not in set(keep):
-            print(f"⚠ 出生點 ({spawn['x']},{spawn['z']}) 不在 --bbox 產生的範圍裡，"
-                  f"進遊戲會站在一塊沒蓋東西的超平坦地上")
-    print(f"要產生 {len(regions)} 個 region（{len(terr_pts)} 個含地形）")
+            print(f"warning: the spawn point ({spawn['x']},{spawn['z']}) is outside the "
+                  f"--bbox area, so the game will start you on empty superflat ground")
+    print(f"Generating {len(regions)} regions "
+          f"({len(terr_pts)} with terrain across the whole network)")
 
     shutil.rmtree(a.out, ignore_errors=True)
 
-    # ---- 搭乘系統的資料包：告示牌點了執行的函式、路線圖對話框、首次進入、進站提示 ----
-    # 跟告示牌用同一份 net／berths（id 由 domain/network.py 的 ride_fn 等產生）。
-    # 要在清掉舊存檔之後寫；level.dat 的 DataPacks 已經把它列為啟用
+    # ---- The ride system's datapack ----
+    # The functions signs run when clicked, the route map dialog, the first-join message
+    # and the station entry notices. It uses the same net and berths as the signs (ids come from ride_fn and the related
+    # functions in domain/network.py). It must be written after the old save is removed;
+    # level.dat's DataPacks already lists it as enabled.
     colours = NW.line_colours(json.load(open(config.MC_LINES_JSON, encoding="utf-8")))
     sight_entries = AT.datapack_entries(sights)
     spec = RP.build_spec(net, berths, colours, sights=sight_entries)
-    # 每一站走得到的景點（近的在前）：穿堂的售票機旁邊立景點牌
+    # Attractions within walking distance of each station (nearest first): an attraction
+    # sign stands next to the ticket machines in the concourse.
     near_sights = collections.defaultdict(list)
     for e in sorted(sight_entries, key=lambda e: e["station"][2] if e["station"] else 1e9):
         if e["station"]:
             near_sights[e["station"][0]].append(e)
     info = DP.write_datapack(a.out, spec)
-    print(f"資料包 {config.DATAPACK_NAME}：{info['functions']} 個函式、{info['dialogs']} 個對話框、"
-          f"{len(spec['triggers'])} 個路線圖按鈕、{len(spec['areas'])} 個進站提示範圍")
+    print(f"Datapack {config.DATAPACK_NAME}: {info['functions']} functions, "
+          f"{info['dialogs']} dialogs, {len(spec['triggers'])} route map buttons, "
+          f"{len(spec['areas'])} station entry notice areas")
     for msg in spec["warnings"]:
-        print("  ⚠ " + msg)
+        print("  warning: " + msg)
 
     t0 = time.time(); nch = 0; nsign = 0; nbytes = 0
     sight_drop = {}
@@ -708,12 +812,12 @@ def main():
         if pts:
             bf = blend_field(pts, rx, rz, a.corridor, outer)
             if bf.max() > 0:
-                per = 16 // BLEND_CELL          # 一個 chunk 對應幾格距離場
+                per = 16 // BLEND_CELL          # distance field cells per chunk
                 for cx in range(rx * 32, rx * 32 + 32):
                     bi = (cx - rx * 32) * per
                     for cz in range(rz * 32, rz * 32 + 32):
                         bj = (cz - rz * 32) * per
-                        # 權重全 0 = 純平地，寫出去只是白佔空間
+                        # All-zero weights mean flat ground; writing it out only wastes space.
                         if bf[bj:bj + per, bi:bi + per].max() <= 0:
                             continue
                         ch = w.chunks.get((cx, cz)) or Chunk(cx, cz)
@@ -726,7 +830,7 @@ def main():
             lights = []
             build, multi = sg["build"], sg.get("multi")
             for i in idxs:
-                if not build[i]:            # 幹線已經蓋過這一段，見上面的說明
+                if not build[i]:            # the trunk already built this stretch; see above
                     continue
                 x, z, ux, uz, _ = samples[i]
                 nx, nz = -uz, ux
@@ -735,7 +839,8 @@ def main():
                 st = AL.structure_for_ground(y, g)
                 if st == "tunnel":
                     if multi is not None and multi[i]:
-                        # 分層過渡段與袋狀軌：多股道／不同高的斷面逐點取聯集
+                        # Split-level transitions and pocket tracks: take the union of the
+                        # multi-track, multi-height cross-sections point by point.
                         BL.sec_multi(w, x, z, nx, nz, SK.tracks_at(sg, i))
                     else:
                         BL.sec_tunnel(w, x, z, nx, nz, y, hw=hw)
@@ -746,41 +851,49 @@ def main():
                                   pier=(abs((i * STEP) % AL.PIER_EVERY) < STEP / 2))
                 else:
                     BL.sec_ground(w, x, z, nx, nz, y, g, hw=hw)
-            for x, z, nx, nz, trs in lights:  # 挖完才裝燈，否則會被下一點挖掉
+            for x, z, nx, nz, trs in lights:  # after digging, or the next point digs them out
                 for off, ty in trs:
                     w.set(round(x + nx * off), ty + 6, round(z + nz * off), BL.LAMP)
             for i in idxs:
                 if i in stn:
                     under = AL.structure_for_ground(int(ys[i]), int(gnd[i])) == "tunnel"
-                    # 有真實出入口的站不蓋樣板樓梯（見 application/build_exits.py）。
-                    # 疊式站用站體座標系（共用站體是兩線中線的 frame）與雙層版面
+                    # Stations with real exits do not get the template stairs (see
+                    # application/build_exits.py). Stacked stations use the station box's
+                    # frame (for a shared station box, the frame of the two lines' center
+                    # line) and the two-level layout.
                     BL.build_station(w, SK.station_samples(sg, i), ys, i, under,
                                      label=stn[i], grounds=gnd,
                                      access=(li, i) not in real_exits,
                                      stacked=sg.get("stacked", {}).get(i))
-                    # 搭車告示牌、路線色帶、穿堂指引：要在站體蓋好之後（牌子取代
-                    # 月台門那一格玻璃）。站體跨兩個 region 時兩邊各立一次
+                    # Ride signs, line color bands and concourse wayfinding: these go in
+                    # after the station box is built (a sign replaces the glass in that
+                    # platform screen door cell). A station box that spans two regions gets
+                    # them placed once in each.
                     SG.station_signage(w, berths_of.get((li, i), ()), net, colours,
                                        grounds=gnd, blocked=blocked,
                                        sights=near_sights.get(stn[i][1], ()))
 
-        # 地標蓋在沿線結構之後：站體箱涵先挖好，大廳才好接進去
+        # Landmarks are built after the structures along the line: the station box
+        # structures are dug first, so that the halls can connect into them.
         for m in mark_b.get((rx, rz), ()):
             m.build(w)
 
-        # 觀光景點在地標之後：出入口、地下街都已經在了，景點的寫入經過禁區守門
+        # Attractions come after landmarks: the exits and underground malls are already in
+        # place, and every attraction write passes through the keep-out guard.
         for s_ in sight_b.get((rx, rz), ()):
             dropped = AT.build(s_, w, sight_keep)
             if dropped:
                 sight_drop[s_.id] = sight_drop.get(s_.id, 0) + dropped
 
-        # 鐵軌一定要最後鋪：車站的挖空與樓梯都會蓋過走行面
+        # Rails must be laid last: station excavation and stairs both overwrite the track bed.
         rr = rail_b.get((rx, rz), ())
         cells = {(a, b, c) for a, b, c, _, _ in rr}
         for bx, by, bz, shape, powered in rr:
-            # 每根鐵軌底下都補一塊支承。rails.py 為了讓斜軌落在直線段上會把
-            # 高差往前後挪幾格，挪過的那幾格軌面就會比走行面高一格而懸空。
-            # 動力軌改墊紅石塊供電；那一格若已是另一股道的鐵軌就別動。
+            # Put a support block under every rail. To keep sloped rails on straight
+            # stretches, rails.py shifts height changes a few cells forward or back, and
+            # the rails on those shifted cells end up one block above the track bed,
+            # floating. Powered rails sit on a redstone block instead, for power; leave the
+            # cell alone if it already holds another track's rail.
             if (bx, by - 1, bz) not in cells:
                 w.set(bx, by - 1, bz,
                       "minecraft:redstone_block" if powered else BL.DECK)
@@ -791,18 +904,19 @@ def main():
         nbytes += w.save_region(rx, rz)
         if n % 40 == 0 or n == len(regions):
             el = time.time() - t0
-            print(f"  [{n}/{len(regions)}] {el:>5.0f}s  {nch:>7,} 區塊  "
-                  f"{nbytes/1e6:>6.0f} MB  剩餘約 {el/n*(len(regions)-n):.0f}s")
+            print(f"  [{n}/{len(regions)}] {el:>5.0f}s  {nch:>7,} chunks  "
+                  f"{nbytes/1e6:>6.0f} MB  about {el/n*(len(regions)-n):.0f}s left")
 
     w = World(a.out, name=config.WORLD_NAME,
               spawn=(spawn["x"], spawn["y"], spawn["z"]), spawn_facing=spawn["facing"])
     w._write_level()
-    print(f"\n完成：{nch:,} 區塊, {nsign:,} 面告示牌, {nbytes/1e6:.0f} MB, {time.time()-t0:.0f}s")
+    print(f"\nDone: {nch:,} chunks, {nsign:,} signs, {nbytes/1e6:.0f} MB, {time.time()-t0:.0f}s")
     for sid, n in sorted(sight_drop.items()):
-        print(f"  景點 {sid}：禁區（出入口、地下街、路線）擋掉 {n:,} 格寫入")
-    print(f"出生點 ({spawn['x']},{spawn['y']},{spawn['z']})"
-          + (f" 面向 ({spawn['facing'][0]},{spawn['facing'][1]})" if spawn["facing"] else "")
-          + f"：{spawn['why']}")
+        print(f"  Attraction {sid}: keep-out zones (exits, underground malls, lines) "
+              f"blocked {n:,} block writes")
+    print(f"Spawn point ({spawn['x']},{spawn['y']},{spawn['z']})"
+          + (f" facing ({spawn['facing'][0]},{spawn['facing'][1]})" if spawn["facing"] else "")
+          + f": {spawn['why']}")
 
 
 if __name__ == "__main__":

@@ -1,32 +1,46 @@
 #!/usr/bin/env python3
-"""車站裡的告示牌與路線色：搭車告示牌、路線色帶、穿堂指引、出口牌的樣式。
+"""Station signs and line colors: ride signs, line color bands, concourse wayfinding, exit sign style.
 
-下一站是哪一站、牌子立在月台門的哪一格、人站在哪裡，全部由 domain/network.py
-算好（plan_berths）—— 資料包的傳送目的地也是同一份。這裡只決定「牌子上寫什麼、
-用什麼顏色、立在哪個方塊上」，照著立。
+Which station comes next, which platform screen door cell a sign stands in and
+where the player stands are all computed by domain/network.py (plan_berths),
+and the datapack's teleport destinations come from the same plan. This module
+only decides what a sign says, in which color and on which block, and places it
+accordingly.
 
-以「一座站體」為單位，cli 在每個 region 蓋完車站之後呼叫 station_signage 一次：
-同一座站體跨兩個 region 時兩邊各立一次，範圍外的方塊由 World 自己丟掉。
+The unit is one station box. The CLI calls station_signage once per region after
+building the stations: when a station box spans two regions, each region places
+the signs once, and the World discards blocks outside its range.
 
-1. 搭車告示牌（ride_signs）：每個 network.Slot 一面，立在月台門那一排、取代那一格
-   玻璃（原本的站名牌也是立在這裡）。寫「往哪裡、下一站、本站、點了搭車」，
-   點擊指令是 `function <命名空間>:ride/<本站>_<下一站>`；終點站到站側寫
-   「本站終點、請至對面月台」，點了換到對面月台（turn）。
-2. 路線色帶（line_bands）：站體裡軌道外側那面牆在月台人眼的高度砌兩排路線色，
-   隔著月台門看得到；月台門最上面那一排換成路線色的門楣。疊式站兩層都砌，
-   共用站體每一側照那一側的路線。
-3. 穿堂指引（concourse_signs）：閘門機箱上立一面雙面牌 —— 正面朝非付費區寫
-   「往月台」與這條線往哪些終點，背面朝付費區寫「往出口」；非付費區立一台
-   「路線圖／售票機」，點了打開路線圖對話框；側式站穿堂的兩座月台樓梯口各立一面
-   「往哪個終點」（兩座月台方向不同，島式站不必）；疊式站上層月台往下層的樓梯口、
-   下層月台往上層的樓梯口各一面。
-4. 出口牌的樣式（exit_sign_lines、SIGN_STYLE）：第一行（出口編號）上路線色，
-   純文字一個字都不改 —— tools/verify_exits.py 靠「第一行以『出口』開頭、第二行是
-   站名」認出入口亭。**這裡立的其他牌子第一行都不准以「出口」開頭。**
+1. Ride signs (ride_signs): one per network.Slot, placed in the platform screen
+   door row in place of one glass cell (where the station name sign used to
+   stand). Each says where the train goes, the next station, this station and
+   "click to ride"; the click command is `function <namespace>:ride/<this>_<next>`.
+   On the arrival side of a terminus the sign says "this is the terminus, use the
+   opposite platform", and clicking it moves the player there (turn).
+2. Line color bands (line_bands): two rows of line color on the wall outside the
+   track, at eye level on the platform, visible through the platform screen
+   doors; the top row of the platform screen doors becomes a line-colored lintel.
+   Stacked stations get bands on both levels, and in a shared station box each
+   side follows the line on that side.
+3. Concourse wayfinding (concourse_signs): a double-sided sign on a fare gate
+   cabinet. The front faces the unpaid area and says "to platforms" and the
+   line's terminals; the back faces the paid area and says "to exits". The unpaid
+   area gets a "route map / ticket machine" that opens the route map dialog when
+   clicked. In a side-platform station each of the two platform stairs in the
+   concourse gets a sign naming its terminal (the two platforms serve opposite
+   directions; island stations don't need this). In a stacked station the stairs
+   from the upper platform down and from the lower platform up get one sign each.
+4. Exit sign style (exit_sign_lines, SIGN_STYLE): the first line (the exit
+   number) takes the line color, and its plain text does not change by a single
+   character: tools/verify_exits.py recognizes exit kiosks by a first line
+   starting with `出口` and a second line holding the station name. **No other
+   sign placed here may have a first line starting with `出口`.**
 
-所有牌子都是淡色木頭（pale_oak）＋發光墨水：北捷的站內標誌是白底，站體裡又暗，
-發光的黑字在淡色板子上會描一圈米白色的邊，暗處也讀得出來。路線色太淺的
-（環狀線的黃、輕軌的粉彩色）在淡色板子上讀不出來，一律先調暗（ink）。
+Every sign is pale wood (pale_oak) with glow ink. Taipei Metro wayfinding is
+white, and station boxes are dark; glowing black text on a pale board gets an
+off-white outline and stays readable in the dark. Line colors too light to read
+on a pale board (the Circular Line yellow, the light rail pastels) are darkened
+first (ink).
 """
 import colorsys
 
@@ -40,17 +54,19 @@ from mrt.ports.block_sink import DictSink
 from mrt.application import build_line as BL
 from mrt.application.attractions.kit import sight_fn
 
-# ---------- 牌子的樣式 ----------
+# ---------- Sign style ----------
 
 SIGN_WOOD = "pale_oak"
 SIGN_STYLE = dict(wood=SIGN_WOOD, kind="standing", glow=True, color="black")
-SIGN_W = 90            # 立牌與壁掛牌一行最寬 90 px，超過的部分遊戲直接不畫
-BG_LUM = 0.70          # pale_oak 木板（約 #E3D9D3）的相對亮度
-MIN_CONTRAST = 3.0     # 路線色字跟板子至少要有的對比（WCAG 大字的門檻）
+SIGN_W = 90            # A standing or wall sign line is at most 90 px wide; the game draws nothing beyond that.
+BG_LUM = 0.70          # Relative luminance of a pale_oak board (about #E3D9D3).
+MIN_CONTRAST = 3.0     # Minimum contrast between line-colored text and the board (the WCAG large-text threshold).
 
-# Minecraft 預設字型的字寬（含 1 px 字距）。沒列的 ASCII 一律 6；非 ASCII
-# （中文、箭頭、全形符號）走 unifont，全形字 16 px 寬縮一半再加字距約 9。
-# 寧可高估：估少了字會被遊戲切掉，估多了只是早一點換成縮寫。
+# Character widths in the default Minecraft font (including 1 px of letter
+# spacing). Unlisted ASCII is 6. Non-ASCII (Chinese, arrows, full-width symbols)
+# comes from unifont: a 16 px full-width glyph scaled to half plus spacing is
+# about 9. Overestimate rather than underestimate: an underestimate makes the
+# game cut the text off, an overestimate only switches to an abbreviation earlier.
 _ASCII_W = {" ": 4, "!": 2, "'": 3, ",": 2, ".": 2, ":": 2, ";": 2, "|": 2,
             "i": 2, "l": 3, "`": 3, "I": 4, "t": 4, "[": 4, "]": 4, '"': 5,
             "(": 5, ")": 5, "{": 5, "}": 5, "*": 5, "f": 5, "k": 5, "<": 5,
@@ -59,7 +75,7 @@ WIDE_W = 9
 
 
 def text_width(s, bold=False):
-    """一行字在告示牌上的寬度（px）。粗體每個字多 1 px。"""
+    """Width in pixels of one line of text on a sign. Bold adds 1 px per character."""
     w = 0
     for ch in str(s):
         w += _ASCII_W.get(ch, 6) if ord(ch) < 128 else WIDE_W
@@ -69,14 +85,14 @@ def text_width(s, bold=False):
 
 
 def line_width(item):
-    """一行告示牌文字（純字串或 dict）的寬度。"""
+    """Width of one sign line (a plain string or a dict)."""
     if isinstance(item, dict):
         return text_width(item.get("text", ""), bool(item.get("bold")))
     return text_width(item)
 
 
 def fit(cands, bold=False, width=SIGN_W):
-    """候選寫法裡第一個放得下的；都放不下就把最後一個截短、補「…」。"""
+    """The first candidate that fits; if none fits, truncate the last one and append an ellipsis."""
     cands = [c for c in cands if c is not None]
     for c in cands:
         if text_width(c, bold) <= width:
@@ -88,8 +104,9 @@ def fit(cands, bold=False, width=SIGN_W):
 
 
 def styled(cands, color=None, width=SIGN_W):
-    """路線色／強調的那一行：候選照順序試（前面的資訊多），每個先試粗體、放不下
-    再試細體；全部放不下就把最後一個截短。"""
+    """A line-colored or emphasized line. The candidates are tried in order
+    (earlier ones carry more information), each in bold first and then in
+    regular weight; if none fits, the last one is truncated."""
     for c in cands:
         for bold in (True, False):
             if text_width(c, bold) <= width:
@@ -106,8 +123,10 @@ def _item(text, color, bold):
     return d
 
 
-# 英文站名太長的時候依序套用的縮寫（先套最不傷辨識度的）。最後才從尾巴一個字
-# 一個字拿掉。站名本身是 OSM 的 name:en，這裡只是顯示用的簡寫。
+# Abbreviations applied in order when an English station name is too long (the
+# least damaging to recognition first). Only after these are words dropped from
+# the end, one at a time. The station name itself is OSM's name:en; these are
+# display abbreviations only.
 _EN_SHORT = [
     (" Temple Station", " Temple"),
     ("Guangci/Fengtian Temple", "Guangci/Fengtian"),
@@ -146,18 +165,27 @@ _EN_SHORT = [
 _STOP = {"of", "and", "&", "/", "An"}
 
 
-def en_forms(name):
-    """英文站名由長到短的寫法（第一個是原名）。
-
-    先套 _EN_SHORT 的縮寫；還是太長才從尾巴一個字一個字拿掉，但至少留兩個字
-    —— 「Taipei Nangang Exhibition Center」砍到剩「Nangang」就跟南港站撞名了。
-    有斜線的（台北101/世貿）最後才只留斜線前面那一半。
-    """
+def en_abbrevs(name):
+    """The English station name followed by each _EN_SHORT abbreviation stage (no words dropped)."""
     out, s = [name], name
     for a, b in _EN_SHORT:
         if a in s:
             s = s.replace(a, b)
             out.append(s)
+    return out
+
+
+def en_forms(name):
+    """English station name forms from longest to shortest (the first is the original name).
+
+    The _EN_SHORT abbreviations are applied first. If the name is still too
+    long, words are dropped from the end one at a time, but at least two words
+    remain: cutting "Taipei Nangang Exhibition Center" down to "Nangang" would
+    collide with Nangang station. For names with a slash (Taipei 101/World Trade
+    Center), keeping only the part before the slash is the last resort.
+    """
+    out = en_abbrevs(name)
+    s = out[-1]
     words = s.split(" ")
     while len(words) > 2:
         words = words[:-1]
@@ -175,10 +203,12 @@ def en_forms(name):
 
 
 def _joined_forms(names):
-    """幾個英文站名用 / 串起來，由長到短（同一個縮寫程度一起縮）。
+    """Several English station names joined with a slash, from longest to
+    shortest (all abbreviated to the same level together).
 
-    串起來的不拿掉字：「Tamsui Fisherman's Wharf/Kanding」縮成「Tamsui/Kanding」
-    就指到淡水站去了。放不下就只寫第一個再補「/…」。"""
+    Joined names never drop words: shortening "Tamsui Fisherman's Wharf/Kanding"
+    to "Tamsui/Kanding" would point at Tamsui station. If nothing fits, only the
+    first name is written, followed by "/…"."""
     if len(names) == 1:
         return en_forms(names[0])
     forms = []
@@ -196,29 +226,32 @@ def _joined_forms(names):
 
 
 def _is_cut(t):
-    """「第一個/…」「第一個等」這種只寫了一部分的寫法。"""
+    """A form that shows only part of the list: "first/…" or "first等" (等 means "and others")."""
     return "…" in t or t.endswith("等")
 
 
 def _pref(joined, prefix):
-    """候選的順序：加前綴（「To 」「For 」「Next: 」…）的完整寫法、不加前綴的完整寫法、
-    加前綴的「第一個/…」、不加前綴的「第一個/…」。"""
+    """Candidate order: the full form with the prefix ("To ", "For ", "Next: "…),
+    the full form without it, the "first/…" form with the prefix, and the
+    "first/…" form without it."""
     full = [j for j in joined if not _is_cut(j)]
     cut = [j for j in joined if _is_cut(j)]
     return ([prefix + j for j in full] + full + [prefix + j for j in cut] + cut)
 
 
 def _each(joined, prefixes):
-    """每一種寫法依序試各個前綴（最後一個通常是空字串），完整的寫法都試完才輪到
-    只寫一部分的 —— 「動物園/南港展覽館」比「往 動物園等」有用。"""
+    """Each form is tried with every prefix in turn (the last is usually an empty
+    string), and partial forms get their turn only after every full form has
+    been tried: "動物園/南港展覽館" (both terminals) is more useful than
+    "往 動物園等" (the first one and others)."""
     full = [j for j in joined if not _is_cut(j)]
     cut = [j for j in joined if _is_cut(j)]
     return [p + j for j in full + cut for p in prefixes]
 
 
 def _dir_cands(joined, prefix, arrow):
-    """方向那一行的候選：每種寫法依序試「箭頭＋往／To＋終點」「往／To＋終點」
-    「箭頭＋終點」「終點」。"""
+    """Candidates for the direction line: each form is tried as "arrow + 往/To +
+    terminal", "往/To + terminal", "arrow + terminal" and "terminal", in turn."""
     out = []
     for j in joined:
         out += [_with_arrow(prefix + j, arrow), prefix + j, _with_arrow(j, arrow), j]
@@ -226,14 +259,15 @@ def _dir_cands(joined, prefix, arrow):
 
 
 def _zh_joined(names):
-    """幾個中文站名用 / 串起來；放不下的最後一招是「第一個＋等」。"""
+    """Several Chinese station names joined with a slash; the last resort when
+    that does not fit is "first + 等" (the first one and others)."""
     out = ["/".join(names)]
     if len(names) > 1:
         out.append(names[0] + "等")
     return out
 
 
-# ---------- 路線色 ----------
+# ---------- Line colors ----------
 
 def _rgb(hexc):
     h = str(hexc).lstrip("#")
@@ -258,11 +292,14 @@ def contrast(rgb, bg_lum=BG_LUM):
 
 
 def ink(hexc):
-    """路線色 -> 在淡色木板上讀得出來的字色（"#RRGGBB"）。
+    """Line color -> a text color readable on a pale wood board ("#RRGGBB").
 
-    夠深的（板南線藍、松山新店線綠、文湖線棕）原樣；太淺的保留色相、往暗調到
-    對比 MIN_CONTRAST 以上。粉彩色（淡海輕軌、機場線 OSM 標的淡紫）先把飽和度
-    拉到 0.4～0.6 再調暗，否則暗下來只剩一片灰（或變成跟淡水信義線一樣的正紅）。
+    Colors dark enough (the Bannan Line blue, the Songshan-Xindian Line green,
+    the Wenhu Line brown) are kept as they are; lighter ones keep their hue and
+    are darkened until the contrast reaches MIN_CONTRAST. Pastels (the Danhai
+    LRT, and the pale purple OSM gives the Airport MRT) first have their
+    saturation pulled into 0.4 to 0.6 before darkening; otherwise they darken
+    into a flat gray (or into the same pure red as the Tamsui-Xinyi Line).
     """
     rgb = _rgb(hexc)
     if contrast(rgb) >= MIN_CONTRAST:
@@ -278,9 +315,11 @@ def ink(hexc):
     return "#202020"
 
 
-# 色帶用的方塊：混凝土與陶瓦裡顏色最接近的那一種（貼圖平均色）。
-# yellow_concrete 不在候選裡：它是月台邊緣的警示帶，verify_exits、verify_rides
-# 都靠「黃色混凝土上面那一格」認月台 —— 牆上多一條黃色混凝土就會被當成月台。
+# Blocks for the color bands: whichever concrete or terracotta is closest in
+# color (average texture color). yellow_concrete is not a candidate: it is the
+# platform-edge warning strip, and verify_exits and verify_rides both recognize
+# a platform by "the cell above yellow concrete". An extra strip of yellow
+# concrete on a wall would be taken for a platform.
 BAND_BLOCKS = {
     "white_concrete": (207, 213, 214), "orange_concrete": (224, 97, 1),
     "magenta_concrete": (169, 48, 159), "light_blue_concrete": (36, 137, 199),
@@ -301,14 +340,16 @@ BAND_BLOCKS = {
     "terracotta": (152, 94, 68),
 }
 
-# 最接近的顏色偶爾丟掉了路線的辨識度，這幾條手動指定（理由寫在旁邊）。
-# 其餘照色差挑：板南線 light_blue_concrete、松山新店線 green_concrete、文湖線
-# orange_terracotta、環狀線 yellow_terracotta（黃色混凝土不在候選裡）、三鶯線
-# cyan_concrete、安坑與淡海輕軌 white_terracotta。
+# The closest color occasionally loses a line's identity, so these lines are
+# assigned by hand (reasons alongside). The rest are chosen by color difference:
+# the Bannan Line gets light_blue_concrete, the Songshan-Xindian Line
+# green_concrete, the Wenhu Line orange_terracotta, the Circular Line
+# yellow_terracotta (yellow concrete is not a candidate), the Sanying Line
+# cyan_concrete, and the Ankeng and Danhai LRT white_terracotta.
 BAND_OVERRIDE = {
-    "R": "red_concrete",         # OSM #FF0000；CIE76 覺得亮橘比暗紅近，淡水信義線不能是橘色
-    "O": "orange_concrete",      # OSM orange；最接近的是黃陶瓦，會跟環狀線同一種
-    "A": "purple_concrete",      # OSM 標的是地圖用的淡紫 #D4CDE7，最接近的是白混凝土
+    "R": "red_concrete",         # OSM #FF0000; CIE76 finds bright orange closer than dark red, and the Tamsui-Xinyi Line cannot be orange.
+    "O": "orange_concrete",      # OSM orange; the closest is yellow terracotta, the same as the Circular Line.
+    "A": "purple_concrete",      # OSM gives the pale map purple #D4CDE7; the closest is white concrete.
 }
 
 
@@ -324,7 +365,7 @@ def _lab(rgb):
 
 
 def nearest_block(hexc):
-    """顏色 -> 混凝土／陶瓦裡最接近的方塊（CIE76 色差）。"""
+    """Color -> the closest concrete or terracotta block (CIE76 color difference)."""
     L0, a0, b0 = _lab(_rgb(hexc))
     best = min(BAND_BLOCKS.items(), key=lambda kv: sum(
         (p - q) ** 2 for p, q in zip(_lab(kv[1]), (L0, a0, b0))))
@@ -341,7 +382,7 @@ def line_ink(ref, colours):
     return ink(colours.get(ref, "#808080"))
 
 
-# ---------- 搭車告示牌 ----------
+# ---------- Ride signs ----------
 
 RIDE_HINT_ZH = "▶ 右鍵點擊搭車"
 RIDE_HINT_EN = ("▶ Right-click to ride", "▶ Click to ride")
@@ -358,11 +399,14 @@ def turn_command(code, d):
 
 
 def travel_arrow(berth):
-    """列車離站往看牌子的人的哪一邊開："←" 或 "→"。
+    """Which way the train leaves, relative to the person reading the sign: "←" or "→".
 
-    人站在站位上面向月台門，右手邊是 inward·u（見 network.plan_berths 的 face），
-    列車往 d·u 開，所以 d·inward > 0 就是往右。島式月台上永遠是從右往左
-    （靠右行駛、人在兩股道中間）；側式月台人在軌道外側，反過來是從左往右。
+    A person standing on the berth and facing the platform screen doors has
+    inward·u on their right (see face in network.plan_berths), and the train runs
+    along d·u, so d·inward > 0 means to the right. On an island platform trains
+    always run from right to left (they keep right, and the person stands between
+    the two tracks); on a side platform the person stands outside the track, so
+    it is the reverse, from left to right.
     """
     return "→" if berth.d * berth.inward > 0 else "←"
 
@@ -376,10 +420,30 @@ def _en(net, ref, name):
     return st.en if st is not None and st.en else name
 
 
-def ride_lines(berth, slot, net, colour, opposite=None):
-    """一面搭車告示牌的四行（dict 或字串）與點擊指令：(lines, command)。
+def _next_en(net, ref, name):
+    """The English forms of the next station, and those that fit after "Next: "."""
+    forms = en_forms(_en(net, ref, name))
+    return forms, [f for f in forms if text_width("Next: " + f) <= SIGN_W]
 
-    opposite 是同一座站體同一條線另一側的 Berth（終點站的到站側要寫對面往哪裡）。
+
+def _has_en_twin(berth, slot):
+    """Whether the berth has an English sign for the same destination as slot.
+
+    Signs alternate Chinese and English per destination, but three signs cannot
+    pair up two destinations: at the branch stations (Qizhang, Daqiaotou, Beitou,
+    Binhai Shalun) the second destination gets a Chinese sign only."""
+    key = slot.dest.next if slot.dest is not None else None
+    return any(s.lang == "en" and (s.dest.next if s.dest is not None else None) == key
+               for s in berth.slots)
+
+
+def ride_lines(berth, slot, net, colour, opposite=None):
+    """The four lines (dicts or strings) and the click command of one ride sign: (lines, command).
+
+    opposite is the Berth on the other side of the same line in the same station
+    box (the arrival side of a terminus says where the opposite side goes). A
+    Chinese sign without an English twin on the same berth (_has_en_twin) gives
+    up its least needed line to English.
     """
     st = berth.station
     ref = st.ref
@@ -397,27 +461,41 @@ def ride_lines(berth, slot, net, colour, opposite=None):
                 fit([st.code + " " + st.name, st.name]),
                 RIDE_HINT_ZH,
             ]
+            if not _has_en_twin(berth, slot):
+                # The next station in English replaces this station's name,
+                # which every other sign in the station shows.
+                nxt_forms, nx = _next_en(net, ref, dr.next)
+                lines[2] = "Next: " + nx[0] if nx else fit(nxt_forms)
         else:
             en_terms = [_en(net, ref, t) for t in terms]
             head = styled(_dir_cands(_joined_forms(en_terms), "To ", arrow), col)
-            nxt_forms = en_forms(_en(net, ref, dr.next))
-            nx = [f for f in nxt_forms if text_width("Next: " + f) <= SIGN_W]
+            nxt_forms, nx = _next_en(net, ref, dr.next)
             if nx:
                 lines = [head, "Next: " + nx[0],
                          fit([st.code + " " + f for f in en_forms(st.en)] + en_forms(st.en)),
                          fit(list(RIDE_HINT_EN))]
             else:
-                # 英文站名常常一行放不下「Next: 」加站名（Zhongxiao Fuxing、Shandao
-                # Temple……）。這時「下一站」拆成兩行，本站站名讓位 —— 旁邊那面中文牌
-                # 有本站站號，下一站卻只有這一面牌講得出英文
+                # English station names often don't fit on one line after
+                # "Next: " (Zhongxiao Fuxing, Shandao Temple...). The next station
+                # then takes two lines and this station's name gives way: the
+                # Chinese sign beside it shows this station's code, but only this
+                # sign gives the next station in English.
                 lines = [head, "Next station", fit(nxt_forms), fit(list(RIDE_HINT_EN))]
         return lines, ride_command(st.code, nxt_code)
-    # 終點站的到站側：沒有下一站，點了換到對面月台
+    # Arrival side of a terminus: there is no next station, and a click moves the
+    # player to the opposite platform.
     other = [t for dr in (opposite.dests if opposite is not None else ())
              for t in (dr.terminals or [dr.next])]
     other = list(dict.fromkeys(other))
     can_turn = opposite is not None and bool(opposite.slots) and bool(opposite.dests)
-    if slot.lang == "zh":
+    if slot.lang == "zh" and not _has_en_twin(berth, slot):
+        # Without an English twin, the instruction goes in both languages and the
+        # destination line gives way.
+        lines = [styled(["本站終點 Terminus", "本站終點"], col),
+                 "請至對面月台" if can_turn else "本站無列車",
+                 "Use other side" if can_turn else "No service",
+                 TURN_HINT_ZH if can_turn else ""]
+    elif slot.lang == "zh":
         lines = [styled(["本站終點"], col),
                  "請至對面月台" if can_turn else "本站無列車",
                  fit(_pref(_zh_joined(other), "搭往 ")) if other else "",
@@ -431,20 +509,26 @@ def ride_lines(berth, slot, net, colour, opposite=None):
     return lines, (turn_command(st.code, berth.d) if can_turn else None)
 
 
-# 牌子上面還屬於月台門的格子（相對牌子）：島式與疊式站的月台門是軌面 +2..+5
-# （+5 是門楣）、牌子在 +2；側式站是 +1..+4（+4 是門楣）、牌子在 +2，底下那一格
-# 另外看（_side_below_is_door）
+# The cells above a sign (relative to it) that still belong to the platform
+# screen doors: in island and stacked stations the doors span rail top +2..+5
+# (+5 is the lintel) and the sign is at +2; in side-platform stations they span
+# +1..+4 (+4 is the lintel) and the sign is at +2. The cell below is checked
+# separately (_side_below_is_door).
 PSD_ABOVE = {"side": (1,)}
 PSD_ABOVE_DEFAULT = (1, 2)
 
 
 def _side_below_is_door(box, cell):
-    """側式站牌子底下那一格（軌面 +1）最後是不是門洞。
+    """Whether the cell below a side-platform sign (rail top +1) ends up as a door opening.
 
-    那一格有兩種東西會寫：月台門（±5，+1..+4，門洞是空氣）與月台（6..10，+1 是
-    警示帶／月台面）。斜的線形上兩者可能取整到同一格，照 build_line._station_side
-    第二趟的順序（每個取樣點先月台門、再月台）重跑一次，看最後是誰。只有門洞要補
-    玻璃；是月台面的話牌子本來就踩得住，補了反而把警示帶挖掉一格（六張犁就是這樣）。
+    Two things write that cell: the platform screen doors (±5, +1..+4, where door
+    openings are air) and the platform (6..10, where +1 is the warning strip or
+    the platform surface). On an oblique alignment both can round to the same
+    cell, so this replays the order of the second pass of build_line._station_side
+    (at each sample, doors first and then platform) and checks which comes last.
+    Only a door opening needs glass; if it is platform surface, the sign already
+    has support, and glass would dig a cell out of the warning strip (this
+    happened at Liuzhangli).
     """
     state = None
     for i in range(box.lo, box.hi + 1):
@@ -460,15 +544,20 @@ def _side_below_is_door(box, cell):
 
 
 def ride_signs(w, berths, net, colours):
-    """立這批 Berth 的所有搭車告示牌。回傳立了幾面。
+    """Place every ride sign of these Berths. Returns the number placed.
 
-    network 挑站位時只避開「沿線 along % 7 < 2」的門洞，可是斜的或彎的線形上
-    相距 1 m 的兩個取樣點會取整到同一格：門洞那個取樣點比較晚蓋，牌子那一格
-    （連同上面兩格）就變成門洞 —— 台北車站、中正紀念堂的淡水信義線與板橋的板南線
-    都是這樣，牌子立在門洞裡、上面空空的（側式站連牌子底下都是空的）。所以立牌
-    的時候順手把那一柱月台門補回玻璃：牌子一定在一片玻璃門板的最下面。
-    （牌子上面那幾格只有月台門會寫，補玻璃一定對；側式站牌子底下那一格可能是
-    月台的警示帶，要先確定是門洞才補。）
+    When network picks berths it only avoids door openings ("along % 7 < 2"
+    along the line), but on an oblique or curved alignment two samples 1 m apart
+    can round to the same cell. The door-opening sample is built later, so the
+    sign's cell (and the two above it) becomes a door opening. The Tamsui-Xinyi
+    Line at Taipei Main Station and Chiang Kai-shek Memorial Hall and the Bannan
+    Line at Banqiao all did this: the sign stood in a door opening with nothing
+    above it (and on side platforms nothing below it either). So placing a sign
+    also restores that column of platform screen doors to glass: a sign always
+    sits at the bottom of a glass door panel. (Only the platform screen doors
+    write the cells above a sign, so glass there is always right; the cell below
+    a side-platform sign may be the platform's warning strip, so it gets glass
+    only once it is confirmed to be a door opening.)
     """
     idx = {(b.line, b.station.name, b.d): b for b in berths}
     n = 0
@@ -487,16 +576,18 @@ def ride_signs(w, berths, net, colours):
     return n
 
 
-# ---------- 路線色帶 ----------
+# ---------- Line color bands ----------
 
 PSD_HEADER_DY = {"island": 5, "stacked_side": 5, "stacked_shared": 5, "side": 4}
-WALL_BAND_DY = (3, 4)          # 月台上人眼的高度（站立面 +1～+2）
+WALL_BAND_DY = (3, 4)          # Eye level on the platform (standing surface +1 to +2).
 
 
 def _box_levels(box):
-    """[(dy0, {離線位 -> 路線})]：每一層的月台門與軌道外側牆各屬哪一條線。
+    """[(dy0, psd, wall)]: which line the platform screen doors and the outer
+    track wall belong to on each level.
 
-    回傳兩張表：psd（月台門離線位 -> 路線）與 wall（牆的那一側 ±1 -> 路線）。
+    Two maps per level: psd (platform screen door offset -> line) and wall (the
+    wall's side ±1 -> line).
     """
     lines = box.lines or ["?"]
     a = lines[0]
@@ -508,20 +599,22 @@ def _box_levels(box):
     out = []
     for dy0 in (0, -SK.LEVEL_H):
         if box.kind == "stacked_side":
-            s = box.side                          # 月台那一側；軌道在 −s
+            s = box.side                          # The platform side; the track is on −s.
             out.append((dy0, {box.lay["psd"][0]: a}, {-s: a}))
-        else:                                     # 共用島式：primary 的股道在 −side
+        else:                                     # Shared island: the primary line's track is on −side.
             sd = box.side
             out.append((dy0, {-sd * PLAT_HALF: a, sd * PLAT_HALF: b}, {-sd: a, sd: b}))
     return out
 
 
 def line_bands(w, box, colours):
-    """月台門的門楣與軌道外側牆的色帶。回傳放了幾格。"""
+    """Line-colored lintels on the platform screen doors and color bands on the
+    outer track walls. Returns the number of cells placed."""
     samples, ys, lo, hi = box.samples, box.ys, box.lo, box.hi
     hdy = PSD_HEADER_DY.get(box.kind, 5)
-    # 斜的線形上，某個取樣點外牆那一格可能是另一個取樣點的站內淨空：
-    # 色帶只砌在「任何取樣點都不在站內」的格子上，免得凸進軌道淨空
+    # On an oblique alignment the outer wall cell of one sample may lie inside the
+    # station clearance of another. Bands go only on cells that are inside the
+    # station for no sample, so they never stick out into the track clearance.
     inner = set()
     for i in range(lo, hi + 1):
         for o in range(-(BOX_HALF - 2), BOX_HALF - 1):
@@ -544,15 +637,15 @@ def line_bands(w, box, colours):
     return n
 
 
-# ---------- 穿堂指引 ----------
+# ---------- Concourse wayfinding ----------
 
-GATE_ALONG = 14          # 閘門在 lo + 14 m（build_line._station_island / _side_concourse）
-MAP_ALONG = 10           # 路線圖／售票機：非付費區，出入口的洞（lo+5..9、側牆）與閘門之間
-GATE_SIGN_OFF = 4        # 閘門列上立牌的機箱：離中線 ±4（中線那一排是橋墩會穿過的地方）
+GATE_ALONG = 14          # The fare gates are at lo + 14 m (build_line._station_island / _side_concourse).
+MAP_ALONG = 10           # Route map / ticket machine: in the unpaid area, between the exit openings (lo+5..9, side walls) and the fare gates.
+GATE_SIGN_OFF = 4        # The gate cabinets that carry a sign: ±4 from the center line (the center row is where piers pass through).
 
 
 def concourse_kind(box, grounds):
-    """穿堂的型態（alignment.station_kind 那一套）：地下與疊式站都是 "tunnel"。"""
+    """The concourse type (as in alignment.station_kind): underground and stacked stations are both "tunnel"."""
     if box.kind != "side":
         return "tunnel"
     mid = (box.lo + box.hi) // 2
@@ -561,7 +654,7 @@ def concourse_kind(box, grounds):
 
 
 def _pier_cells(box, grounds):
-    """橋下穿堂裡的橋墩格（build_line._side_concourse 補回去的那些 3x3）。"""
+    """Pier cells in an under-viaduct concourse (the 3x3 blocks that build_line._side_concourse restores)."""
     out = set()
     for i in range(box.lo, box.hi + 1):
         if abs((i * STEP) % PIER_EVERY) >= STEP / 2:
@@ -579,7 +672,7 @@ def _pier_cells(box, grounds):
 
 
 def _terminals(berths, ref):
-    """這條線在這座站體所有方向的終點（先 +u 再 −u，去重）。"""
+    """Every terminal of this line in this station box, in all directions (+u first, then −u, without duplicates)."""
     out = []
     for b in sorted((b for b in berths if b.line == ref), key=lambda b: -b.d):
         for dr in b.dests:
@@ -590,7 +683,7 @@ def _terminals(berths, ref):
 
 
 def gate_lines(ref, berths, net, colours):
-    """閘門上那面牌：(正面朝非付費區, 背面朝付費區)。"""
+    """The sign on the fare gates: (front facing the unpaid area, back facing the paid area)."""
     zh, en = NW.LINE_NAMES.get(ref, (ref, ref))
     terms = _terminals(berths, ref)
     st = next((b.station for b in berths if b.line == ref), None)
@@ -614,8 +707,9 @@ def gate_lines(ref, berths, net, colours):
 
 
 def _en_terms_or_line(ref, en_terms):
-    """英文那一行：放得下就寫各終點（To Dingpu/Nangang…），放不下改寫英文路線名。
-    截短的終點（「Nangang Exh. Ct…」）不如一個完整的路線名。"""
+    """The English line: the terminals if they fit (To Dingpu/Nangang…), otherwise
+    the English line name. A truncated terminal ("Nangang Exh. Ct…") is worse
+    than a complete line name."""
     full = [f for f in _joined_forms(en_terms) if "…" not in f] if en_terms else []
     line_en = NW.LINE_NAMES.get(ref, (ref, ref))[1]
     return (["To " + f for f in full] + full
@@ -624,16 +718,17 @@ def _en_terms_or_line(ref, en_terms):
 
 
 def map_lines():
-    """路線圖／售票機：點了打開資料包的路線圖對話框（mrt:network）。"""
+    """Route map / ticket machine: a click opens the datapack's route map dialog (mrt:network)."""
     return [styled(["路線圖 售票機", "路線圖"], None), "Route Map",
             "& Tickets", fit(["▶ 右鍵開啟 Open", "▶ 右鍵開啟"])]
 
 
-SIGHT_INK = "#6B4A00"          # 景點牌第一行的字色（深金，跟說明牌同一色）
-SIGHTS_PER_STATION = 2         # 穿堂裡最多立幾面景點牌（售票機旁邊另外兩座機台）
+SIGHT_INK = "#6B4A00"          # Text color of an attraction sign's first line (dark gold, the same as the plaques).
+SIGHTS_PER_STATION = 2         # The most attraction signs in one concourse (the two other machine positions beside the ticket machine).
 
 
-# 景點英文名的慣用縮寫（放不下原名時先試這些）
+# Conventional English abbreviations of attraction names (tried first when the
+# original does not fit).
 _SIGHT_SHORT = {"Chiang Kai-shek Memorial Hall": ["CKS Memorial Hall"],
                 "Sun Yat-sen Memorial Hall": ["SYS Memorial Hall"],
                 "National Taiwan Museum": ["Natl. Taiwan Museum", "Taiwan Museum"],
@@ -643,15 +738,17 @@ _SIGHT_SHORT = {"Chiang Kai-shek Memorial Hall": ["CKS Memorial Hall"],
 
 
 def sight_en_forms(name):
-    """景點英文名由長到短：原名、去掉括號、慣用縮寫、從中間拿掉字（保留頭尾），
-    最後才退回站名那一套（從尾巴砍）。「Shin Kong Life Tower」要變「Shin Kong Tower」，
-    不是「Shin Kong Life」。"""
+    """English attraction name forms from longest to shortest: the original, the
+    name without its parentheses, conventional abbreviations, words removed from
+    the middle (keeping the first and last), and finally the station name
+    approach (cutting from the end). "Shin Kong Life Tower" should become
+    "Shin Kong Tower", not "Shin Kong Life"."""
     base = name.split(" (")[0].strip()
     out = [name, base]
     short = _SIGHT_SHORT.get(base, [])
     out += short
     if short:
-        return out + en_forms(short[-1])     # 有慣用縮寫就不要再從中間拿掉字（National Museum 會誤導）
+        return out + en_forms(short[-1])     # With a conventional abbreviation, remove no middle words ("National Museum" would mislead).
     words = base.split(" ")
     while len(words) > 2:
         words = words[:-2] + words[-1:]
@@ -660,12 +757,13 @@ def sight_en_forms(name):
 
 
 def sight_lines(e):
-    """穿堂裡的景點牌：點了傳送到景點的觀景點（資料包的 sight/<id>）。
-    e 是 attractions.datapack_entries() 的一筆。第一行不以「出口」開頭。"""
+    """An attraction sign in the concourse: a click teleports to the attraction's
+    viewpoint (the datapack's sight/<id>). e is one entry of
+    attractions.datapack_entries(). The first line does not start with `出口`."""
     st = e.get("station")
     far = ""
     if st:
-        far = fit(["出站約 %d m" % (int(round(st[2] / 10.0)) * 10), "%d m" % st[2]])
+        far = fit(["出站約 %d m away" % (int(round(st[2] / 10.0)) * 10), "%d m" % st[2]])
     return [styled(["★ " + e["name_zh"], e["name_zh"]], SIGHT_INK),
             fit(sight_en_forms(e["name_en"])), far, fit(["▶ 右鍵前往 Go", "▶ 右鍵前往"])]
 
@@ -675,11 +773,13 @@ def sight_command(e):
 
 
 def _gate_machines(box, kind):
-    """閘門第一排（面向非付費區）確定是機箱的格子：{離線位: (x, 機箱 y, z)}。
+    """The cells of the first fare gate row (facing the unpaid area) that are
+    certainly cabinets: {offset: (x, cabinet y, z)}.
 
-    斜的線形上相鄰取樣點的格子會重疊，某個離線位算出來那一格最後可能被別的
-    取樣點鋪成通道 —— 把 build_line._gates 在一個 DictSink 裡重跑一次，
-    只挑真的是機箱、上面是空氣的格子。
+    On an oblique alignment the cells of adjacent samples overlap, and the cell
+    computed for an offset may end up paved as a passage by another sample. This
+    replays build_line._gates in a DictSink and keeps only cells that really are
+    cabinets with air above them.
     """
     per_m = max(1, int(round(1.0 / STEP)))
     s0 = box.lo + GATE_ALONG * per_m
@@ -688,7 +788,7 @@ def _gate_machines(box, kind):
     dy = LEVEL_DY[kind]
     mini = DictSink()
     BL._gates(mini, box.samples, box.ys, s0, per_m, floor_dy=dy - 1)
-    y_m = int(box.ys[s0]) + dy                    # 機箱那一格 = 站立面
+    y_m = int(box.ys[s0]) + dy                    # The cabinet cell is at the standing surface.
     out = {}
     for o in range(-(BOX_HALF - 2), BOX_HALF - 1):
         x, z = box.cell(s0, o)
@@ -698,10 +798,13 @@ def _gate_machines(box, kind):
 
 
 class _Guarded:
-    """跳過被別的結構占走的格子的 BlockSink（blocked 同 network.plan_berths 的）。
+    """A BlockSink that skips cells taken by other structures (blocked is the
+    same test as in network.plan_berths).
 
-    台北車站地下街往淡水信義線穿堂的連絡梯井從板南線站體中間穿過去，而且是在
-    車站之後蓋的：立在那裡的牌子只剩一個沒有方塊的方塊實體。"""
+    At Taipei Main Station the link stair shaft from the underground mall to the
+    Tamsui-Xinyi Line concourse passes through the middle of the Bannan Line
+    station box, and it is built after the stations: a sign placed there would
+    be left as a block entity with no block."""
 
     def __init__(self, w, blocked):
         self.w, self.blocked = w, blocked
@@ -716,10 +819,14 @@ class _Guarded:
 
 
 def concourse_signs(w, box, berths, net, colours, grounds=None, blocked=None, sights=()):
-    """閘門的雙面牌、路線圖售票機、附近景點、側式站的月台樓梯口。回傳立了幾面。
+    """The double-sided signs on the fare gates, the route map ticket machine,
+    nearby attractions and the platform stair signs of side-platform stations.
+    Returns the number placed.
 
-    sights：這一站走得到的觀光景點（attractions.datapack_entries() 的幾筆，近的在前）。
-    售票機旁邊的另外兩個機台位置各立一面，點了傳送到景點前面。"""
+    sights: the attractions within walking distance of this station (a few
+    entries of attractions.datapack_entries(), nearest first). One sign stands on
+    each of the two other machine positions beside the ticket machine; a click
+    teleports to the front of the attraction."""
     if blocked is not None:
         w = _Guarded(w, blocked)
     per_m = max(1, int(round(1.0 / STEP)))
@@ -729,12 +836,12 @@ def concourse_signs(w, box, berths, net, colours, grounds=None, blocked=None, si
         return 0
     samples, ys, lo, hi = box.samples, box.ys, box.lo, box.hi
     n = 0
-    # ---- 閘門：每條線一面雙面牌，立在閘門機箱上（人眼高度）----
+    # ---- Fare gates: one double-sided sign per line, on a gate cabinet (at eye level) ----
     machines, s0 = _gate_machines(box, kind)
     ux, uz = samples[min(max(s0, lo), hi)][2:4]
     if len(lines) == 1:
         spots = [(GATE_SIGN_OFF, lines[0]), (-GATE_SIGN_OFF, lines[0])]
-    else:                                  # 共用站體：每條線立在自己那座月台那一側
+    else:                                  # Shared station box: each line on its own platform's side.
         sd = box.side if box.kind == "stacked_shared" else 1
         spots = [(-sd * GATE_SIGN_OFF, lines[0]), (sd * GATE_SIGN_OFF, lines[1])]
     for off, ref in spots:
@@ -749,7 +856,7 @@ def concourse_signs(w, box, berths, net, colours, grounds=None, blocked=None, si
         front, back = gate_lines(ref, berths, net, colours)
         w.sign(x, y + 1, z, front, facing=(-ux, -uz), back=back, **SIGN_STYLE)
         n += 1
-    # ---- 路線圖／售票機：非付費區，一座機台（閘門機箱同款）上立一面牌 ----
+    # ---- Route map / ticket machine: in the unpaid area, a sign on a machine (the same as a gate cabinet) ----
     si = lo + MAP_ALONG * per_m
     if lo < si < hi:
         piers = _pier_cells(box, grounds) if kind == "under" else set()
@@ -762,27 +869,29 @@ def concourse_signs(w, box, berths, net, colours, grounds=None, blocked=None, si
             w.sign(x, ys_ + 1, z, map_lines(), facing=(-mx, -mz),
                    dialog="%s:%s" % (DATAPACK_NS, NW.MENU_DIALOG), **SIGN_STYLE)
             n += 1
-            # 附近景點：售票機旁邊剩下的機台位置
+            # Nearby attractions: the remaining machine positions beside the ticket machine.
             for off, e in zip(free[1:], list(sights)[:SIGHTS_PER_STATION]):
                 x, z = box.cell(si, off)
                 w.set(x, ys_, z, BL.GATE)
                 w.sign(x, ys_ + 1, z, sight_lines(e), facing=(-mx, -mz),
                        command=sight_command(e), **SIGN_STYLE)
                 n += 1
-    # ---- 側式站：兩座月台各往一個方向，樓梯口各立一面 ----
+    # ---- Side-platform stations: each platform serves one direction; one sign at each stair ----
     if box.kind == "side":
         n += _side_stair_signs(w, box, berths, net, colours, kind)
-    # ---- 疊式站：上層月台往下層、下層月台往上層的樓梯口 ----
+    # ---- Stacked stations: the stairs from the upper platform down and from the lower platform up ----
     if box.kind.startswith("stacked"):
         n += _level_stair_signs(w, box, berths, net, colours)
     return n
 
 
 def _side_stair_signs(w, box, berths, net, colours, kind):
-    """側式站穿堂的兩座月台樓梯（build_line._side_concourse：hi 端、|off| 8..9）。
+    """The two platform stairs in a side-platform station's concourse
+    (build_line._side_concourse: at the hi end, |offset| 8..9).
 
-    牌子立在樓梯口前 2 m、離線位 ±7（樓梯走 8..9，±7 還在穿堂的走道上，
-    也離側牆 ±11 的轉乘通道洞口遠遠的），面向閘門那一頭走過來的人。
+    The signs stand 2 m before the stairs at offset ±7 (the stairs use 8..9, so
+    ±7 is still on the concourse walkway, well clear of the transfer passage
+    openings in the side walls at ±11), facing people coming from the fare gates.
     """
     per_m = max(1, int(round(1.0 / STEP)))
     dy = LEVEL_DY[kind]
@@ -804,7 +913,8 @@ def _side_stair_signs(w, box, berths, net, colours, kind):
 
 
 def platform_lines(berth, net, colours, kind=None):
-    """往某一座側式月台的牌：往哪裡、下一站；終點站的到站側寫「下車月台」。"""
+    """The sign for one side platform: where it goes and the next station; the
+    arrival side of a terminus says "arrival platform"."""
     ref = berth.line
     col = line_ink(ref, colours)
     updown = "↑" if kind == "under" else "↓"
@@ -824,11 +934,15 @@ def platform_lines(berth, net, colours, kind=None):
 
 
 def _level_stair_signs(w, box, berths, net, colours):
-    """疊式站：上層月台在往下層的樓梯洞盡頭立「往下層月台」、下層月台在樓梯腳
-    立「往上層月台・出口」，都面向從月台另一頭走過來的人（+u）。
+    """Stacked stations: on the upper platform, a "to the lower platform" sign at
+    the end of the stair opening; on the lower platform, a "to the upper platform
+    and exits" sign at the foot of the stairs. Both face people coming from the
+    far end of the platform (+u).
 
-    位置跟樓梯（build_line._level_stair）在 DictSink 裡重跑一次再挑：上層那面要
-    落在洞的盡頭之後、腳下還有月台的格子；下層那面在最後一階再往前兩公尺。
+    The positions come from replaying the stairs (build_line._level_stair) in a
+    DictSink: the upper sign must land past the end of the opening, on a cell that
+    still has platform under it; the lower one stands two meters past the last
+    step.
     """
     per_m = max(1, int(round(1.0 / STEP)))
     l0, l1 = box.lay["lstair"]
@@ -841,7 +955,9 @@ def _level_stair_signs(w, box, berths, net, colours):
     n = 0
     lower = [b for b in berths if b.dy0 < 0]
     upper = [b for b in berths if b.dy0 == 0]
-    # 上層：從梯頂往 +u 找第一個「月台面還在、那一格沒被樓梯動過」的取樣點，再退 1 m
+    # Upper level: from the top of the stairs toward +u, find the first sample
+    # where the platform surface is intact and the stairs left the cell alone,
+    # then add 1 m.
     top = None
     for si in range(s_top, box.hi - 4 * per_m):
         x, z = box.cell(si, off)
@@ -866,11 +982,25 @@ def _level_stair_signs(w, box, berths, net, colours):
     return n
 
 
+def _bilingual_rows(zh_line, zh_terms, en_terms):
+    """Row candidates carrying the terminals in both languages, longest first.
+
+    A shared stacked station has two rows and no room for an English fourth
+    line, so each row tries Chinese and English terminals side by side. The line
+    name goes first, then "往"; terminals are never shortened to "first等"."""
+    zh_full = [z for z in _zh_joined(zh_terms) if not _is_cut(z)]
+    en_full = [e for e in _joined_forms(en_terms) if not _is_cut(e)]
+    return [p + z + " " + e for p in (zh_line + " 往 ", "往 ", "")
+            for z in zh_full for e in en_full]
+
+
 def level_lines(berths, net, colours, down):
-    """疊式站樓梯口的牌：往哪一層、那一層的列車往哪裡（每條線一行、上路線色）。"""
+    """The sign at a stacked station's stairs: which level, and where that
+    level's trains go (one row per line, in the line color)."""
     head = styled(["↓ 下層月台", "下層月台"] if down else
                   ["↑ 上層月台・出口", "↑ 上層月台", "上層月台"], None)
-    sub = "Lower Level" if down else fit(["Upper Level/Exits", "Exits/Upper Level", "Upper Level"])
+    sub = "Lower Level" if down else fit(["Upper Level/Exits", "Exits/Upper Level",
+                                          "Upper Level/Exit", "Upper Level"])
     rows = []
     for b in sorted(berths, key=lambda b: b.line):
         terms = []
@@ -880,12 +1010,18 @@ def level_lines(berths, net, colours, down):
                     terms.append(t)
         zh = NW.LINE_NAMES.get(b.line, (b.line, b.line))[0]
         if terms:
-            # 路線色已經標出是哪條線：放不下時先拿掉路線名，不要先把終點縮成「迴龍等」
+            # The line color already identifies the line: when space runs short,
+            # drop the line name first rather than shortening the terminals to
+            # "迴龍等" (Huilong and others).
             cands = _each(_zh_joined(terms), [zh + " 往 ", "往 ", ""])
+            if len(berths) > 1:
+                cands = _bilingual_rows(zh, terms, [_en(net, b.line, t) for t in terms]) + cands
         else:
             cands = [zh + " 本站終點", "本站終點"]
+            if len(berths) > 1:
+                cands = ["本站終點 Terminus"] + cands
         rows.append(styled(cands, line_ink(b.line, colours)))
-    if len(rows) == 1:                          # 側式疊式只有一條線：第四行寫英文
+    if len(rows) == 1:                          # A side stacked station has one line, so the fourth line is English.
         b = berths[0]
         terms = [t for dr in b.dests for t in (dr.terminals or [dr.next])]
         rows.append(fit(_pref(_joined_forms([_en(net, b.line, t) for t in terms]), "To "))
@@ -893,11 +1029,12 @@ def level_lines(berths, net, colours, down):
     return [head, sub] + rows[:2]
 
 
-# ---------- 出口牌 ----------
+# ---------- Exit signs ----------
 
 def exit_sign_lines(lines, colour):
-    """出口牌四行（build_exits.sign_lines）的第一行上路線色。純文字不變：
-    verify_exits 靠第一行的「出口」與第二行的站名認出入口亭。"""
+    """Give the first of an exit sign's four lines (build_exits.sign_lines) the
+    line color. The plain text does not change: verify_exits recognizes exit
+    kiosks by `出口` on the first line and the station name on the second."""
     out = list(lines)
     if out and colour:
         out[0] = dict(text=str(out[0]), color=ink(colour), bold=True)
@@ -905,23 +1042,27 @@ def exit_sign_lines(lines, colour):
 
 
 def transfer_sign_lines(lines, colour):
-    """轉乘井門邊的牌：第二行（往 X 線）上 X 線的顏色，純文字不變。"""
+    """The sign beside a transfer shaft door: the second line (往 X 線, "to line
+    X") takes line X's color; the plain text does not change."""
     out = list(lines)
     if len(out) > 1 and colour:
         out[1] = dict(text=str(out[1]), color=ink(colour), bold=True)
     return out
 
 
-# ---------- 一座站體 ----------
+# ---------- One station box ----------
 
 def station_signage(w, berths, net, colours, grounds=None, blocked=None, sights=()):
-    """一座站體的全部告示牌與色帶（berths 是這座站體的所有 Berth）。
+    """All signs and color bands of one station box (berths are all the Berths of this box).
 
-    要在 build_line.build_station 之後呼叫：牌子取代月台門那一格玻璃、色帶取代
-    外牆與門楣那一排。回傳 dict(ride, concourse, band) 各放了多少。
+    Call it after build_line.build_station: signs replace one glass cell of the
+    platform screen doors, and bands replace the outer wall and the lintel row.
+    Returns dict(ride, concourse, band) with the count of each.
 
-    blocked 是 network.plan_berths 用的同一個「這一格被別的結構占走了」：搭車告示牌
-    的位置已經避開了，穿堂的牌子也照它避開。sights 是這一站走得到的觀光景點。
+    blocked is the same "this cell is taken by another structure" test that
+    network.plan_berths uses: ride sign positions already avoid those cells, and
+    the concourse signs avoid them too. sights are the attractions within walking
+    distance of this station.
     """
     berths = list(berths)
     if not berths:

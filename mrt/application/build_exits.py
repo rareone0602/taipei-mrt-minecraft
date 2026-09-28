@@ -1,27 +1,38 @@
 #!/usr/bin/env python3
-"""真實出入口與轉乘通道生成器：把 domain/exits.py 算好的計畫變成可以 build() 的物件。
+"""Real exit and transfer passage generator: turns the plans computed by domain/exits.py into buildable objects.
 
-每座車站原本只有一座樣板樓梯。這裡照 `data/entrances.json` 的真實座標與編號，
-替每個出入口蓋一座折返式樓梯井（ShaftStair）接到穿堂層，再用一段接駁通道
-（Tile）沿站體外側接進穿堂層的非付費區。三樣東西全部沿用地下街的那一套
-零件 —— 台北車站的連絡梯就是這麼接的，只是把 g0 從「地下街樓板」換成
-「真實地面」。
+Each station originally had one template stair. This module follows the real
+coordinates and numbers in `data/entrances.json`: each exit gets a switchback
+stair shaft (ShaftStair) down to the concourse, and a connecting passage (Tile)
+runs along the outside of the station box into the concourse's unpaid area. All
+three reuse the underground mall parts; the link stairs at Taipei Main Station
+are connected the same way, only with g0 changed from "the underground mall
+floor" to "the real ground".
 
-三種車站三種穿堂（alignment.station_kind）：地下站的穿堂在軌面 +7，井從街上
-往下挖；高架站的穿堂在橋下（軌面 -6），井從街上往上爬、通道是空橋；平面站
-的穿堂跨在月台上方（軌面 +8）。井是同一座，只是哪一扇門在上面不一樣。
+Three kinds of station have three kinds of concourse (alignment.station_kind):
+an underground station's concourse is at rail top +7 and the shaft digs down
+from the street; an elevated station's concourse is under the viaduct (rail top
+-6), the shaft climbs up from the street and the passage is a skybridge; an
+at-grade station's concourse spans above the platforms (rail top +8). The shaft
+is the same in every case; only which door is at the top differs.
 
-轉乘站的兩座站體之間再接一條轉乘通道（付費區對付費區）：兩層一樣高就
-一條通道，不一樣高就在兩座站體之間立一座井，兩層各接一段通道到井的門。
+A transfer station's two station boxes are also joined by a transfer passage
+(paid area to paid area): at the same level it is one passage; at different
+levels a shaft stands between the two boxes, and each level gets a passage to
+one of the shaft's doors.
 
-沒有真實出入口資料的車站（機場線桃園段、安坑輕軌、淡海輕軌的平面站）
-用一個預設位置的出入口走同一套流程，全網每一座車站都能從街上走到月台。
+Stations without real exit data (the Taoyuan section of the Airport MRT and the
+at-grade stations of the Ankeng and Danhai LRT) get one exit at a default
+position through the same process, so every station on the network can be
+walked to from the street down to the platform.
 
-回傳的物件都有 bbox() 與 build(w)，跟其他地標一樣由 cli/build_world 依 region
-分桶。地下的通道標 underground=True（不必為它生成地形），樓梯井與空橋不標
-—— 它們露在街上，四周要有真實地形才不會懸空或被埋。
+Every returned object has bbox() and build(w) and is bucketed by region in
+cli/build_world like any other landmark. Underground passages are marked
+underground=True (no terrain needs generating for them); stair shafts and
+skybridges are not: they stand in the street and need real terrain around them
+so they neither float nor end up buried.
 
-自我測試: ./.venv/bin/python tests/test_exits.py
+Self-test: ./.venv/bin/python tests/test_exits.py
 """
 import collections
 
@@ -29,15 +40,16 @@ from mrt import config
 from mrt.application import build_concourse as BCC
 from mrt.application import signage as SG
 from mrt.domain import exits as EX
+from mrt.domain import network as NW
 from mrt.domain.alignment import station_kind
 from mrt.domain.stacked import station_samples
 
-PIER_EVERY = 6         # 空橋每幾公尺一根柱
-APRON = "minecraft:grass_block"   # 出入口門前的前庭地坪：算地形，驗證「門開在街上」認它
+PIER_EVERY = 6         # Meters between skybridge piers.
+APRON = "minecraft:grass_block"   # Apron paving in front of an exit door: counts as terrain, and the "door opens onto the street" check looks for it.
 
 
 def sign_lines(refs, name_zh, name_en):
-    """出口牌的四行：編號、站名、英文站名、Exit。"""
+    """The four lines of an exit sign: number, station name, English station name, Exit."""
     tags = [str(r) for r in refs if str(r)]
     tag = "/".join(tags[:3]) if tags else ""
     return [("出口 " + tag).strip(), name_zh or "", name_en or "",
@@ -45,16 +57,35 @@ def sign_lines(refs, name_zh, name_en):
 
 
 def transfer_lines(ref, name_zh, name_en):
-    """轉乘井門邊的牌子：往哪條線。"""
-    return ["轉乘 Transfer", f"往 {ref} 線", name_zh or "", name_en or ""]
+    """The sign beside a transfer shaft door: which line it leads to.
+
+    The line in English sits under its Chinese, so the station name takes one
+    line in both languages (and in Chinese alone when both do not fit).
+    tests/test_transfer.py expects the second line to be exactly f"往 {ref} 線"."""
+    zh, en = name_zh or "", name_en or ""
+    both = [f"{zh} {f}" for f in SG.en_forms(en)] if zh and en else []
+    station = SG.fit(both + ([zh] if zh else SG.en_forms(en))) if (zh or en) else ""
+    return ["轉乘 Transfer", f"往 {ref} 線", _to_line_en(ref), station]
+
+
+def _to_line_en(ref):
+    """The English for 往 X 線 ("to line X"): the line's English name, shortened to fit."""
+    en = NW.LINE_NAMES.get(ref, (ref, ref))[1]
+    short = en.replace(" Line", "")
+    words = en.split(" ")
+    tail = " ".join(words[1:]) if len(words) > 2 else short    # Taoyuan Airport MRT -> Airport MRT
+    return SG.fit(["To " + en, "To " + short, "To " + tail, short, "To " + ref])
 
 
 def footprint(objs, used=None):
-    """把一批地標的占用格加進 Occupancy（Tile 用實際地板與牆，其餘用 bbox，
-    高度一律當成整根柱子）。
+    """Add the cells occupied by a batch of landmarks to an Occupancy (a Tile by
+    its actual floor and walls, anything else by its bbox, always as a full
+    column).
 
-    出入口井不能壓到台北車站的地下街 —— 中山地下街一路通到雙連，
-    中山站與雙連站的出入口井從地面挖下去，正好穿過它。
+    Exit shafts must not cut into Taipei Main Station's underground malls: the
+    Zhongshan underground mall runs all the way to Shuanglian, and the exit
+    shafts of Zhongshan and Shuanglian stations dig down from the ground right
+    through it.
     """
     used = EX.Occupancy() if used is None else used
     for o in objs:
@@ -71,8 +102,10 @@ def footprint(objs, used=None):
 
 
 def make_well(s, sign, sign_style=None):
-    """照計畫蓋一座出入口井。街面比穿堂高就從街上往下挖（地下站），
-    反過來就從街上往上爬（高架站）—— 出口牌一律立在街上那扇門邊。"""
+    """Build an exit shaft from a plan. If the street is above the concourse the
+    shaft digs down from the street (underground station); otherwise it climbs
+    up from the street (elevated station). The exit sign always stands by the
+    street door."""
     street = s["g0"] + 1
     if street > s["y_to"]:
         return BCC.ShaftStair(s["x0"], s["z0"], s["ux"], s["uz"], s["g0"], s["y_to"],
@@ -84,17 +117,24 @@ def make_well(s, sign, sign_style=None):
 
 
 class GroundGate:
-    """平面出入口：通道直接開到街上，門外接一段坡道與前庭。
+    """At-grade exit: the passage opens straight onto the street, with a ramp and
+    an apron outside the door.
 
-    高架站的橋下穿堂只比地面高 3～7 m，山坡上的出入口街面可能就在穿堂那個
-    高度前後兩公尺內。這時折返梯井蓋不出來：井的兩扇門開在同一面牆上，落差
-    不到三格井底的門洞只剩一格，門前的前庭又剛好清掉空橋的樓板（淡江大學的
-    預設出入口就是這樣「門口沒有接到街面」）。差 0～2 m 根本不需要井 ——
-    通道的盡頭就是門，門外每格升降一格接到街面，再鋪一小塊前庭。
+    An elevated station's under-viaduct concourse is only 3 to 7 m above the
+    ground, so on a hillside an exit's street level may be within two meters of
+    the concourse. A switchback shaft cannot be built there: its two doors are in
+    the same wall, with less than three blocks of drop the bottom door opening
+    shrinks to one block, and the apron in front of the door happens to clear
+    the skybridge floor (the default exit at Tamkang University ended up with
+    "the door not reaching the street" this way). A difference of 0 to 2 m needs
+    no shaft at all: the end of the passage is the door, the ground outside
+    rises or falls one block per cell to the street, and a small apron is paved.
 
-    座標系與 ShaftStair 一樣：(x0, z0) 是門那一格（通道的最後一格，地板由
-    通道鋪），u = (ux, uz) 指向街上，坡道與前庭在 a = 1..run、b = -half..half。
-    通道的地板要先蓋（通道的刷寬會蓋過 a = 1..2），這裡再把它們改成坡道。
+    The coordinates are those of ShaftStair: (x0, z0) is the door cell (the last
+    cell of the passage, whose floor the passage lays), u = (ux, uz) points to
+    the street, and the ramp and apron occupy a = 1..run, b = -half..half. The
+    passage floor is built first (the passage brush covers a = 1..2), and this
+    class then turns those cells into the ramp.
     """
 
     def __init__(self, x0, z0, ux, uz, street, level, sign=None,
@@ -102,7 +142,7 @@ class GroundGate:
                  sign_style=None):
         self.x0, self.z0 = int(x0), int(z0)
         self.ux, self.uz = int(round(ux)), int(round(uz))
-        self.street, self.level = int(street), int(level)   # 街面與穿堂的站立高度
+        self.street, self.level = int(street), int(level)   # Standing heights of the street and the concourse.
         self.sign = list(sign) if sign else None
         self.step, self.apron = step, apron
         self.run, self.half = int(run), int(half)
@@ -119,7 +159,8 @@ class GroundGate:
         return min(xs) - 1, min(zs) - 1, max(xs) + 1, max(zs) + 1
 
     def floor_at(self, a):
-        """門外第 a 格的地坪：從通道樓板每格升降一格接到街面，之後就是街面。"""
+        """Paving of cell a outside the door: one block up or down per cell from
+        the passage floor to the street, then the street level."""
         d = self.street - self.level
         sgn = (d > 0) - (d < 0)
         return self.level - 1 + sgn * min(a, abs(d))
@@ -133,7 +174,8 @@ class GroundGate:
                 w.set(x, y, z, blk)
                 for yy in range(y + 1, y + 4):
                     w.set(x, yy, z, BCC.AIR)
-        # 出口牌立在前庭旁邊、街上那一頭，牌面朝著從街上走過來的人
+        # The exit sign stands beside the apron at the street end, facing people
+        # walking in from the street.
         if self.sign and hasattr(w, "sign"):
             x, z = self._w(self.run, self.half + 1)
             w.set(x, self.street - 1, z, self.step)
@@ -143,13 +185,14 @@ class GroundGate:
 
 
 def make_gate(s, sign, sign_style=None):
-    """照計畫蓋一座平面出入口（exits.plan_station 的 gates 項目）。"""
+    """Build an at-grade exit from a plan (an item of gates in exits.plan_station)."""
     return GroundGate(s["x0"], s["z0"], s["ux"], s["uz"], s["g0"] + 1, s["y_to"],
                       sign=sign, sign_style=sign_style)
 
 
 def make_tile(cells, no_wall, level, kind, ground_at):
-    """一層的通道地板：地下站是隧道，其餘是玻璃空橋（地形比它低就架柱子）。"""
+    """One level's passage floor: a tunnel for an underground station, otherwise
+    a glass skybridge (on piers where the terrain is lower)."""
     ring = BCC.outer_ring(cells) - no_wall
     if kind == "tunnel":
         tile = BCC.Tile(cells, ring, level, {}, shopfront=False)
@@ -168,28 +211,30 @@ def make_tile(cells, no_wall, level, kind, ground_at):
 
 def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
                   verbose=True, no_transfer=(), no_default=(), colours=None):
-    """替所有車站蓋真實出入口，再替轉乘站接轉乘通道。
+    """Build the real exits of every station, then the transfer passages of transfer stations.
 
-    segs               cli 規劃好的路段（samples / ys / ground / stn / hw）
-    entrances_by_name  {站名: [(ref, x, z)]}
-    ground_at          f(x, z) -> 地面 y
-    skip               不處理的站名（台北車站一帶由地下街負責）
-    used               Occupancy，已被其他地標占用的格子（footprint() 的結果）
-    no_transfer        不接轉乘通道的站名（台北車站複合體靠地下街轉乘）
-    no_default         沒有出入口也不補預設出入口的站名（複合體由地下街的連絡梯進出）
-    colours            {路線: "#rrggbb"}（network.line_colours）：出口牌第一行上那條線的
-                       顏色、發光墨水（signage.exit_sign_lines）。None 就是舊的純文字牌
+    segs               the segments planned by the CLI (samples / ys / ground / stn / hw)
+    entrances_by_name  {station name: [(ref, x, z)]}
+    ground_at          f(x, z) -> ground y
+    skip               station names to leave alone (the underground malls handle the Taipei Main Station area)
+    used               an Occupancy of cells taken by other landmarks (the result of footprint())
+    no_transfer        station names that get no transfer passage (the Taipei Main Station complex transfers through the underground malls)
+    no_default         station names that get no default exit when they have none (the complex is entered by the underground malls' link stairs)
+    colours            {line: "#rrggbb"} (network.line_colours): the line color and glow ink for
+                       the first line of exit signs (signage.exit_sign_lines). None gives the old plain signs.
 
-    回傳 (objects, exits, report)：
-      exits   {(路段索引, 取樣索引): 井的數量}，cli 用它關掉樣板樓梯
-      report  {站名: dict(built, skipped, transfer)}
+    Returns (objects, exits, report):
+      exits   {(segment index, sample index): number of shafts}, which the CLI uses to turn off template stairs
+      report  {station name: dict(built, skipped, transfer)}
     """
     used = EX.Occupancy() if used is None else used
     occ = EX.index_segments(segs)
 
-    # 站體座標系用 stacked.station_samples：共用站體（西門）的是兩線中線的 frame，
-    # 出入口與轉乘通道都要接到那座箱涵的側牆，不是接到路線自己的中心線旁邊
-    boxes = collections.defaultdict(dict)          # 站名 -> {(li, bi): ...}
+    # Station box coordinates come from stacked.station_samples: for a shared
+    # station box (Ximen) the frame is the centerline between the two lines, and
+    # exits and transfer passages must connect to that box structure's side wall,
+    # not beside the line's own centerline.
+    boxes = collections.defaultdict(dict)          # Station name -> {(li, bi): ...}.
     labels = {}
     for li, sg in enumerate(segs):
         for bi, (full, name, en) in sg["stn"].items():
@@ -197,9 +242,9 @@ def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
             labels[(li, bi)] = (full, name, en)
 
     objs, exits, report = [], {}, {}
-    floors = collections.defaultdict(set)          # (li, bi, level) -> 地板格
+    floors = collections.defaultdict(set)          # (li, bi, level) -> floor cells.
     no_wall, kinds = {}, {}
-    wells = []                                     # 井要排在地板之後蓋
+    wells = []                                     # Shafts are built after the floors.
     n_default = n_tr = n_all = 0
 
     def interior_of(key):
@@ -213,7 +258,7 @@ def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
         return station_kind(int(sg["ys"][key[1]]), int(sg["ground"][key[1]]))
 
     def plan_exits(name, key, ents, used_):
-        """一座站體的出入口。回傳 (計畫, 井)。"""
+        """The exits of one station box. Returns (plan, shafts)."""
         li, bi = key
         sg = segs[li]
         plan = EX.plan_station(station_samples(sg, bi), sg["ys"], sg["ground"], bi,
@@ -242,7 +287,8 @@ def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
         return plan, out
 
     def plan_transfers(name, used_):
-        """一座轉乘站的所有站體串成一條鏈，逐對接。回傳 [(ka, kb, 結果, 井)]。"""
+        """Chain all station boxes of a transfer station and connect them pair by
+        pair. Returns [(ka, kb, result, shaft)]."""
         keys = sorted(boxes[name])
 
         def bx(key):
@@ -261,7 +307,7 @@ def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
             well = None
             if res["ok"] and res["well"] is not None:
                 x0, z0, dx, dz, top, bottom = res["well"]
-                # 上層的門通往哪條線，牌子就寫哪條
+                # Each door's sign names the line that door leads to.
                 (ta, la, _), (tb, lb, _) = res["legs"]
                 up_key, lo_key = (ka, kb) if la >= lb else (kb, ka)
                 fa, za, ea = labels[lo_key]
@@ -280,8 +326,9 @@ def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
         return out
 
     def plan_name(name, assigned, order, used_):
-        """一座車站（所有站體）的完整計畫。order "tr" 先接轉乘再接出入口，
-        "ex" 反過來。回傳 dict(score, wells, floors, exits, built, skipped, transfer)。"""
+        """The complete plan of one station (all its station boxes). Order "tr"
+        connects transfers first and then exits, "ex" the reverse. Returns
+        dict(score, wells, floors, exits, built, skipped, transfer)."""
         r = dict(score=0, wells=[], floors=collections.defaultdict(set), exits={},
                  built=[], skipped=[], transfer=None, n_default=0, open={})
         do_tr = name not in no_transfer and len(boxes[name]) >= 2
@@ -299,7 +346,8 @@ def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
                         r["exits"][key] = r["exits"].get(key, 0) + len(plan["built"])
                 if key in r["exits"] or name in no_default:
                     continue
-                # 沒有資料、或全部接不上：用預設位置的出入口，兩側各試一次
+                # No data, or none could be connected: try an exit at a default
+                # position, once on each side.
                 samples, ys, bi = boxes[name][key]
                 for e in EX.default_entrances(samples, ys, bi):
                     plan, ws = plan_exits(name, key, [e], used_)
@@ -321,9 +369,12 @@ def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
                     key = ka if tag == ka[0] else kb
                     r["floors"][(key[0], key[1], level)] |= cells
                 if well is None:
-                    # 同一層直接接：這片地板一頭在 A 站體、另一頭穿進 B 站體，
-                    # B 的穿堂裡也不准砌牆，否則洞口內側會被這片地板的外緣封死
-                    # （紅樹林 R/V 就是這樣：通道蓋好了，從淡水線那頭走不進去）
+                    # Direct connection on one level: this floor starts in box A
+                    # and runs into box B, so no wall may go up inside B's
+                    # concourse either, or the edge of this floor seals the inner
+                    # side of the opening (this happened to R/V at Hongshulin:
+                    # the passage was built but could not be entered from the
+                    # Tamsui line side).
                     r["open"].setdefault(ka, set()).update(interior_of(kb))
                     r["open"].setdefault(kb, set()).update(interior_of(ka))
                 else:
@@ -336,7 +387,8 @@ def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
             if do_tr:
                 transfer_pass()
         n_ok = sum(1 for t in r["transfer"] if t[2]["ok"]) if r["transfer"] else 0
-        # 一條轉乘通道抵四座出入口：少接一座出入口只是繞遠，兩座站體不通是斷的
+        # One transfer passage is worth four exits: a missing exit only means a
+        # longer walk, but two unconnected station boxes are a break.
         r["score"] = len(r["built"]) + 4 * n_ok
         return r
 
@@ -344,13 +396,15 @@ def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
         if name in skip:
             continue
         ents = entrances_by_name.get(name) or []
-        # 先併掉重複的節點，再分派到站體：同編號的兩個節點若分到兩座站體，
-        # 後規劃的那條通道一定撞上先蓋的那座井
+        # Merge duplicate nodes before assigning them to station boxes: if two
+        # nodes with the same number went to two boxes, the passage planned
+        # second would always hit the shaft built first.
         merged = [("/".join(g["refs"]), g["x"], g["z"])
                   for g in EX.merge_entrances(ents)]
         assigned = EX.assign_to_boxes(merged, boxes[name])
-        # 轉乘站兩種順序都試，留分數高的：先接轉乘通道的話井有地方放，
-        # 但可能擋掉一兩座出入口；先接出入口的話轉乘通道可能擠不進去
+        # Try both orders at a transfer station and keep the higher score:
+        # transfers first leaves room for the shaft but may block an exit or two;
+        # exits first may leave no room for the transfer passage.
         best = None
         orders = ("ex", "tr") if (name not in no_transfer and len(boxes[name]) >= 2) else ("ex",)
         for order in orders:
@@ -376,9 +430,10 @@ def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
                             transfer=[(ka, kb, res) for ka, kb, res, _ in r["transfer"]]
                             if r["transfer"] else None)
 
-    # ---- 地板（每座站體每一層一片），然後才是井與平面出入口：井要在地板之後蓋，
-    #      井壁才會把通道刷到的那一排補回去、門才開得出來；坡道要把通道刷過去的
-    #      那兩格樓板改成階梯 ----
+    # ---- Floors (one per level of each station box) first, then the shafts and
+    #      at-grade exits: shafts are built after the floors so their walls restore
+    #      the row the passage brushed over and their doors can open; the ramps
+    #      turn the two floor cells the passage brushed over into steps ----
     for (li, bi, level), cells in sorted(floors.items()):
         objs.append(make_tile(cells, no_wall[(li, bi)], level, kinds[(li, bi)], ground_at))
     objs += wells
@@ -388,17 +443,17 @@ def station_exits(segs, entrances_by_name, ground_at, skip=(), used=None,
         ng = sum(1 for o in wells if isinstance(o, GroundGate))
         ns = sum(len(r["skipped"]) for r in report.values())
         why = collections.Counter(s[3] for r in report.values() for s in r["skipped"])
-        print(f"  真實出入口：{len(exits)} 座站體共 {nb} 座"
-              + (f"（{nb - ng} 座樓梯井、{ng} 座平面出入口" if ng else "（")
-              + (f"；{n_default} 座是沒有資料的車站的預設出入口）" if n_default else "）")
-              + (f"，接不上的 {ns} 個（"
-                 + "、".join(f"{k} {v}" for k, v in why.most_common()) + "）"
+        print(f"  Real exits: {nb} in {len(exits)} station boxes"
+              + (f" ({nb - ng} stair shafts, {ng} at-grade exits" if ng else " (")
+              + (f"; {n_default} are default exits for stations without data)" if n_default else ")")
+              + (f"; {ns} could not be connected ("
+                 + ", ".join(f"{k}: {v}" for k, v in why.most_common()) + ")"
                  if ns else ""))
         bad = [(n, r["transfer"]) for n, r in report.items()
                if r["transfer"] and any(not t[2]["ok"] for t in r["transfer"])]
-        print(f"  轉乘通道：{n_tr}/{n_all} 條"
-              + (f"，接不上：" + "；".join(
-                  f"{n}（{t[2]['reason']}）" for n, ts in bad for t in ts if not t[2]["ok"])
+        print(f"  Transfer passages: {n_tr}/{n_all}"
+              + (f"; not connected: " + "; ".join(
+                  f"{n} ({t[2]['reason']})" for n, ts in bad for t in ts if not t[2]["ok"])
                  if bad else ""))
     return objs, exits, report
 

@@ -1,23 +1,29 @@
 #!/usr/bin/env python3
-"""新光摩天大樓（新光人壽保險摩天大樓）：244.15 m、地上 51 層，1993 年落成。
+"""Shin Kong Life Tower: 244.15 m, 51 floors above ground, completed in 1993.
 
-平面與量體照 OSM：主輪廓 way/204711206（62 個節點）之外，OSM 還把整棟樓拆成
-三十幾個 building:part —— 16 層、78.56 m 的百貨裙樓（新光三越站前店）繞著塔樓一圈，
-北面正中升到 18 層；塔身 50 層到 211.04 m，南北兩端 48 層，四個轉角一層一層退
-（48 層 203.36 m、46 層 195.68 m、44 層 187.36 m）；頂上再疊兩段
-（211.04→214.88 m、214.88→237.67 m）。這裡照每個 part 的 min_height / height 逐層
-算遮罩，量體就是 OSM 的量體。
+The plan and massing follow OSM. Besides the main outline way/204711206 (62 nodes), OSM
+splits the building into thirty-odd building:part elements: a 16-story, 78.56 m
+department-store podium (Shin Kong Mitsukoshi, Station Front store) wraps around the
+tower and rises to 18 stories at the middle of the north face; the tower body reaches
+211.04 m at 50 stories, its north and south ends 48 stories, and its four corners set
+back story by story (48 stories at 203.36 m, 46 at 195.68 m, 44 at 187.36 m); two more
+sections sit on top (211.04→214.88 m and 214.88→237.67 m). The mask is computed row by
+row from each part's min_height / height, so the massing is OSM's massing.
 
-長相照公開資料：
-  · 高度：天線 244.15 m、屋頂 238.15 m（中文維基「新光人壽保險摩天大樓」）
-  · 外牆：耐候的鋁板，玫瑰色 —— 取材自台灣與日本的國花（Wikipedia「Shin Kong Life
-    Tower」）；頂上是一座角錐（同上）
-  · 百貨：地下 2 層到地上 13 層是新光三越（中文維基），裙樓外牆是深褐色的石材
-  · 塔身：一層一條水平帶狀窗；轉角是鋸齒狀的退縮
-立面的比例（帶狀窗、裙樓石材、頂部較粉的顏色）是看公開照片抓的，沒有抄任何圖。
+The appearance follows public sources:
+  · Heights: antenna 244.15 m, roof 238.15 m (Chinese Wikipedia "Shin Kong Life Tower")
+  · Facade: weather-resistant aluminum panels in rose, drawn from the national flowers of
+    Taiwan and Japan (Wikipedia "Shin Kong Life Tower"); a pyramid on top (same source)
+  · Department store: Shin Kong Mitsukoshi occupies B2 to 13F (Chinese Wikipedia); the
+    podium facade is dark brown stone
+  · Tower body: one horizontal ribbon window per story; the corners step back in a
+    sawtooth
+The facade proportions (ribbon windows, podium stone, the pinker color at the top) were
+taken from public photographs; no drawing was copied.
 
-一樓大廳從北面（台北車站那一側）的門廳進去；站前廣場的出入口與地下街在禁區裡，
-寫到那些格子會被 Guard 擋掉。
+The ground-floor lobby is entered through the vestibule on the north face (the side
+facing Taipei Main Station). The exits and the underground mall under the station-front
+plaza are in keep-out zones, and Guard blocks any write to those cells.
 """
 import math
 
@@ -29,27 +35,33 @@ from mrt.application.attractions.kit import Attraction, Frame, Spot
 from mrt.domain import geometry as shapes
 
 MAIN = "way/204711206"
-TOWER_BODY = "way/644774181"        # 塔身（50 層、211.04 m），拿來定塔樓的中心與方位
+# Tower body (50 stories, 211.04 m): fixes the tower's center and orientation.
+TOWER_BODY = "way/644774181"
 
-PODIUM_TOP = 78.56                  # 16 層裙樓的頂
-TIP = 244                           # 天線頂（244.15 m）
-ROOF = 237                          # 頂上那一段（到 237.67 m）的最後一列：角錐從這裡起，238 m 上下是屋頂
-OBS_FLOOR = 46                      # 46 樓觀景台（1994～2006 年開放，中文維基）：整圈玻璃
-CROWN_FROM = 183.0                  # 44 層以上（第一道轉角退縮）顏色轉成較深的粉紅
+PODIUM_TOP = 78.56                  # Top of the 16-story podium.
+TIP = 244                           # Top of the antenna (244.15 m).
+# Last row of the top section (up to 237.67 m): the pyramid starts here;
+ROOF = 237
+                                    # the roof is at about 238 m.
+# 46F observatory (open 1994–2006, Chinese Wikipedia): glass all around.
+OBS_FLOOR = 46
+# From 44 stories up (the first corner setback) the color is a deeper pink.
+CROWN_FROM = 183.0
 
-# 材質
-PODIUM_A = "minecraft:polished_granite"       # 裙樓：深褐帶粉的石材
+# Materials
+PODIUM_A = "minecraft:polished_granite"       # Podium: dark brown stone with a pink cast.
 PODIUM_B = "minecraft:granite"
 PODIUM_WIN = "minecraft:gray_stained_glass"
-SHOP = "minecraft:light_gray_stained_glass"   # 一樓的店面櫥窗
-SHAFT = "minecraft:white_terracotta"          # 塔身：淡玫瑰色的鋁板
-BAND = "minecraft:cherry_planks"              # 帶狀窗上緣的粉紅線
-WIN = "minecraft:cyan_stained_glass"          # 灰藍色的帶狀窗
-CROWN = "minecraft:cherry_planks"             # 頂部：較粉的玫瑰色
+SHOP = "minecraft:light_gray_stained_glass"   # Ground-floor shop windows.
+SHAFT = "minecraft:white_terracotta"          # Tower body: pale rose aluminum panels.
+BAND = "minecraft:cherry_planks"              # Pink line above each ribbon window.
+WIN = "minecraft:cyan_stained_glass"          # Gray-blue ribbon windows.
+CROWN = "minecraft:cherry_planks"             # Top: a pinker rose.
 CROWN_LINE = "minecraft:pink_terracotta"
-LEDGE = "minecraft:smooth_quartz_slab[type=bottom,waterlogged=false]"   # 每道退縮的細挑簷
+# Thin overhang at each setback.
+LEDGE = "minecraft:smooth_quartz_slab[type=bottom,waterlogged=false]"
 ROOF_FLAT = "minecraft:smooth_stone"
-PYRAMID = "minecraft:brown_terracotta"        # 深色的角錐頂
+PYRAMID = "minecraft:brown_terracotta"        # Dark pyramid roof.
 FINIAL = "minecraft:gold_block"
 SLAB = "minecraft:smooth_stone"
 FLOOR1 = "minecraft:polished_diorite"
@@ -68,7 +80,7 @@ def _num(t, k):
 
 
 def _inside(poly, x, z):
-    """點在多邊形內（射線法）。"""
+    """Return whether a point lies inside a polygon (ray casting)."""
     n, c = len(poly), False
     for i in range(n):
         x1, z1 = poly[i]
@@ -79,8 +91,10 @@ def _inside(poly, x, z):
 
 
 def floor_rows():
-    """樓板列（離一樓樓板幾格）：1～16 樓是百貨，每層 78.56/16 = 4.91 m；
-    17 樓起每層 (211.04 − 78.56)/34 = 3.9 m，51 樓的頂 = 211.04 m（OSM）。"""
+    """Return the slab rows (blocks above the ground-floor slab).
+
+    Floors 1–16 are the department store at 78.56/16 = 4.91 m per story; from 17F up,
+    each story is (211.04 − 78.56)/34 = 3.9 m, and the top of 51F = 211.04 m (OSM)."""
     rows = [int(math.floor(PODIUM_TOP / 16 * k)) for k in range(16)]
     rows += [int(math.floor(PODIUM_TOP + 3.896 * (k - 16))) for k in range(16, 51)]
     return rows
@@ -104,14 +118,17 @@ class ShinKongTower(Attraction):
     height_m = 244.15
     margin = 12
 
-    # ---------------------------------------------------------------- 資料
+    # ---------------------------------------------------------------- Data
     def _ring(self, osm):
         f = self.feature(osm)
         return max(f["outer"], key=len) if f and f.get("outer") else None
 
     def parts(self):
-        """主輪廓裡的 building:part：[(osm, 外環, 底 m, 頂 m, 是雨庇)]。
-        沒有 height 的（門口的兩三層小量體）用層數 × 4.5 m；兩層以下的當雨庇蓋。"""
+        """Return the building:part elements inside the main outline.
+
+        Each entry is (osm, outer ring, bottom m, top m, is canopy). Parts without a height
+        (the two- or three-story volumes at the entrances) use levels × 4.5 m; those of two
+        stories or fewer are built as canopies."""
         main = self._ring(MAIN)
         out = []
         for f in self.features:
@@ -131,14 +148,16 @@ class ShinKongTower(Attraction):
             out.append((f["osm"], r, lo, hi, canopy))
         return out
 
-    # ---------------------------------------------------------------- 定案
+    # ---------------------------------------------------------------- Planning
     def plan(self, site):
         self.site = site
         main = self._ring(MAIN)
         mcx, mcz, _, hu, hv = HR.outline_axes(main)
         tcx, tcz, ang_osm, _, _ = HR.outline_axes(self._ring(TOWER_BODY))
-        # 塔身偏 −0.6°：整棟連同每個 part 繞塔身中心轉正（highrise.snap_angle），
-        # 主輪廓兩端最多挪 0.45 m；帶狀窗與窗櫺才會是水平、垂直的直線
+        # The tower body is skewed −0.6°: square up the whole building, every
+        # part included, about the tower body's center (highrise.snap_angle).
+        # The ends of the main outline move by at most 0.45 m, and the ribbon
+        # windows and mullions become straight horizontal and vertical lines.
         ang = HR.snap_angle(ang_osm)
         turn = ang - ang_osm
 
@@ -159,8 +178,8 @@ class ShinKongTower(Attraction):
                 continue
             (self.canopies if canopy else self.p).append((m, lo, hi))
         self.g0 = site.level(fr, self.foot)
-        # 整地要用的地面高度現在就查好（Site 會快取）：cli 在 plan 之後就把
-        # 「蓋出來的地面」的距離場丟掉了，build() 的時候再查會失敗
+        # Look up the ground heights needed for grading now (Site caches them): cli discards the
+        # distance field of the "built terrain" after plan, so looking them up in build() fails.
         self.near = kit.dilate(self.foot, 10) & ~self.foot
         site.grid(fr, self.foot | self.near)
         c, s = math.cos(ang), math.sin(ang)
@@ -170,13 +189,14 @@ class ShinKongTower(Attraction):
         uu, vv = fr.U - tu, fr.V - tv
         self.core = (np.abs(uu) <= 7) & (np.abs(vv) <= 10)
         self.lamps = HR.grid_mask(fr, 6, 3, tu, tv)
-        # 大廳：北門廳到電梯核前面，挑高兩層
+        # Lobby: from the north vestibule to the front of the elevator core, double height.
         self.lobby = (np.abs(uu) <= 8) & (vv < -10)
-        # 頂上那一段（214.88 -> 237.67 m）：角錐的底
+        # The top section (214.88 -> 237.67 m): the base of the pyramid.
         top = [m for m, lo, hi in self.p if hi > 230]
         self.top_mask = top[0] if top else fr.empty()
 
-        # 觀景點：站前廣場（北面、靠台北車站那一側）的西北角，整座樓框得進畫面
+        # Viewpoint: the northwest corner of the station-front plaza (the north side, facing
+        # Taipei Main Station), with the whole building in frame.
         x0 = min(p[0] for p in main)
         z0 = min(p[1] for p in main)
         vx, vz = int(math.floor(x0)) - 36, int(math.floor(z0)) - 36
@@ -186,7 +206,8 @@ class ShinKongTower(Attraction):
         down = math.degrees(math.atan2(vy + 1.62 - self.g0, d))
         yaw, _ = kit.look(vx, vy, vz, tcx, self.g0 + 100, tcz)
         lx, lz = fr.cell(tu, tv - 14.0)
-        self.logo_row = 40                                       # 北面裙樓 8、9 樓之間的金色標誌
+        # Gold emblem on the north podium, 8F–9F.
+        self.logo_row = 40
         self._spots = [
             Spot("", vx, vy, vz, yaw, round(-(up - down) / 2.0, 1), self.name_zh, self.name_en),
             Spot("lobby", lx, self.g0 + 1, lz, round(fr.yaw(0, -1), 1), 0.0,
@@ -194,15 +215,22 @@ class ShinKongTower(Attraction):
         ]
 
     def part_ring(self, osm):
-        """某個 OSM 元素轉正之後的外環（plan 之後才有；測試拿來比對蓋出來的量體）。"""
+        """Return an OSM element's outer ring after squaring up.
+
+        Available after plan; tests compare it with the built massing."""
         return self._fix(self._ring(osm))
 
     def plaque(self):
         return [self.name_zh, self.name_en, "244 m，1993年落成", "地上51層·地下7層"]
 
-    # ---------------------------------------------------------------- 蓋
+    def plaque_en(self):
+        return ["244 m high, completed in 1993", "244 m high, 1993"]
+
+    # ---------------------------------------------------------------- Building
     def mass(self, yy):
-        """第 yy 列的量體：所有涵蓋這個高度的 part 取聯集；owner 是這一格最高那個 part 的頂（m）。"""
+        """Return the massing of row yy: the union of all parts spanning that height.
+
+        owner is the top (m) of the tallest part covering each cell."""
         t = yy + 0.5
         m = self.fr.empty()
         owner = np.zeros(self.fr.shape)
@@ -240,7 +268,8 @@ class ShinKongTower(Attraction):
             podium = sh & (owner <= 90)
             tower = sh & (owner > 90)
             layers = []
-            # 裙樓（百貨）：深褐石材，一層一排小窗；一樓是店面櫥窗
+            # Podium (department store): dark brown stone, one row of small windows per story;
+            # shop windows on the ground floor.
             if yy <= 4:
                 layers += [(podium, SHOP), (podium & col4, PODIUM_A)]
             elif kr == 0:
@@ -249,15 +278,17 @@ class ShinKongTower(Attraction):
                 layers += [(podium, PODIUM_B), (podium & col3, PODIUM_WIN)]
             else:
                 layers += [(podium & panel, PODIUM_A), (podium & ~panel, PODIUM_B)]
-            # 塔身：淡玫瑰色鋁板 + 一層一條帶狀窗；44 層以上顏色轉成較深的粉紅
+            # Tower body: pale rose aluminum panels plus one ribbon window per story; from 44
+            # stories up the color turns a deeper pink.
             crown = yy + 0.5 >= CROWN_FROM
             if yy < PODIUM_TOP:
-                # 裙樓高度以內露出來的塔身（西面 4 層小量體上方）
+                # Tower body exposed below the podium height
+                # (above the 4-story volume on the west side).
                 layers.append((tower, SHAFT if kr in (0, 3) else WIN))
             elif k == OBS_FLOOR and kr > 0:
                 layers.append((tower, WIN))
             elif not crown:
-                # 一層一條連續的帶狀窗，每 6 m 一根窄窗櫺
+                # One continuous ribbon window per story, with a narrow mullion every 6 m.
                 if kr == 0:
                     layers.append((tower, SHAFT))
                 elif kr in (1, 2):
@@ -272,15 +303,16 @@ class ShinKongTower(Attraction):
                 else:
                     layers += [(tower, CROWN), (tower & col3, WIN)]
             HR.paint_layers(w, fr, layers, y)
-            # 屋頂與退縮的平台
+            # Roofs and setback terraces.
             cap = m & ~mn & ~sh
             HR.paint(w, fr, cap, y, ROOF_FLAT)
             HR.paint(w, fr, sh & ~mn, y, SHAFT if yy >= PODIUM_TOP else PODIUM_A)
-            # 每道退縮的上緣外面一圈細挑簷（44、46、48、50 層的鋸齒轉角看得出來）
+            # A thin overhang around the top edge of each setback (visible on the sawtooth corners at
+            # 44, 46, 48 and 50 stories).
             if yy >= 150 and (m & ~mn).any():
                 eave = kit.dilate(m & ~mn, 1) & ~m
                 HR.paint(w, fr, eave, y + 1, LEDGE)
-            # 樓板、燈、電梯核
+            # Slabs, lamps and the elevator core.
             inner = m & ~sh & ~cap
             if yy in FLOOR_OF and yy > 0:
                 sl = inner
@@ -295,7 +327,7 @@ class ShinKongTower(Attraction):
         self._lobby(w)
         self._canopies(w)
 
-    # ---- 頂：角錐（238 -> 243 m）與金色的尖頂（244 m）----
+    # ---- Top: the pyramid (238 -> 243 m) and the gold finial (244 m) ----
     def _crown(self, w):
         fr, g0 = self.fr, self.g0
         tm = self.top_mask
@@ -306,7 +338,7 @@ class ShinKongTower(Attraction):
         cv = float(fr.V[tm].mean())
         half = max(float(np.abs(fr.U[tm] - cu).max()), float(np.abs(fr.V[tm] - cv).max()))
         cheb = np.maximum(np.abs(fr.U - cu), np.abs(fr.V - cv))
-        rise = TIP - 1 - ROOF                      # 角錐 237 -> 242 m，243 m 是金色的頂
+        rise = TIP - 1 - ROOF                      # Pyramid 237 -> 242 m; 243 m is the gold top.
         for i in range(rise):
             r = half + 0.5 - (half / (rise - 0.5)) * i
             HR.paint(w, fr, (cheb <= r) & kit.dilate(tm, 1), g0 + ROOF + i, PYRAMID)
@@ -314,7 +346,7 @@ class ShinKongTower(Attraction):
         w.set(x, g0 + TIP - 1, z, FINIAL)
         w.set(x, g0 + TIP, z, "minecraft:lightning_rod[facing=up,powered=false]")
 
-    # ---- 北面裙樓的金色標誌（橢圓形的「光」字章）----
+    # ---- Gold emblem on the north podium (an oval badge with the character guang, "light") ----
     def _logo(self, w):
         fr, g0 = self.fr, self.g0
         tu, _ = self.tuv
@@ -335,7 +367,7 @@ class ShinKongTower(Attraction):
                     x, z = fr.cell(tu + du, face - 1.0)
                     w.set(x, g0 + self.logo_row + dy, z, FINIAL if e > 0.35 or dy else "minecraft:white_concrete")
 
-    # ---- 一樓大廳：北面門廳開門，挑高兩層、有燈 ----
+    # ---- Ground-floor lobby: doors in the north vestibule, double height, lit ----
     def _lobby(self, w):
         fr, g0 = self.fr, self.g0
         m1, _ = self.mass(1)
@@ -357,15 +389,17 @@ class ShinKongTower(Attraction):
                     xx, zz = fr.cell(tu + s, hit + dd)
                     w.set(xx, g0 + 1, zz, kit.AIR)
                     w.set(xx, g0 + 2, zz, kit.AIR)
-        # 大廳的燈：二樓樓板挖掉之後，天花在三樓樓板；地坪嵌一圈燈
+        # Lobby lights: with the 2F slab removed, the ceiling is the 3F slab; a ring of lamps is
+        # set into the paving.
         HR.paint(w, fr, self.lobby & m1 & self.lamps, g0, LAMP)
         HR.paint(w, fr, self.lobby & m1 & self.lamps, g0 + FLOOR_ROWS[2], LAMP)
 
-    # ---- 門口雨庇：頂板與柱子，底下走得過去 ----
+    # ---- Entrance canopies: a roof slab on posts, walkable underneath ----
     def _canopies(self, w):
         fr, g0 = self.fr, self.g0
         tu, _ = self.tuv
-        # 柱子每 5 m 一根，大門前面那條走道（正中 5 m 寬）不立柱
+        # One post every 5 m, none in the walkway in front of
+        # the main door (5 m wide at the middle).
         post = HR.grid_mask(fr, 5, 0) & ~(np.abs(fr.U - tu) <= 2.5)
         for m, lo, hi in self.canopies:
             m = m & ~self.mass(1)[0]
@@ -375,7 +409,7 @@ class ShinKongTower(Attraction):
             for yy in range(1, 5):
                 HR.paint(w, fr, kit.ring(m) & post, g0 + yy, POST)
 
-    # ---- 站前廣場：樓前面（北側）鋪石板到觀景點那一帶 ----
+    # ---- Station-front plaza: pave from the north front of the building to the viewpoint ----
     def _plaza(self, w):
         self.site.prepare(w, self.fr, self.near, self.g0, top=PLAZA, clear=0)
 

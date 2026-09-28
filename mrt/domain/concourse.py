@@ -1,47 +1,58 @@
 #!/usr/bin/env python3
-"""地下人行動線：把 OSM 的室內通道折線整理成「可以照著蓋」的計畫。
+"""Underground pedestrian routes: turns OSM indoor corridors into a plan that can be built as is.
 
-這一層全是純函式，不碰存檔也不寫方塊。輸入是投影好的折線與出入口座標，
-輸出是通道中心線、出入口接駁段與垂直連接點。
+Despite the file name, this module models the underground malls, not a station's
+concourse (the fare-gate level).
 
-三件在資料裡踩到、必須在這裡處理掉的事：
+Everything here is a pure function; no world save is touched and no block written.
+The input is projected polylines and exit coordinates; the output is corridor
+centerlines, exit connector segments and vertical connection points.
 
-1. **OSM 的 level 不是絕對樓層。** 台北地下街標 level=-2、站前地下街標
-   level=-2 但 layer=-1、中山地下街標 level=-1 —— 三者實際上都是 B1，
-   彼此走過去只要兩百公尺。level 是各測繪聚落自己的基準，跨聚落比較沒有意義。
-   所以這裡不拿 level 當高程，只拿它判斷「這條線在不在地下」。
+Three problems found in the data that must be dealt with here:
 
-2. **端點沒接起來。** 台北車站一帶有 199 個懸空端點，其中 71 個離另一個
-   節點不到 5 m —— 那是測繪時沒接上，不是真的斷開。不先併點的話，
-   8.8 km 的連通網會碎成 60 塊。
+1. **OSM's level is not an absolute floor.** Taipei City Mall is tagged level=-2,
+   Station Front Metro Mall level=-2 but layer=-1, and Zhongshan Metro Mall level=-1,
+   yet all three are in fact B1, and walking from one to another takes only two
+   hundred meters. Each cluster of mappers uses its own datum for level, so comparing
+   across clusters means nothing. Level is therefore not used as an elevation here,
+   only to decide whether a way is underground.
 
-3. **出入口不一定落在通道上。** 台北地下街是五條中心線，沿線的 Y9~Y20、
-   Y22~Y28 全部離線 9~42 m，因為橫向的聯絡通道沒有畫。這些要自己補一段。
+2. **Endpoints are not joined.** Around Taipei Main Station there are 199 dangling
+   endpoints, 71 of them less than 5 m from another node: the mappers failed to join
+   them, and the corridors are not really broken. Without merging nodes first, the
+   8.8 km connected network falls apart into 60 pieces.
 
-自我測試: ./.venv/bin/python tests/test_concourse.py
+3. **Exits do not always lie on a corridor.** Taipei City Mall is five centerlines,
+   and exits Y9~Y20 and Y22~Y28 along it all lie 9~42 m off the line, because the
+   cross passages were never drawn. A connector has to be added for each of them.
+
+Self-test: ./.venv/bin/python tests/test_concourse.py
 """
 import math
 import re
 
-# 數字：可有負號、可有小數點
+# A number: optional minus sign, optional decimal point
 _NUM = r"-?\d+(?:\.\d+)?"
 _RANGE = re.compile(r"^(%s)-(%s)$" % (_NUM, _NUM))
 _LEAD = re.compile(r"^(%s)" % _NUM)
 
 
 def parse_level(value):
-    """OSM 的 level 標籤 -> (最低樓層, 最高樓層)；解析不出來回 None。
+    """Map an OSM level tag to (lowest floor, highest floor); return None if it cannot parse.
 
-    實際遇到的寫法（台北車站一帶全部出現過）：
-      "-1"          單一樓層
-      "-1;0"        分號清單，順序不保證排序（"0;-0.5;-1" 也有）
-      "-2--1"       範圍。減號同時當負號與分隔號，兩端各錨一次才切得對
-      "-2--0"       -0 要正規化成 0
-      "-1:0;1;2..." 冒號是分號打錯（中山某座百貨電梯）
-      "5A"          樓層代號帶字母後綴，取前面的數字
+    Forms found in practice (all of them occur around Taipei Main Station):
+      "-1"          A single floor
+      "-1;0"        A semicolon list, not necessarily sorted ("0;-0.5;-1" also occurs)
+      "-2--1"       A range. The minus sign is both the negative sign and the separator,
+                    so it splits correctly only when both ends are anchored
+      "-2--0"       -0 must be normalized to 0
+      "-1:0;1;2..." The colon is a mistyped semicolon (an elevator in a Zhongshan department
+                    store)
+      "5A"          A floor code with a letter suffix; take the leading number
 
-    樓梯與電梯要用 (最低, 最高) 當作「它連通的兩端」—— 120 條樓梯裡只有
-    6 條標了 step_count，級數是問不到的，只能從樓層差反推。
+    Stairs and elevators use (lowest, highest) as the two ends they connect: only 6 of
+    120 stairways are tagged with step_count, so the number of steps cannot be looked
+    up and must be inferred from the floor difference.
     """
     if not value:
         return None
@@ -60,25 +71,27 @@ def parse_level(value):
             levels.append(float(m.group(1)))
     if not levels:
         return None
-    return min(levels) + 0.0, max(levels) + 0.0        # +0.0 把 -0.0 收成 0.0
+    return min(levels) + 0.0, max(levels) + 0.0        # +0.0 turns -0.0 into 0.0
 
 
 def underground(tags):
-    """這條 way 算不算地下人行動線。
+    """Tell whether this way counts as an underground pedestrian route.
 
-    用 level 判斷，不用 indoor=yes —— 忠孝新生站旁有一所大學把校舍室內圖
-    畫得很完整，92 條 corridor、1.2 km，level 全是 0~14。照 indoor 收的話
-    會在捷運站上面蓋出一棟十四層的學校。
+    It decides by level, not indoor=yes. A university next to Zhongxiao Xinsheng station
+    has mapped the interiors of its buildings in full: 92 corridors, 1.2 km, all at
+    level 0~14. Collecting by indoor would build a fourteen-story school on top of the
+    metro station.
     """
     lv = parse_level(tags.get("level"))
     if lv is not None:
         lo, hi = lv
-        return lo < 0 and hi <= 0        # 通到 1 樓以上的（百貨電扶梯）不要
-    # 沒有 level 但標了隧道：馬路底下的人行地下道，也算
+        return lo < 0 and hi <= 0        # Exclude anything reaching the ground floor or above
+                                         # (department store escalators)
+    # No level but tagged as a tunnel: a pedestrian underpass beneath a road also counts
     return tags.get("tunnel") in ("yes", "building_passage")
 
 
-# ---------- 併點與連通 ----------
+# ---------- Node merging and connectivity ----------
 
 class _Union:
     def __init__(self):
@@ -98,10 +111,10 @@ class _Union:
 
 
 def merge_nodes(coords, tol=3.0):
-    """把相距 tol 公尺以內的節點併成一個。回傳 {原節點: 代表節點}。
+    """Merge nodes within tol meters of each other. Return {original node: representative node}.
 
-    tol 給 3 m：實測 2~3 m 能收掉大部分沒接上的端點，5 m 全收但會開始把
-    真的隔著一道牆的兩條通道黏在一起。
+    tol is 3 m: measured, 2~3 m catches most of the unjoined endpoints, while 5 m catches
+    all of them but starts gluing together two corridors that really are separated by a wall.
     """
     u = _Union()
     grid = {}
@@ -130,10 +143,10 @@ def merge_nodes(coords, tol=3.0):
 def build_graph(ways, tol=3.0):
     """ways: [{"nodes": [id...], "points": [[x, z], ...]}, ...]
 
-    回傳 (pos, adj, edges)：
-      pos   {代表節點: (x, z)}          併點後的座標（同群取平均）
-      adj   {代表節點: {鄰居, ...}}
-      edges [(a, b, way索引)]           去掉自環與重複
+    Return (pos, adj, edges):
+      pos   {representative node: (x, z)}           Merged coordinates (the mean of each group)
+      adj   {representative node: {neighbor, ...}}
+      edges [(a, b, way index)]                     Without self-loops or duplicates
     """
     coords = {}
     for w in ways:
@@ -165,7 +178,7 @@ def build_graph(ways, tol=3.0):
 
 
 def components(pos, adj):
-    """連通分量，大的在前。回傳 [set(節點), ...]"""
+    """Return the connected components, largest first: [set(nodes), ...]."""
     seen, out = set(), []
     for start in pos:
         if start in seen:
@@ -185,11 +198,12 @@ def components(pos, adj):
 
 
 def main_component(pos, adj, near=(0.0, 0.0), radius=400.0):
-    """挑出要蓋的那一座車站的通道網路。
+    """Pick the corridor network of the station being built.
 
-    不能只挑「離 near 最近的分量」—— 台北車站正上方就有一條兩個節點的
-    孤立通道，那樣會選到它，然後只蓋出 17 公尺的地下街。
-    正確的問法是「近處的分量裡最大的那個」。
+    Picking the component nearest to near is not enough: directly above Taipei Main
+    Station there is an isolated two-node corridor, which that rule would pick, building
+    only 17 meters of underground mall. The right question is which nearby component is
+    the largest.
     """
     comps = components(pos, adj)
     if not comps:
@@ -200,15 +214,17 @@ def main_component(pos, adj, near=(0.0, 0.0), radius=400.0):
 
 
 def bridge_gaps(pos, adj, edges, max_gap=25.0):
-    """把離得很近卻沒接起來的分量接上，回傳補的邊 [(a, b)]。
+    """Join components that are close but not connected; return the added edges [(a, b)].
 
-    OSM 台北車站一帶有 199 個懸空端點；merge_nodes 收掉 3 m 以內的，
-    剩下的是真的隔了一段沒畫 —— 例如北門機捷連通道整條是孤立的，
-    但它的東端就在台北地下街西段旁邊二十幾公尺。這種缺口補起來是還原
-    現實（走得過去），不補的話地下街會少掉一整條分支。
+    OSM has 199 dangling endpoints around Taipei Main Station. merge_nodes catches those
+    within 3 m; the rest really do have an undrawn gap. For example, the Beimen passage
+    to the Airport MRT is entirely isolated, yet its east end is only twenty-odd meters
+    from the west section of Taipei City Mall. Closing such gaps restores reality (you
+    can walk through); left open, the underground mall loses a whole branch.
 
-    只補到「目前最大的那一團」，而且一次補一條、補完重算，
-    免得把兩團互相都不該接的東西串成一條。
+    Edges are added only to the current largest cluster, one at a time with a recount
+    after each, so that two clusters that should not be joined to each other are not
+    strung together.
     """
     added = []
     comps = components(pos, adj)
@@ -237,17 +253,17 @@ def bridge_gaps(pos, adj, edges, max_gap=25.0):
     return added
 
 
-# ---------- 出入口接駁 ----------
+# ---------- Exit connectors ----------
 
 def snap_entrances(pos, group, entrances, radius=60.0):
-    """把出入口接到最近的通道節點上。
+    """Connect each exit to the nearest corridor node.
 
-    回傳 (connected, orphan)：
-      connected [(ref, ex, ez, 節點, 距離)]   distance 0 表示出入口本身就是節點
-      orphan    [(ref, ex, ez)]               radius 內找不到通道的
+    Return (connected, orphan):
+      connected [(ref, ex, ez, node, distance)]   A distance of 0 means the exit is itself a node
+      orphan    [(ref, ex, ez)]                   Exits with no corridor within radius
 
-    radius 給 60 m：實測 30 m 接得到六成、50 m 八成。再放寬就會把隔壁站的
-    出入口接到不相干的通道上。
+    radius is 60 m: measured, 30 m connects 60% of exits and 50 m connects 80%. Any wider
+    and the exits of the neighboring station get connected to unrelated corridors.
     """
     cand = [(n, pos[n]) for n in group]
     connected, orphan = [], []
@@ -265,7 +281,7 @@ def snap_entrances(pos, group, entrances, radius=60.0):
 
 
 def corridor_lines(pos, edges, group):
-    """要蓋的通道中心線段：[((x0, z0), (x1, z1)), ...]，只留在 group 裡的。"""
+    """Return the corridor centerlines to build, [((x0, z0), (x1, z1)), ...], only within group."""
     out = []
     for a, b, _ in edges:
         if a in group and b in group:
@@ -274,7 +290,8 @@ def corridor_lines(pos, edges, group):
 
 
 def degree(adj, group):
-    """節點分歧度，用來決定哪裡要放指標牌（三岔以上才值得立牌）。"""
+    """Return the degree of each node, used to decide where wayfinding signs go (only a junction
+    of three or more ways merits one)."""
     return {n: len(adj.get(n, ())) for n in group}
 
 
@@ -283,15 +300,18 @@ def total_length(lines):
 
 
 def outward(pos, adj, node, ex, ez):
-    """出入口樓梯該往哪個方向爬（四個正交方向之一）：背對通道。
+    """Return the orthogonal direction the exit stair climbs in: away from the corridor.
 
-    出入口常常「就是」通道的端點節點 —— 台北車站的 M1、M3、M8、Y7、Z2
-    都是這樣，出入口減節點是零向量，方向無從決定。隨便挑一個的話樓梯會
-    沿著通道往回爬，把自己要接上的那條通道整段覆寫掉，蓋出一個誰也走不到的
-    死胡同（實測這五個出入口各自成為一個連通分量）。
+    An exit is often the corridor's end node itself. At Taipei Main Station, M1, M3, M8,
+    Y7 and Z2 are all like this: the exit minus the node is the zero vector, so the
+    direction is undefined. With an arbitrary choice the stair climbs back along the
+    corridor, overwriting the very corridor it should connect to, and builds a dead end
+    nobody can reach (measured, each of these five exits became a connected component
+    of its own).
 
-    正解是看鄰居：通道從哪個方向過來，樓梯就往反方向爬。
-    出入口離節點夠遠時（有補接駁段）則直接沿接駁段的方向繼續往外。
+    The fix is to look at the neighbors: the stair climbs away from the direction the
+    corridor comes from. When the exit is far enough from the node (with a connector
+    added), the stair simply continues outward along the connector.
     """
     nx, nz = pos[node]
     vx, vz = ex - nx, ez - nz

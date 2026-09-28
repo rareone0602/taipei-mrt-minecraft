@@ -1,36 +1,59 @@
 #!/usr/bin/env python3
-"""圓山大飯店（The Grand Hotel）：劍潭山腰、面向基隆河的十四層宮殿式大樓。
+"""The Grand Hotel: a 14-story palace-style block on the slope of Jiantan
+Mountain, facing the Keelung River.
 
-公開的事實（只取數字與形制，文字與圖片都沒有抄進來）：
-  · 主樓 1973 年 10 月 10 日落成，建築師楊卓成；高 87 m、14 層，曾是全台最高的建築
-    （1973–1981）—— 維基百科「圓山大飯店」、英文維基 Grand Hotel (Taipei)
-  · 「紅柱金瓦」：丹朱大圓柱、金黃色琉璃瓦；飛簷斗拱承托出簷 —— 圓山大飯店官網
-    （about.aspx）、臺北市政府英文網站 The Grand Hotel 條目
-  · 屋頂是歇山式 —— 維基百科。照片上看得出是重簷：大樓頂上一圈腰簷（下簷），
-    退進一層白石欄杆的迴廊之後才是歇山頂；兩端的山花是紅底金邊，正脊兩端有吻獸
-  · 正面：通貫十二層的紅柱，每層一道白色的陽台板邊與紅色欄杆，內退的客房外牆；
-    正中是兩重簷的門廊（車子開得到門口），前面兩座大台階夾著花園，往下接前庭廣場
-    （Wikimedia Commons 的正面照：Grand Hotel Taipei front view 20141015 等）
+Public facts (only numbers and forms are taken; no text or images are copied):
+  · The main block was completed on October 10, 1973, to a design by the architect
+    Yang Cho-cheng; it is 87 m tall with 14 stories and was once the tallest building
+    in Taiwan (1973–1981). Sources: the Chinese and English Wikipedia articles
+    "Grand Hotel (Taipei)".
+  · "Red columns and golden tiles": vermilion round columns and golden-yellow glazed
+    tiles, with deep eaves carried on dougong brackets. Sources: the Grand Hotel's
+    official site (about.aspx) and the Taipei City Government English site's entry
+    "The Grand Hotel".
+  · The roof is a xieshan (hip-and-gable) roof (Wikipedia). Photos show it is
+    double-eaved: a skirt eave (the lower eave) runs around the top of the block,
+    and the xieshan roof rises only after a gallery with a white stone balustrade
+    set back one story. The gable pediments at both ends are red with gold edges,
+    and both ends of the main ridge carry ridge-end ornaments (chiwen).
+  · Front: red columns running through twelve stories; on every story a white
+    balcony slab edge and a red railing, with the guest-room wall set back behind.
+    At the center is a double-eaved portico that cars can drive up to, with two
+    grand stairs in front flanking a garden, leading down to the forecourt plaza
+    (front photos on Wikimedia Commons: "Grand Hotel Taipei front view 20141015"
+    and others).
 
-位置、方位、平面：OSM way/25202548「主樓」（building:levels=14）。輪廓的主軸 21°（東偏南），
-長 110 m、深 56 m，南面正中凸出 41 m × 17 m 的門廊 —— 這裡從輪廓自動量出來，
-不寫死。立面的高度分配（照片比例，下簷約在 49 m、上簷約在 63 m）：
+Position, orientation and plan: OSM way/25202548 "main block" (building:levels=14).
+The outline's principal axis is 21° (east by south), 110 m long and 56 m deep, with a
+41 m × 17 m portico projecting from the middle of the south face. These are measured
+from the outline automatically, not hard-coded. Height allocation of the facade
+(photo proportions; the lower eave at about 49 m, the upper eave at about 63 m):
 
-   y = g0 + 0     一樓（大廳、門廊車道）
-          4..40  二～十一樓，每層 4 m：白色陽台板、紅欄杆、內退的客房牆；紅柱通到 43
-          44..47 十二樓：柱頭的額枋，斗拱三跳、一跳比一跳外挑
-          48..53 腰簷（下簷）起翹，簷口外挑 6.5 m
-          53..62 十三、十四樓：白石欄杆迴廊、退縮的上層牆、斗拱
-          63..84 歇山頂（上簷外挑 5 m），正脊 85，吻獸頂到 87
+   y = g0 + 0     ground floor (lobby, portico driveway)
+          4..40  floors 2 to 11, 4 m each: white balcony slabs, red railings,
+                 set-back guest-room walls; the red columns reach 43
+          44..47 floor 12: the architrave on the column heads; dougong brackets
+                 in three tiers, each projecting further than the one below
+          48..53 skirt eave (lower eave) with upturned corners, projecting 6.5 m
+          53..62 floors 13 and 14: gallery with a white stone balustrade,
+                 set-back upper wall, dougong brackets
+          63..84 xieshan roof (upper eave projecting 5 m), main ridge at 85,
+                 ridge-end ornaments up to 87
 
-基地（劍潭山的南坡，DEM 在輪廓內高低差 7 m）：一樓樓板取輪廓內地面的中位數；
-上層平台（g0）＝主樓外擴 6 m 加門廊前的車道；兩座大台階與兩側坡道往下 5 m 到
-前庭廣場；廣場前緣接一條順著地形往下的車道。比地面高的填石、邊緣砌灰色擋土牆
-（照片上的灰色花崗石牆），比地面低的削平、削出來的坡面也砌擋土牆；落差 2 m 以上
-的邊緣立白石欄杆。
+Site (the south slope of Jiantan Mountain; the DEM varies by 7 m within the outline):
+the ground floor slab takes the median ground height inside the outline. The upper
+terrace (g0) is the main block grown by 6 m plus the driveway in front of the portico.
+Two grand stairs and ramps on both sides descend 5 m to the forecourt plaza, and a
+driveway follows the terrain down from the plaza's front edge. Where the site is
+above the ground it is filled with stone and the edges get gray retaining walls (the
+gray granite walls in the photos); where it is below the ground it is cut level and
+the cut faces also get retaining walls. Edges with a drop of 2 m or more get a white
+stone balustrade.
 
-後棟（OSM relation/10098399）：主樓後面沿著坡往上的長樓。照片上是紅柱、青綠額枋、
-紅瓦的四層樓；這裡每 24 m 切一段、各段樓板取自己那一段地面的中位數，一階一階往上。
+Rear wing (OSM relation/10098399): the long building behind the main block that
+climbs the slope. Photos show four stories with red columns, blue-green architraves
+and red tiles. It is cut into 24 m sections here, each floored at the median ground
+height of its own section, so it steps up the hill.
 """
 import math
 
@@ -40,70 +63,79 @@ from mrt.application.attractions import kit
 from mrt.application.attractions.kit import (AIR, Attraction, Frame, Painter, Spot,
                                             dilate, erode, principal_angle, ring)
 
-# ---- 材質 ----
-TILE = "minecraft:raw_gold_block"           # 金黃琉璃瓦
-RIDGE = "minecraft:gold_block"              # 屋脊、垂脊
-GOLD = "minecraft:gold_block"               # 吻獸、博風、匾額
-RED = "minecraft:red_concrete"              # 丹朱圓柱、山花
-RAIL = "minecraft:polished_cinnabar_wall"   # 陽台的紅欄杆（一根根的柱頭，看得穿）
-BEAM = "minecraft:warped_planks"            # 額枋（青綠彩畫）
-BRACKET = ("minecraft:dark_prismarine", "minecraft:prismarine_bricks")   # 斗拱（青、綠相間）
-SOFFIT = "minecraft:dark_prismarine"        # 簷下
-BAND = "minecraft:smooth_quartz"            # 陽台板邊（白）
-WALL = "minecraft:white_terracotta"         # 內退的客房外牆
-GLASS = "minecraft:gray_stained_glass"      # 客房落地窗
+# ---- Materials ----
+TILE = "minecraft:raw_gold_block"           # Golden-yellow glazed tiles
+RIDGE = "minecraft:gold_block"              # Main ridge and hip ridges
+GOLD = "minecraft:gold_block"               # Ridge-end ornaments, bargeboards, name board
+RED = "minecraft:red_concrete"              # Vermilion round columns, gable pediments
+# Red balcony railing (a row of posts you can see through)
+RAIL = "minecraft:polished_cinnabar_wall"
+BEAM = "minecraft:warped_planks"            # Architrave (blue-green painted decoration)
+# Dougong brackets (alternating blue and green)
+BRACKET = ("minecraft:dark_prismarine", "minecraft:prismarine_bricks")
+SOFFIT = "minecraft:dark_prismarine"        # Eave soffit
+BAND = "minecraft:smooth_quartz"            # Balcony slab edge (white)
+WALL = "minecraft:white_terracotta"         # Set-back guest-room wall
+GLASS = "minecraft:gray_stained_glass"      # Guest-room floor-to-ceiling windows
 LOBBY_GLASS = "minecraft:light_gray_stained_glass"
-FLOOR = "minecraft:smooth_stone"            # 各層樓板
-LOBBY_FLOOR = "minecraft:polished_diorite"  # 大廳石材地坪
+FLOOR = "minecraft:smooth_stone"            # Floor slabs
+LOBBY_FLOOR = "minecraft:polished_diorite"  # Stone paving of the lobby
 CARPET = "minecraft:red_carpet"
-LIGHT = "minecraft:ochre_froglight"         # 陽台與門廊的暖色燈
-MARBLE = "minecraft:smooth_quartz"          # 白石欄杆（迴廊）
-BALUSTER = "minecraft:diorite_wall"         # 白石欄杆（平台、台階兩側）
+LIGHT = "minecraft:ochre_froglight"         # Warm lights on the balconies and the portico
+MARBLE = "minecraft:smooth_quartz"          # White stone balustrade (gallery)
+# White stone balustrade (terrace, both sides of the stairs)
+BALUSTER = "minecraft:diorite_wall"
 STONE = "minecraft:stone"
-RETAIN = "minecraft:stone_bricks"           # 擋土牆（灰色花崗石）
-PAVE = "minecraft:smooth_stone"             # 平台與廣場鋪面
+RETAIN = "minecraft:stone_bricks"           # Retaining wall (gray granite)
+PAVE = "minecraft:smooth_stone"             # Paving of the terrace and plaza
 PAVE_SLAB = "minecraft:smooth_stone_slab[type=bottom]"
-ROAD = "minecraft:gray_concrete"            # 前庭車道
+ROAD = "minecraft:gray_concrete"            # Forecourt driveway
 STAIR = "minecraft:polished_diorite_stairs[facing=%s,half=bottom]"
 GRASS = "minecraft:grass_block"
 FLOWERS = ("minecraft:poppy", "minecraft:red_tulip", "minecraft:oxeye_daisy", "minecraft:poppy")
-LION = "minecraft:polished_blackstone"      # 門前石獅（照片上是深色石獅）
+LION = "minecraft:polished_blackstone"      # Stone lions at the gate (dark stone in the photos)
 LION_BASE = "minecraft:polished_andesite"
 WATER = "minecraft:water"
 LAMP_POST = "minecraft:polished_blackstone_wall"
 LANTERN = "minecraft:lantern"
 PINE_LOG = "minecraft:spruce_log"
 PINE_LEAVES = "minecraft:spruce_leaves[persistent=true]"
-REAR_ROOF = "minecraft:red_terracotta"      # 後棟（麒麟廳一帶）的紅瓦
+REAR_ROOF = "minecraft:red_terracotta"      # Red tiles of the rear wing (around the Kirin Hall)
 REAR_GLASS = "minecraft:light_gray_stained_glass"
 
-# ---- 立面尺寸（公尺 = 格，從一樓樓板 g0 起算）----
-STOREY = 4                  # 每層 4 m
-BAL_FLOORS = range(1, 11)   # 二～十一樓有陽台（樓板在 4..40）；十二樓是柱頭、額枋與斗拱
-COL_TOP = 43                # 紅柱頂
-BEAM_Y = 44                 # 額枋
-EAVE1 = 48                  # 腰簷簷口
-EAVE1_OUT = 6.5             # 腰簷外挑
-GALLERY = 53                # 十三樓迴廊樓板（= 腰簷的上緣）
-EAVE2 = 63                  # 上簷（歇山頂）簷口
+# ---- Facade dimensions (meters = blocks, measured from the ground floor slab g0) ----
+STOREY = 4                  # 4 m per story
+# Floors 2 to 11 have balconies (slabs at 4..40); floor 12 holds the column heads, architrave and
+# dougong brackets
+BAL_FLOORS = range(1, 11)
+COL_TOP = 43                # Top of the red columns
+BEAM_Y = 44                 # Architrave
+EAVE1 = 48                  # Eave line of the skirt eave
+EAVE1_OUT = 6.5             # Projection of the skirt eave
+# Floor slab of the 13th-floor gallery (= the top edge of the skirt eave)
+GALLERY = 53
+EAVE2 = 63                  # Eave line of the upper eave (xieshan roof)
 EAVE2_OUT = 5.0
-ROOF_RISE = 21.0            # 簷口到正脊
-TOP = 87                    # 吻獸頂 = 公開資料的 87 m
-N_LONG, N_SHORT = 20, 11    # 長邊、短邊各幾根大柱（正面照數得到二十根，轉角成對）
+ROOF_RISE = 21.0            # From the eave line to the main ridge
+TOP = 87                    # Top of the ridge-end ornaments = the public figure of 87 m
+# Large columns on each long and short side (twenty counted on
+# the front photo, paired at the corners)
+N_LONG, N_SHORT = 20, 11
 
-# ---- 基地（局部 v 從主樓前緣 B 往前量）----
-TERRACE_M = 6               # 主樓四周的平台寬
-FRONT_UP = 26               # 門廊前的上層平台伸到前緣外 26 m
-STAIR_RUN = 5               # 台階 5 階、每階 1 m，往下 5 m
-DROP = 5                    # 上層平台到前庭廣場的落差
-RAMP_RUN = 20               # 兩側坡道 1:4
-PLAZA_END = 84              # 前庭廣場到前緣外 84 m
-DRIVE_END = 150             # 車道順著地形伸到前緣外 150 m
+# ---- Site (local v measured forward from the main block's front edge B) ----
+TERRACE_M = 6               # Width of the terrace around the main block
+# The upper terrace in front of the portico reaches 26 m beyond the front edge
+FRONT_UP = 26
+STAIR_RUN = 5               # 5 steps of 1 m each, descending 5 m
+DROP = 5                    # Drop from the upper terrace to the forecourt plaza
+RAMP_RUN = 20               # Ramps on both sides at 1:4
+PLAZA_END = 84              # The forecourt plaza reaches 84 m beyond the front edge
+DRIVE_END = 150             # The driveway follows the terrain to 150 m beyond the front edge
 
-# ---- 後棟（relation/10098399）：主樓後面沿著山坡往上的長樓 ----
+# ---- Rear wing (relation/10098399): the long building behind the main block, up the slope ----
 REAR = "relation/10098399"
-REAR_SEG = 24               # 每 24 m 一段、各自一個樓板高度，順著坡一階一階往上
-REAR_H = 16                 # 四層、每層 4 m
+REAR_SEG = 24               # One 24 m section per floor height, stepping up the slope
+REAR_H = 16                 # Four stories of 4 m
 REAR_ROOF_MAX = 5.0
 
 
@@ -113,7 +145,7 @@ def _local(poly, cx, cz, ang):
 
 
 def _spans(loc, v):
-    """局部多邊形被 v = 常數的掃描線切出來的區間 [(u0, u1)]。"""
+    """Return the intervals [(u0, u1)] that the scan line v = constant cuts from a local polygon."""
     xs = []
     n = len(loc)
     for i in range(n):
@@ -125,11 +157,15 @@ def _spans(loc, v):
 
 
 def body_geometry(poly):
-    """從 OSM 主樓輪廓量出：主體矩形（中心、方位、半長 A、半深 B）與正面凸出的門廊。
+    """Measure from the OSM main-block outline the main rectangle (center, orientation,
+    half-length A, half-depth B) and the portico projecting from the front.
 
-    方位取輪廓主軸；u 沿長邊，v 朝南（飯店面向基隆河）。主體前後緣是「掃描線覆蓋
-    全長七成以上」最外側的那兩條（前緣上凸出的門廊、轉角的小凸角都不算主體）；
-    門廊是前緣外 3 m 那條掃描線上、落在主體中段的區間。"""
+    The orientation is the outline's principal axis; u runs along the long side and v
+    points south (the hotel faces the Keelung River). The front and rear edges of the
+    main body are the outermost scan lines that cover at least 70% of the full length
+    (the portico projecting from the front edge and the small corner projections do
+    not count as the main body). The portico is the interval, on the scan line 3 m
+    beyond the front edge, that falls in the middle of the main body."""
     cx = sum(p[0] for p in poly) / len(poly)
     cz = sum(p[1] for p in poly) / len(poly)
     ang = principal_angle(poly)
@@ -140,7 +176,7 @@ def body_geometry(poly):
         if best is None or max(us) - min(us) > best[1]:
             best = (a, max(us) - min(us))
     ang = best[0]
-    if math.cos(ang) < 0:                       # +v 朝南（世界 +z）
+    if math.cos(ang) < 0:                       # +v points south (world +z)
         ang += math.pi
     loc = _local(poly, cx, cz, ang)
     us, vs = [p[0] for p in loc], [p[1] for p in loc]
@@ -163,7 +199,8 @@ def body_geometry(poly):
     if mid:
         pa, pb = min(a for a, b in mid), max(b for a, b in mid)
         pd = max(vs) - vf
-    else:                                       # 輪廓上沒有門廊：照片的比例
+    # No portico in the outline: use the photo proportions
+    else:
         pa, pb, pd = uc - 0.19 * L, uc + 0.19 * L, 16.0
     c, s = math.cos(ang), math.sin(ang)
     wx, wz = cx + uc * c - vc * s, cz + uc * s + vc * c
@@ -172,30 +209,37 @@ def body_geometry(poly):
 
 
 def _lift(fr, a, b, lift, corner=None, du=0.0, dv=0.0):
-    """翼角起翹的高度場：kit.hip 給 rise=0 就只剩起翹那一項。"""
+    """Return the heightfield of the upturned eave corners.
+
+    kit.hip with rise=0 leaves only the upturn term."""
     return kit.hip(fr, a, b, 0.0, lift=lift, corner=corner, du=du, dv=dv)
 
 
 def _skirt(fr, a, b, width, rise, profile=1.6, lift=0.0, corner=None, du=0.0, dv=0.0):
-    """一圈腰簷的高度場：簷口（|u|=a 或 |v|=b）為 0，往內 width 處到 rise。"""
+    """Return the heightfield of a skirt eave.
+
+    It is 0 at the eave line (|u|=a or |v|=b) and reaches rise at width inward."""
     d = np.minimum(a - np.abs(fr.U - du), b - np.abs(fr.V - dv)).clip(0, None)
     return rise * (d / width).clip(0, 1) ** profile + _lift(fr, a, b, lift, corner, du, dv)
 
 
 def _pattern(fr, period=3.0):
-    """沿立面的位置編號：斗拱一朵一朵青綠相間。長邊用 u、短邊用 v。"""
+    """Return a position index along the facade, so the dougong bracket sets alternate colors.
+
+    The sets alternate blue and green. Long sides use u, short sides use v."""
     return (np.floor(fr.U / period) + np.floor(fr.V / period)).astype(int) % 2
 
 
 class GrandHotel(Attraction):
     height_m = 87.0
     margin = 12
-    # 劍潭山在主樓北邊還有三、四百公尺才下到平地：真實地形給到 bbox 外 240 m，
-    # 否則背後的山在後棟後面就被削成一道往 y64 的斜坡
+    # Jiantan Mountain runs three to four hundred meters north of the main block before
+    # it reaches the plain. Real terrain extends 240 m beyond the bbox; otherwise the
+    # mountain behind is cut into a slope down to y64 just behind the rear wing.
     terrain_margin = 240
     MAIN = "way/25202548"
 
-    # ---------------------------------------------------------------- 規劃
+    # ---------------------------------------------------------------- Planning
     def _main_poly(self):
         f = self.feature(self.MAIN)
         if f and f.get("outer"):
@@ -204,7 +248,8 @@ class GrandHotel(Attraction):
 
     def plan(self, site):
         poly = self._main_poly()
-        if poly is None:                        # 沒有主樓輪廓：以景點中心、照片比例蓋
+        # No main-block outline: use the attraction center and photo proportions
+        if poly is None:
             cx, cz = self.center()
             geo = dict(cx=cx, cz=cz, ang=math.radians(21), A=55.0, B=28.0, upc=0.0, ap=20.5, pd=16.5)
         else:
@@ -219,13 +264,15 @@ class GrandHotel(Attraction):
         self._plan_site(site)
         self.site = site
 
-        # 觀景點：前庭廣場的中軸上，離正面 72 m，看大樓腰部
+        # Viewpoint: on the axis of the forecourt plaza, 72 m
+        # from the front, looking at the middle of the block
         g0 = self.g0
         vx, vz = fr.cell(0.0, B + 72.0)
         vy = g0 - DROP + 1
         tx, tz = fr.world(0.0, 0.0)
         yaw, pitch = kit.look(vx, vy, vz, tx, g0 + 40, tz)
-        # 迴廊：十三樓正面中央的白石欄杆後面，往南看基隆河與市區
+        # Gallery: behind the white stone balustrade at the center of the 13th-floor front,
+        # looking south over the Keelung River and the city
         gx, gz = fr.cell(0.0, B - 2.6)
         self._spots = [
             Spot("", vx, vy, vz, yaw, pitch, self.name_zh, self.name_en),
@@ -234,9 +281,11 @@ class GrandHotel(Attraction):
         ]
 
     def _plan_rear(self, site):
-        """後棟：OSM relation/10098399 的每個外環。沿長軸每 REAR_SEG 公尺切一段，
-        每段的樓板取那一段地面的中位數 —— 樓順著劍潭山的坡一階一階往上。
-        照片（Kirin Hall Front、從東南遠看的那幾張）：紅柱、青綠額枋、玻璃窗、紅瓦。"""
+        """Rear wing: every outer ring of OSM relation/10098399. Each ring is cut into
+        REAR_SEG-meter sections along its long axis, and each section is floored at the
+        median ground height of that section, so the building steps up the slope of
+        Jiantan Mountain. Photos ("Kirin Hall Front" and the distant views from the
+        southeast): red columns, blue-green architraves, glass windows, red tiles."""
         self.rear = []
         self.rear_cells = self.fr.empty()
         f = self.feature(REAR)
@@ -254,7 +303,7 @@ class GrandHotel(Attraction):
             ext = max(max(xs) - min(xs), max(zs) - min(zs)) / 2 + 4
             fr = Frame(cx, cz, ang, ext)
             m = fr.polygon(r)
-            # 跟主樓重疊的格子讓給主樓
+            # Cells that overlap the main block are left to the main block
             for x, z in fr.cells(m):
                 u, v = self.fr.local(x, z)
                 if abs(u) <= self.A + 1 and abs(v) <= self.B + 1:
@@ -276,12 +325,15 @@ class GrandHotel(Attraction):
                         self.rear_cells[i, j] = True
 
     def _plan_site(self, site):
-        """平台、台階、坡道、前庭廣場、車道：每格的鋪面高度（浮點數）與種類。"""
+        """Plan the terrace, stairs, ramps, forecourt plaza and driveway.
+
+        Records the paving height (a float) and kind of every cell."""
         fr, A, B, g0 = self.fr, self.A, self.B, self.g0
         U, V = fr.U, fr.V
-        F = B                                                   # 主樓前緣
+        F = B                                                   # Front edge of the main block
         up = fr.box(A + TERRACE_M, B + TERRACE_M) | fr.rect(-35, 35, F - 1, F + FRONT_UP)
-        sv = V - (F + FRONT_UP)                                 # 從上層平台前緣往前量
+        # Measured forward from the upper terrace's front edge
+        sv = V - (F + FRONT_UP)
         in_st = (sv >= 0) & (sv < STAIR_RUN)
         stairs = in_st & (np.abs(U) >= 8) & (np.abs(U) <= 23)
         garden = in_st & (np.abs(U) < 8)
@@ -298,12 +350,13 @@ class GrandHotel(Attraction):
         Lv[garden], kind[garden] = (g0 - step)[garden], 2
         Lv[ramps], kind[ramps] = (g0 - DROP * (sv / RAMP_RUN))[ramps], 4
         Lv[plaza], kind[plaza] = g0 - DROP, 1
-        # 車道：廣場前緣（g0-5）線性接到車道盡頭的地面
+        # Driveway: runs linearly from the plaza's front edge
+        # (g0-5) to the ground at the end of the driveway
         ex, ez = fr.cell(0.0, F + DRIVE_END)
         g_end = site.g(ex, ez)
         t = ((V - (F + PLAZA_END)) / (DRIVE_END - PLAZA_END)).clip(0, 1)
         Lv[drive], kind[drive] = ((g0 - DROP) * (1 - t) + g_end * t)[drive], 5
-        # 前庭花園（橢圓，中央噴水池）與環繞的車道
+        # Forecourt garden (an ellipse with a fountain at its center) and the loop road around it
         cx_, cv_ = 0.0, F + 50.0
         e = ((U - cx_) / 13.0) ** 2 + ((V - cv_) / 8.0) ** 2
         self.garden_oval = plaza & (e <= 1.0)
@@ -314,7 +367,7 @@ class GrandHotel(Attraction):
         zone = ~np.isnan(Lv)
         self.G = site.grid(fr, dilate(zone, 2))
 
-    # ---------------------------------------------------------------- 蓋
+    # ---------------------------------------------------------------- Build
     def build(self, w):
         p = Painter(w, self.fr)
         self._site(w)
@@ -326,13 +379,14 @@ class GrandHotel(Attraction):
         self._portico(p, w)
         self._front(p, w)
 
-    # ---- 整地：平台、擋土牆、欄杆 ----
+    # ---- Grading: terraces, retaining walls, balustrades ----
     def _site(self, w):
         fr, G, Lv, kind = self.fr, self.G, self.Lv, self.kind
         zone = ~np.isnan(Lv)
         Li = np.where(zone, np.floor(Lv + 1e-6), -9999).astype(int)
         half = zone & (kind == 4) & ((Lv - np.floor(Lv + 1e-6)) >= 0.5)
-        # 每格的地表（平台上是鋪面、平台外是地面），四鄰裡最低的那一個決定這格是不是露出來的邊
+        # The surface of every cell (paving on the terrace, ground outside it). The lowest of the
+        # four neighbors decides whether the cell is an exposed edge.
         S = np.where(zone, Li, G).astype(float)
         S[~zone & (G == -999)] = np.inf
         P = np.pad(S, 1, constant_values=np.inf)
@@ -354,10 +408,12 @@ class GrandHotel(Attraction):
                 top = L + 1
             for y in range(top + 1, max(gy, top) + 2):
                 s(x, y, z, AIR)
-            # 白石欄杆：落差 2 m 以上的邊（台階本身與樓梯口不立）
+            # White stone balustrade on edges with a drop of 2
+            # m or more (not on the stairs or at stair heads)
             if k in (1, 4, 5) and L - nmin[i, j] >= 2:
                 s(x, top + 1, z, BALUSTER)
-        # 削坡的那一側：平台外、地面比相鄰平台高的格子砌擋土牆
+        # The cut side: cells outside the terrace whose ground is higher than the adjacent terrace
+        # get a retaining wall
         Lz = np.where(zone, Li, 99999).astype(float)
         P = np.pad(Lz, 1, constant_values=99999)
         lnb = np.minimum.reduce([P[:-2, 1:-1], P[2:, 1:-1], P[1:-1, :-2], P[1:-1, 2:]])
@@ -367,14 +423,15 @@ class GrandHotel(Attraction):
             for y in range(int(lnb[i, j]) + 1, int(G[i, j]) + 1):
                 s(x, y, z, RETAIN)
 
-    # ---- 後棟：一段一段順著坡往上的四層樓 ----
+    # ---- Rear wing: four stories stepping up the slope section by section ----
     def _rear(self, w):
         s = w.set
         for fr, seg, L, G in self.rear:
             p = Painter(w, fr)
             edge = ring(seg)
             X, Z = fr.X, fr.Z
-            # 地基：低於樓板的填到地面、邊上砌擋土牆；高於樓板的（上坡那頭）挖掉
+            # Foundation: fill up to the floor where the ground is lower, with retaining walls on the
+            # edges; dig out where the ground is higher (the uphill end)
             for i, j in zip(*np.nonzero(seg)):
                 x, z, gy = int(X[i, j]), int(Z[i, j]), int(G[i, j])
                 for y in range(gy + 1, L):
@@ -385,7 +442,8 @@ class GrandHotel(Attraction):
             inner = erode(seg, 1)
             for k in range(1, REAR_H // STOREY):
                 p.layer(inner, L + STOREY * k, FLOOR)
-            # 外牆：每層頂上一道青綠額枋，紅柱每 4 格一根，其餘是窗
+            # Outer wall: a blue-green architrave atop every story, a red column every 4 blocks,
+            # windows elsewhere
             for i, j in zip(*np.nonzero(edge)):
                 x, z = int(X[i, j]), int(Z[i, j])
                 col = (x + z) % 4 == 0
@@ -393,13 +451,14 @@ class GrandHotel(Attraction):
                     r = y % STOREY
                     blk = BEAM if r == 0 else (RED if col else (REAR_GLASS if r in (1, 2) else WALL))
                     s(x, L + y, z, blk)
-            # 屋頂：外挑 1 m 的四坡（依離外緣的深度起坡），紅瓦、簷下青綠
+            # Roof: a hipped roof projecting 1 m (the slope follows the depth from the outer edge),
+            # red tiles with a blue-green soffit
             rm = dilate(seg, 1)
             d = kit.depth(rm).astype(float)
             h = np.minimum((d - 1) * 0.6, REAR_ROOF_MAX)
             p.heightfield(rm, L + REAR_H + 1, h, REAR_ROOF, under=SOFFIT, shell=2)
 
-    # ---- 主樓：陽台、紅柱、內退的客房牆、樓板 ----
+    # ---- Main block: balconies, red columns, set-back guest-room walls, floor slabs ----
     def _columns(self, a, b, inset):
         pts = []
         for i in range(N_LONG):
@@ -416,13 +475,15 @@ class GrandHotel(Attraction):
         bal = body & ~erode(body, 2)
         outer = ring(body)
         inner = erode(body, 3)
-        # 一樓：大廳（石材地坪）、柱廊後面的玻璃牆，正面中央開門
+        # Ground floor: lobby (stone paving), a glass wall behind the colonnade, a door at the
+        # center of the front
         p.layer(body, g0, LOBBY_FLOOR)
         p.walls(erode(body, 2), g0 + 1, g0 + 3, RED, window=LOBBY_GLASS, every=4, sill=0, head=0)
         door = fr.rect(-3.2, 3.2, B - 4, B + 1)
         p.clear(door & bal | door & ring(erode(body, 2)), g0 + 1, g0 + 3)
         p.layer(fr.rect(-1.2, 1.2, -B + 4, B - 1) & inner, g0 + 1, CARPET)
-        # 二～十一樓：白色陽台板、紅欄杆（一根根的柱頭）、內退的客房牆
+        # Floors 2 to 11: white balcony slabs, red railings (a
+        # row of posts), set-back guest-room walls
         lamp = ring(erode(body, 1)) & (np.abs(np.mod(fr.U + fr.V, 5.7) - 2.85) < 0.5)
         for k in BAL_FLOORS:
             yf = g0 + STOREY * k
@@ -430,8 +491,10 @@ class GrandHotel(Attraction):
             p.layer(outer, yf + 1, RAIL)
             p.walls(erode(body, 2), yf + 1, yf + 3, WALL, window=GLASS, every=4, sill=0, head=0)
             p.layer(inner, yf, FLOOR)
-            p.layer(lamp, yf + STOREY, LIGHT)        # 陽台天花的暖色燈（埋在上一層樓板裡）
-        # 十二樓：柱頭上的額枋，斗拱三跳、一跳比一跳外挑；後面是內退的牆
+            # Warm lights in the balcony ceiling (set into the slab above)
+            p.layer(lamp, yf + STOREY, LIGHT)
+        # Floor 12: the architrave on the column heads, dougong brackets in three tiers, each
+        # projecting further out; the set-back wall behind
         y12 = g0 + STOREY * BAL_FLOORS[-1] + STOREY
         p.layer(bal, y12, BAND)
         p.walls(erode(body, 2), y12 + 1, g0 + GALLERY - 1, WALL, window=GLASS, every=4, sill=1, head=1, storey=4)
@@ -443,12 +506,13 @@ class GrandHotel(Attraction):
             m = fr.box(A + 0.4 + 1.1 * k, B + 0.4 + 1.1 * k) & ~erode(body, 1)
             p.layer(m & (pat == 0), y, BRACKET[0])
             p.layer(m & (pat == 1), y, BRACKET[1])
-        # 大柱：一樓地坪通到額枋底下，柱頭一圈金
+        # Large columns: from the ground floor paving to just
+        # below the architrave, with a gold ring at the head
         cols = self._columns(A, B, 1.0)
         p.columns(cols, 0.75, g0 + 1, g0 + COL_TOP, RED)
         p.columns(cols, 0.75, g0 + COL_TOP, g0 + COL_TOP, GOLD)
 
-    # ---- 腰簷（下簷）----
+    # ---- Skirt eave (lower eave) ----
     def _lower_eave(self, p):
         fr, A, B, g0 = self.fr, self.A, self.B, self.g0
         a1, b1 = A + EAVE1_OUT, B + EAVE1_OUT
@@ -456,12 +520,12 @@ class GrandHotel(Attraction):
         mask = fr.box(a1, b1) & ~fr.box(A - 1.5, B - 1.5)
         h = _skirt(fr, a1, b1, width, GALLERY - EAVE1, profile=1.6, lift=2.0, corner=10.0)
         p.heightfield(mask, g0 + EAVE1, h, TILE, under=SOFFIT, shell=2)
-        # 垂脊：四個角的對角線
+        # Hip ridges: the diagonals at the four corners
         diag = mask & (np.abs((a1 - np.abs(fr.U)) - (b1 - np.abs(fr.V))) < 0.7)
         top = np.floor(g0 + EAVE1 + h).astype(int)
         p.fill(diag, top + 1, top + 1, RIDGE)
 
-    # ---- 十三、十四樓：白石欄杆迴廊、退縮的上層牆、斗拱 ----
+    # ---- Floors 13 and 14: balustraded gallery, set-back upper wall, dougong brackets ----
     def _upper(self, p):
         fr, A, B, g0 = self.fr, self.A, self.B, self.g0
         inside = fr.box(A - 1.5, B - 1.5)
@@ -473,34 +537,37 @@ class GrandHotel(Attraction):
         p.layer(ring(core), g0 + 58, BEAM)
         pat = _pattern(fr)
         for k, y in enumerate(range(g0 + 59, g0 + EAVE2)):
-            out = -3.0 + 1.6 * (k + 1)                  # 一層比一層外挑
+            # Each tier projects further than the one below
+            out = -3.0 + 1.6 * (k + 1)
             m = fr.box(A + out, B + out) & ~fr.box(A - 5, B - 5)
             p.layer(m & (pat == 0), y, BRACKET[0])
             p.layer(m & (pat == 1), y, BRACKET[1])
 
-    # ---- 上簷：重簷歇山頂 ----
+    # ---- Upper eave: double-eaved xieshan roof ----
     def _roof(self, p):
         fr, A, B, g0 = self.fr, self.A, self.B, self.g0
         a2, b2 = A + EAVE2_OUT, B + EAVE2_OUT
-        gin = 0.45 * b2                                   # 山花離端點多遠
+        # How far the gable pediment sits from the ends
+        gin = 0.45 * b2
         base = g0 + EAVE2
         h = kit.hip_gable(fr, a2, b2, ROOF_RISE, gin, profile=1.5, lift=2.6, corner=0.3 * b2)
         mask = fr.box(a2, b2)
         p.heightfield(mask, base, h, TILE, under=SOFFIT, shell=2)
         U, V = np.abs(fr.U), np.abs(fr.V)
         top = np.floor(base + h).astype(int)
-        # 山花：歇山兩端豎起來的三角形牆面，紅底、斜邊金色博風
+        # Gable pediments: the triangular walls rising at both ends of the xieshan roof, red with
+        # gold bargeboards on the raking edges
         gplane = a2 - gin
         he = ROOF_RISE * ((a2 - U) / b2).clip(0, 1) ** 1.5
         band = mask & (U <= gplane) & (U > gplane - 1.3)
         p.fill(band, np.floor(base + he).astype(int), top - 1, RED)
         p.fill(band, top, top, GOLD)
-        # 懸魚：山花正中一塊金
+        # Hanging fish (xuanyu): a gold panel at the center of the gable pediment
         p.fill(band & (V < 1.0), top - 4, top - 2, GOLD)
-        # 垂脊：歇山兩端小坡的對角線
+        # Hip ridges: the diagonals of the small hipped slopes at both ends of the xieshan roof
         diag = mask & (U > gplane) & (np.abs((a2 - U) - (b2 - V)) < 0.7)
         p.fill(diag, top + 1, top + 1, RIDGE)
-        # 正脊與吻獸
+        # Main ridge and ridge-end ornaments
         ridge = mask & (V < 0.9) & (U <= gplane)
         p.fill(ridge, top + 1, base + int(ROOF_RISE) + 1, RIDGE)
         for sgn in (1, -1):
@@ -509,14 +576,15 @@ class GrandHotel(Attraction):
             curl = mask & (V < 0.9) & (np.abs(fr.U - sgn * (gplane - 2.0)) < 0.7)
             p.fill(curl, g0 + TOP - 1, g0 + TOP - 1, GOLD)
 
-    # ---- 門廊：兩重簷、紅柱、金色匾額 ----
+    # ---- Portico: double eaves, red columns, gold name board ----
     def _portico(self, p, w):
         fr, A, B, g0 = self.fr, self.A, self.B, self.g0
         geo = self.geo
         upc, ap, pd = geo["upc"], geo["ap"], geo["pd"]
         vc, dh = B + pd / 2, pd / 2
         box = fr.box(ap, dh, du=upc, dv=vc)
-        keep = fr.V >= B - 1.8                            # 屋頂不伸進主樓的陽台以內
+        # The roof does not reach inside the main block's balconies
+        keep = fr.V >= B - 1.8
         front_v = B + pd - 1.2
         pts = [(upc + ap * t, front_v) for t in (-0.93, -0.56, -0.19, 0.19, 0.56, 0.93)]
         pts += [(upc + sg * ap * 0.93, B + pd * 0.45) for sg in (1, -1)]
@@ -526,17 +594,17 @@ class GrandHotel(Attraction):
         p.layer(ceil, g0 + 8, BEAM)
         p.layer(ceil & (_pattern(fr, 4.0) == 0) & (np.abs(np.mod(fr.U, 4.0) - 2.0) < 0.6)
                 & (np.abs(np.mod(fr.V, 4.0) - 2.0) < 0.6), g0 + 8, LIGHT)
-        # 下簷
+        # Lower eave
         a1, b1 = ap + 2.5, dh + 2.5
         m1 = fr.box(a1, b1, du=upc, dv=vc) & ~fr.box(ap - 1, dh - 1, du=upc, dv=vc) & keep
         h1 = _skirt(fr, a1, b1, 3.5, 1.6, profile=1.3, lift=0.9, corner=4.0, du=upc, dv=vc)
         p.heightfield(m1, g0 + 9, h1, TILE, under=SOFFIT, shell=2)
-        # 額：紅底，正面中央金匾
+        # Frieze: red, with a gold name board at the center of the front
         fz = ring(fr.box(ap - 1, dh - 1, du=upc, dv=vc)) & keep
         p.fill(fz, g0 + 10, g0 + 12, RED)
         plaque = fz & (fr.V > vc + dh - 2.5) & (np.abs(fr.U - upc) <= 5.5)
         p.layer(plaque, g0 + 11, GOLD)
-        # 上簷歇山
+        # Upper eave: xieshan roof
         a2, b2 = ap + 1.5, dh + 1.5
         base = g0 + 13
         h2 = kit.hip_gable(fr, a2, b2, 4.0, 0.5 * b2, profile=1.3, lift=1.1, du=upc, dv=vc)
@@ -554,19 +622,20 @@ class GrandHotel(Attraction):
         for sg in (1, -1):
             end = m2 & (V < 0.9) & (np.abs(fr.U - upc - sg * (gplane - 0.5)) < 0.9)
             p.fill(end, top + 1, top + 2, GOLD)
-        # 匾額上的字：壁掛告示牌貼在金匾正前方那一格，面向前庭
+        # The characters on the name board: a wall sign on the cell just in front of the gold board,
+        # facing the forecourt
         fx, fz_ = _vec(fr.facing(0, 1))
         sx, sz = fr.cell(upc, vc + dh - 1.2)
         w.sign(sx + fx, g0 + 11, sz + fz_, ["圓山大飯店", "The Grand Hotel", "", ""],
                facing=(fx, fz_), wood="dark_oak", kind="wall", glow=True, color="yellow")
 
-    # ---- 前庭：花園、噴水池、石獅 ----
+    # ---- Forecourt: garden, fountain, stone lions ----
     def _front(self, p, w):
         fr, B, g0 = self.fr, self.B, self.g0
         y = g0 - DROP
-        # 環繞花園的車道
+        # Loop road around the garden
         p.layer(self.loop_road, y, ROAD)
-        # 花園：草地上一圈一圈的花
+        # Garden: rings of flowers on the lawn
         p.layer(self.garden_oval, y, GRASS)
         U, V = fr.U, fr.V
         cu, cv = self.fountain
@@ -578,12 +647,13 @@ class GrandHotel(Attraction):
         p.layer(basin, y, LION_BASE)
         p.layer(basin & (e <= 0.2), y, WATER)
         p.layer(ring(basin), y + 1, BALUSTER)
-        # 台階中間的花坡：每一階種一排花
+        # Flower slope between the stairs: a row of flowers on every step
         for i, j in zip(*np.nonzero(self.garden)):
             L = int(np.floor(self.Lv[i, j] + 1e-6))
             if (int(fr.X[i, j]) + int(fr.Z[i, j])) % 2 == 0:
                 w.set(int(fr.X[i, j]), L + 1, int(fr.Z[i, j]), FLOWERS[(i + j) % len(FLOWERS)])
-        # 石獅：前庭前緣、中軸兩側，面向來車
+        # Stone lions: at the front edge of the forecourt,
+        # either side of the axis, facing arriving cars
         for sg in (1, -1):
             lu, lv = sg * 9.0, B + 66.0
             base = fr.box(1.6, 1.6, du=lu, dv=lv)
@@ -592,14 +662,15 @@ class GrandHotel(Attraction):
             p.fill(body, y + 2, y + 3, LION)
             head = fr.box(0.9, 0.7, du=lu, dv=lv + 0.8)
             p.fill(head, y + 4, y + 4, LION)
-        # 廣場兩側的花圃（草地鑲一圈紅花）
+        # Flower beds on both sides of the plaza (lawn edged with red flowers)
         U, V = fr.U, fr.V
         for sg in (1, -1):
             bed = fr.rect(24, 38, B + 38, B + 74) if sg > 0 else fr.rect(-38, -24, B + 38, B + 74)
             p.layer(bed, y, GRASS)
             p.layer(ring(bed), y + 1, FLOWERS[0])
             p.layer(erode(bed, 3) & (np.abs(np.mod(V, 6.0) - 3.0) < 0.5), y + 1, FLOWERS[2])
-        # 路燈：環繞花園的車道外緣、台階兩側
+        # Street lamps: on the outer edge of the loop road
+        # around the garden and on both sides of the stairs
         lamps = [(sg * 21.0, B + 50.0 + dv) for sg in (1, -1) for dv in (-10.0, 0.0, 10.0)]
         lamps += [(sg * 23.5, B + FRONT_UP + 7.0) for sg in (1, -1)]
         for lu, lv in lamps:
@@ -607,14 +678,16 @@ class GrandHotel(Attraction):
             for yy in range(y + 1, y + 5):
                 w.set(x, yy, z, LAMP_POST)
             w.set(x, y + 5, z, LANTERN)
-        # 主樓兩側的南洋杉（照片上立面兩側那幾棵高瘦的針葉樹）
+        # Araucarias on both sides of the main block (the tall,
+        # slender conifers flanking the facade in the photos)
         for sg in (1, -1):
             for dv in (-12.0, 8.0, B + 3.0 - 8.0):
                 self._pine(w, fr.cell(sg * (self.A + 3.5), dv), g0 + 1, 14 + int(abs(dv)) % 4)
 
     @staticmethod
     def _pine(w, xz, y0, h):
-        """一棵高瘦的針葉樹：雲杉幹，葉子一層一層往上收（persistent 才不會掉光）。"""
+        """Place a tall, slender conifer: a spruce trunk with leaves tapering tier by tier
+        (persistent, so they do not decay)."""
         x, z = xz
         for y in range(y0, y0 + h):
             w.set(x, y, z, PINE_LOG)
@@ -627,9 +700,12 @@ class GrandHotel(Attraction):
         w.set(x, y0 + h, z, PINE_LEAVES)
         w.set(x, y0 + h + 1, z, PINE_LEAVES)
 
-    # ---------------------------------------------------------------- 說明牌
+    # ---------------------------------------------------------------- Plaque
     def plaque(self):
         return [self.name_zh, self.name_en, "1973 年落成 高 87 m 14 層", "重簷歇山 紅柱金瓦"]
+
+    def plaque_en(self):
+        return ["Completed in 1973, 87 m high, 14 storeys", "1973, 87 m high"]
 
 
 def _vec(name):

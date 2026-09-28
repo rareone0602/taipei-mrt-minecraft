@@ -1,21 +1,28 @@
 #!/usr/bin/env python3
-"""從存檔讀回一塊範圍，畫立面圖、俯視圖、等角圖 —— 看蓋出來的建築長得像不像。
+"""Read an area back from a world save and draw elevations, top-down and isometric
+views, to see whether the finished buildings look like the real ones.
 
-verify_render 只有俯視圖，看得出平面對不對，看不出台北101 的八節斗狀、
-中正紀念堂的八角攢尖頂、總統府的中央塔有沒有蓋歪。這裡照磁碟上的方塊畫：
+verify_render draws only a top-down map. It shows whether a plan is right, but not
+whether Taipei 101's eight flared sections, the octagonal pyramidal roof of the Chiang
+Kai-shek Memorial Hall or the central tower of the Presidential Office Building came out
+askew. This tool draws the blocks on disk:
 
-  south / north / east / west   正投影立面圖（從那一側看過去），深度越遠越暗，
-                                輪廓線加深；左邊有 y 刻度（每 10 格一格、50 格一個標）
-  top                           俯視圖（每柱最高的方塊，依高度加陰影）
-  iso                           等角圖（從東南方上空看），三個面三種亮度
+  south / north / east / west   Orthographic elevation, viewed from that side. Farther
+                                blocks are darker and outlines are darkened. A y scale
+                                runs down the left (a tick every 10 blocks, a label
+                                every 50).
+  top                           Top-down view: the highest block in each column,
+                                shaded by height.
+  iso                           Isometric view from above the southeast, with the
+                                three faces in three brightnesses.
 
-顏色從裝好的遊戲材質算（tools/blockcolors.py）；算不出來的方塊畫成洋紅，
-最後列出是哪些。
+Colors are computed from the installed game textures (tools/blockcolors.py). Blocks
+whose color cannot be computed are drawn magenta and listed at the end.
 
-用法:
-    ./.venv/bin/python tools/render_view.py <存檔> --bbox X0 Z0 X1 Z1 [--y0 60 --y1 639] \\
-        --out <前綴> [--views south,east,iso,top] [--scale 2]
-輸出 <前綴>_<視角>.png。
+Usage:
+    ./.venv/bin/python tools/render_view.py <save> --bbox X0 Z0 X1 Z1 [--y0 60 --y1 639] \\
+        --out <prefix> [--views south,east,iso,top] [--scale 2]
+Writes <prefix>_<view>.png.
 """
 import argparse
 import os
@@ -33,11 +40,12 @@ from blockcolors import BlockColors
 
 BG = (24, 26, 32)
 MAGENTA = (255, 0, 255)
-SEE_THROUGH = 0.12          # 覆蓋率低於這個（鐵欄杆以下）的方塊當作看得穿
+SEE_THROUGH = 0.12          # Coverage below this (iron bars and less) counts as see-through.
 
 
 def palette(vol, bc):
-    """Volume 的 palette -> (頂面色 [n,3], 側面色 [n,3], 擋視線 [n] bool, 缺色名單)。"""
+    """Volume palette -> (top colors [n,3], side colors [n,3], blocks sight [n] bool,
+    names with no color)."""
     n = len(vol.names)
     top = np.zeros((n, 3), dtype=np.float32)
     side = np.zeros((n, 3), dtype=np.float32)
@@ -56,7 +64,8 @@ def palette(vol, bc):
 
 
 def first_hit(solid_vox, axis, reverse):
-    """沿 axis 找第一個擋視線的格子：回傳 (索引, 有沒有打到)。reverse=True 從大的那端看。"""
+    """Find the first sight-blocking cell along axis and return (index, hit or not).
+    reverse=True looks from the high end."""
     m = solid_vox if not reverse else np.flip(solid_vox, axis=axis)
     hit = m.any(axis=axis)
     idx = m.argmax(axis=axis)
@@ -66,7 +75,8 @@ def first_hit(solid_vox, axis, reverse):
 
 
 def ruler(img, y0, y1, scale, margin):
-    """左邊畫 y 刻度：每 10 格一條短線，每 50 格一條長線加數字。"""
+    """Draw a y scale down the left: a short tick every 10 blocks and a long tick with a
+    number every 50."""
     d = ImageDraw.Draw(img)
     h = img.size[1]
     for y in range((y0 // 10) * 10, y1 + 1, 10):
@@ -97,19 +107,19 @@ def elevation(vol, pal, view, scale):
         depth = (vol.nx - 1 - idx) if view == "east" else idx
         ys, zs = np.indices(idx.shape)
         blk = data[ys, zs, idx]
-        if view == "east":                                # 往西看，右手邊是北（-z）
+        if view == "east":                                # Looking west, north (-z) is on the right.
             blk, depth, hit = blk[:, ::-1], depth[:, ::-1], hit[:, ::-1]
         dmax = vol.nx
     col = side[blk]
     shade = 1.0 - 0.55 * (depth / max(1, dmax - 1))
     col = col * shade[..., None]
-    # 輪廓：與鄰格深度差 3 格以上就加深
+    # Outline: darken where the depth differs from a neighbor by 3 blocks or more.
     dd = np.zeros(depth.shape, dtype=bool)
     dd[:, 1:] |= np.abs(np.diff(depth, axis=1)) >= 3
     dd[1:, :] |= np.abs(np.diff(depth, axis=0)) >= 3
     col[dd & hit] *= 0.6
     col[~hit] = BG
-    img = np.flipud(col).clip(0, 255).astype(np.uint8)      # y 大的在上面
+    img = np.flipud(col).clip(0, 255).astype(np.uint8)      # Higher y at the top.
     im = Image.fromarray(img).resize((img.shape[1] * scale, img.shape[0] * scale), Image.NEAREST)
     margin = 40
     out = Image.new("RGB", (im.size[0] + margin, im.size[1]), BG)
@@ -134,12 +144,13 @@ def topdown(vol, pal, scale):
 
 
 def iso(vol, pal, scale):
-    """等角圖：從東南上空（+x、+z、+y）看。每格畫成 2s 寬的小方塊：上半頂面、
-    左下 +z 面、右下 +x 面。深度鍵 x+z+y 越大越近，用 maximum.at 做 z-buffer。"""
+    """Isometric view from above the southeast (+x, +z, +y). Each cell is drawn as a tile
+    2s wide: the top face in the upper half, the +z face at lower left and the +x face at
+    lower right. A larger depth key x+z+y is nearer, and maximum.at acts as the z-buffer."""
     top, side, solid, _ = pal
     data = vol.data
     sol = solid[data]
-    # 只畫看得到的格子：+x、+y、+z 三個方向至少有一面露出來
+    # Draw only visible cells: at least one face exposed toward +x, +y or +z.
     exp = np.zeros_like(sol)
     exp[:-1] |= ~sol[1:]
     exp[-1] = True
@@ -178,15 +189,16 @@ def main():
     ap.add_argument("save")
     ap.add_argument("--bbox", nargs=4, type=int, required=True, metavar=("X0", "Z0", "X1", "Z1"))
     ap.add_argument("--y0", type=int, default=56)
-    ap.add_argument("--y1", type=int, default=None, help="預設到範圍裡最高的方塊上方 4 格")
-    ap.add_argument("--out", required=True, help="輸出檔名前綴")
+    ap.add_argument("--y1", type=int, default=None,
+                    help="Defaults to 4 blocks above the highest block in the area")
+    ap.add_argument("--out", required=True, help="Prefix for the output file names")
     ap.add_argument("--views", default="south,east,iso,top")
     ap.add_argument("--scale", type=int, default=2)
     a = ap.parse_args()
     x0, z0, x1, z1 = a.bbox
     y1 = a.y1 if a.y1 is not None else config.Y_MAX
     vol = SR.read_volume(a.save, x0, a.y0, z0, x1, y1, z1, verbose=False)
-    if a.y1 is None:                                   # 切掉上面整片空氣
+    if a.y1 is None:                                   # Trim the empty air above.
         nz_y = np.nonzero((vol.data != 0).any(axis=(1, 2)))[0]
         top_y = vol.y0 + (int(nz_y.max()) if len(nz_y) else 0)
         keep = min(vol.ny, top_y - vol.y0 + 5)
@@ -205,14 +217,15 @@ def main():
         elif v == "iso":
             im = iso(vol, pal, a.scale)
         else:
-            print("不認得的視角：" + v)
+            print("Unknown view: " + v)
             continue
         path = "%s_%s.png" % (a.out, v)
         im.save(path)
         print("%-6s %4dx%-4d -> %s" % (v, im.size[0], im.size[1], path))
-    print("範圍 x%d..%d z%d..%d y%d..%d，%d 種方塊" % (x0, x1, z0, z1, vol.y0, vol.y1, len(vol.names)))
+    print("Area x%d..%d z%d..%d y%d..%d, %d block types"
+          % (x0, x1, z0, z1, vol.y0, vol.y1, len(vol.names)))
     if pal[3]:
-        print("⚠ 算不出顏色（畫成洋紅）：" + "、".join(sorted(pal[3])))
+        print("warning: no computable colour (drawn magenta): " + ", ".join(sorted(pal[3])))
 
 
 if __name__ == "__main__":

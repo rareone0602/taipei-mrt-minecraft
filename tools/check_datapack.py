@@ -1,49 +1,71 @@
 #!/usr/bin/env python3
-"""讀回存檔裡的搭乘系統資料包，再交給真的 Minecraft 26.2 載入、執行一遍。
+"""Reads the ride system's datapack back from a world save, then has the real
+Minecraft 26.2 load it and run it.
 
-生成器說它寫了 593 個函式，不算數。這支工具分兩段：
+The generator says it wrote 593 functions; that does not count. This tool works
+in two stages:
 
-一、從磁碟讀回（不需要遊戲）
-  · pack.mcmeta 讀得懂、level.dat 的 DataPacks.Enabled 有列這個資料包
-  · 每個 ride/*、turn/*、go/*、sight/* 恰好一行 ``tp @s x y z yaw pitch``（約定，見
-    application/ride_plan.py），座標是數字
-  · 函式裡提到的每個 ``function mrt:…``、對話框裡的每個 ``show_dialog``、
-    兩個標籤裡的每個 id 都真的有檔案
-  · 各線站表的按鈕：trigger 值 1..N 連續不重複，按鈕上的站號有對應的 go 函式
-  · 存檔裡的告示牌（各站體附近）：點擊指令指向的函式與對話框都存在
-  · 每個傳送落點（有蓋出來的範圍內）站得住（domain/walk 的規則），
-    面向的方向 1～3 格內有告示牌
+1. Read back from disk (no game needed)
+  · pack.mcmeta parses, and DataPacks.Enabled in level.dat lists this datapack
+  · every ride/*, turn/*, go/* and sight/* holds exactly one line
+    ``tp @s x y z yaw pitch`` (the convention; see application/ride_plan.py),
+    with numeric coordinates
+  · every ``function mrt:…`` a function mentions, every ``show_dialog`` in a
+    dialog, and every id in the two tags has a file
+  · the buttons of each line's station list: trigger values 1..N are
+    consecutive with no repeats, and the station code on each button has a
+    matching go function
+  · the signs in the save (near each station box): the function or dialog
+    that each click command points to exists
+  · every teleport landing point (within the built area) is standable (the
+    rules in domain/walk), and a sign stands 1 to 3 blocks ahead in the
+    direction faced
 
-二、叫遊戲自己來（遊戲 jar 附的 GameTest 伺服器，無頭、不開連接埠）
-  另外產生一個一次性的測試資料包 mrt_selftest（測試環境的 setup／teardown
-  函式），跟 taipei_mrt 一起丟給 ``net.minecraft.gametest.Main``：
-  · 伺服器載入兩個資料包時沒有任何函式／標籤／對話框的載入錯誤
-  · 開服時 #minecraft:load 真的跑了：世界初始設定的九條規則、時間定在中午；
-    再跑一次 sys/load（等於 /reload）不會蓋掉之後改過的規則
-  · 每一個 ride/turn/go/sight 函式都在遊戲裡執行一次（召喚一個 marker 當 @s），
-    執行完讀它的 Pos 與 Rotation，要跟函式檔裡那行 tp 一致
-  · 各線站表的每一顆按鈕：把按鈕的 trigger 值設給 marker、跑 sys/go，
-    marker 要落在「按鈕上那個站號」的 go 函式的位置 —— 按鈕、分派表、go 函式
-    三者各自獨立產生，這樣才驗得到它們對得起來
-  · 世界高度：資料包的維度類型生效，config.Y_MAX（y639）放得了方塊
-  · 首次進入（sys/join）：上標籤、傳到 R10 台北車站
-  · 進站提示：sys/hud 的範圍掃描原樣複製、只把 @a 換成 @s，每個傳送落點都要
-    判到那一站、hud_enter 要跑過；它的 schedule 迴圈在 advance_time=false 之下
-    還在跳（心跳記分）
-  · 告示牌：把存檔裡搭車告示牌的方塊實體原封不動 setblock 回遊戲（存檔裡
-    還沒有就用 World.sign 產生一面），讀回來 click_event 還在；每個對話框都
-    做一面 show_dialog 的牌 —— 對話框 id 不存在的話遊戲解不開那段文字，
-    所以牌子留得住 click_event 就代表對話框真的註冊了
-  · 反向對照（驗證器自己也會騙人）：一個故意寫壞的函式，log 裡一定要看到
-    它的載入錯誤；一面指向不存在對話框的牌，一定要留不住 click_event；
-    沒傳送的 marker 不能被判成落點正確；沒有這個編號的按鈕值不能傳走人；
-    高空中的 marker 不能被判成在任何一站
+2. Let the game check (the GameTest server shipped in the game jar: headless,
+   opens no port)
+  A separate one-off test datapack, mrt_selftest (setup and teardown functions
+  for the test environment), is generated and handed to
+  ``net.minecraft.gametest.Main`` together with taipei_mrt:
+  · the server loads both datapacks without any function, tag or dialog load
+    errors
+  · #minecraft:load really ran at startup: the nine initial world rules are
+    set and the time is fixed at noon; running sys/load again (the same as
+    /reload) does not overwrite rules changed afterwards
+  · every ride/turn/go/sight function runs once in the game (a summoned marker
+    serves as @s); afterwards its Pos and Rotation must match the tp line in
+    the function file
+  · every button of each line's station list: set the button's trigger value
+    on a marker and run sys/go; the marker must land at the position of the go
+    function for the station code on the button. The buttons, the dispatch
+    table and the go functions are generated independently, so only this
+    checks that they agree
+  · world height: the datapack's dimension type takes effect, and a block can
+    be placed at config.Y_MAX (y639)
+  · first join (sys/join): adds the tag and teleports to R10 Taipei Main
+    Station
+  · station entry notice: the range scan in sys/hud is copied verbatim with @a
+    replaced by @s; every teleport landing point must be judged to be in its
+    station, and hud_enter must have run. Its schedule loop keeps ticking
+    under advance_time=false (a heartbeat score)
+  · signs: the block entities of ride signs in the save are placed back into
+    the game unchanged with setblock (if the save has none yet, one is
+    generated with World.sign), and their click_event must still be there when
+    read back. Each dialog also gets a show_dialog sign. The game cannot decode
+    that text if the dialog id does not exist, so a sign that keeps its
+    click_event proves the dialog is really registered
+  · negative controls (verifiers lie too): a deliberately broken function must
+    leave its load error in the log; a sign that points to a nonexistent
+    dialog must lose its click_event; a marker that was not teleported must
+    not be judged to have landed correctly; a button value with no matching
+    number must not move anyone; a marker high in the air must not be judged
+    to be in any station
 
-證明不了的：玩家真的右鍵點牌（GameTest 裡沒有玩家）、對話框畫面長什麼樣、
-客戶端送出 /trigger 會不會跳確認視窗。這些要開真的遊戲看。
+What this cannot prove: a real player right-clicking a sign (GameTest has no
+players), what the dialog screen looks like, and whether the client asks for
+confirmation when it sends /trigger. Those need the real game.
 
-用法:
-    ./.venv/bin/python tools/check_datapack.py <存檔> [--no-game] [--no-signs] [--keep 目錄]
+Usage:
+    ./.venv/bin/python tools/check_datapack.py <save> [--no-game] [--no-signs] [--keep DIR]
 """
 import argparse
 import glob
@@ -76,7 +98,7 @@ MC_DIR = os.path.expanduser("~/Library/Application Support/minecraft")
 VERSION = "26.2"
 
 
-# ====================================================================== 讀回資料包
+# ====================================================================== Read the datapack back
 
 class Pack:
     def __init__(self, root):
@@ -98,7 +120,8 @@ class Pack:
             self.tags[(kind, "%s:%s" % (tns, tpath))] = json.load(open(fp, encoding="utf-8"))["values"]
 
     def tp(self, path):
-        """函式裡約定的那一行 tp：(x, y, z, yaw, pitch)；不是恰好一行就 None。"""
+        """The single tp line the convention requires in a function: (x, y, z,
+        yaw, pitch); None unless there is exactly one."""
         hits = [TP_RE.match(ln) for ln in self.functions.get(path, ()) if ln.startswith("tp ")]
         if len(hits) != 1 or hits[0] is None:
             return None
@@ -106,7 +129,7 @@ class Pack:
 
 
 def line_buttons(pack):
-    """[(對話框路徑, 按鈕上的站號, trigger 物件, trigger 值)]"""
+    """[(dialog path, station code on the button, trigger objective, trigger value)]"""
     out = []
     for path, d in sorted(pack.dialogs.items()):
         if not path.startswith("line/"):
@@ -119,20 +142,24 @@ def line_buttons(pack):
     return out
 
 
-SIGHT_NAME_RE = re.compile(r"^# 景點 (\S+)")
+SIGHT_NAME_RE = re.compile(r"^# Attraction (\S+)")
 TP_KINDS = ("ride", "turn", "go", "sight")
 
 
 def sight_buttons(pack):
-    """景點清單的按鈕：[(景點中文名, trigger 物件, trigger 值, 對應的 sight 函式)]。
+    """The buttons of the attraction list: [(Chinese attraction name, trigger
+    objective, trigger value, matching sight function)].
 
-    按鈕上只有名字；函式靠 sight/<id> 檔頭那行「# 景點 <中文名> ...」對回來 ——
-    對話框與函式是 ride_plan 各自產生的，對得起來才代表按鈕會送人到那座景點。"""
+    A button carries only a name. The function is matched back through the
+    header line "# Attraction <Chinese name> ..." of sight/<id>; a sub-spot's
+    header adds ": <spot>", so it is skipped. The dialog and the
+    functions are generated separately by ride_plan, and only if they match
+    does a button send the player to that attraction."""
     by_name = {}
     for path, lines in pack.functions.items():
         if path.startswith("sight/") and lines:
             m = SIGHT_NAME_RE.match(lines[0])
-            if m and "：" not in lines[0]:
+            if m and ": " not in lines[0]:
                 by_name[m.group(1)] = path
     out = []
     d = pack.dialogs.get("sights")
@@ -149,7 +176,8 @@ def fn_code(code):
 
 
 def game_data_version(mc_dir, version):
-    """遊戲 jar 裡 version.json 的資料包版本 (主, 次)；找不到 jar 就 None。"""
+    """The datapack version (major, minor) from version.json in the game jar;
+    None if the jar is not found."""
     import zipfile
     jar = os.path.join(mc_dir, "versions", version, version + ".jar")
     if not os.path.exists(jar):
@@ -160,9 +188,10 @@ def game_data_version(mc_dir, version):
 
 
 def format_range(fmt):
-    """pack.mcmeta 的 min_format／max_format -> ((主, 次), (主, 次))。
+    """min_format / max_format in pack.mcmeta -> ((major, minor), (major, minor)).
 
-    規則照遊戲的 PackFormat：寫成整數時，下限是 (n, 0)、上限是 (n, 任意次版本)。
+    Follows the game's PackFormat rules: an integer means (n, 0) as the lower
+    bound and (n, any minor version) as the upper bound.
     """
     def one(v, top):
         if isinstance(v, int):
@@ -172,29 +201,31 @@ def format_range(fmt):
 
 
 def static_checks(save, pack, problems, say, game_version=None):
-    """第一段：從磁碟讀回的檢查。problems 收問題字串。
+    """Stage 1: the checks read back from disk. problems collects problem strings.
 
-    game_version 是遊戲的資料包版本 (主, 次)：GameTest 伺服器對版本範圍不符的資料包
-    照樣載入、一聲不吭（實測過），所以範圍對不對只能在這裡拿 version.json 比。
+    game_version is the game's datapack version (major, minor). The GameTest
+    server loads a datapack whose version range does not match without a word
+    (tested), so the range can only be checked here, against version.json.
     """
     fmt = pack.mcmeta.get("pack", {})
-    say(f"pack.mcmeta：min_format={fmt.get('min_format')} max_format={fmt.get('max_format')}")
+    say(f"pack.mcmeta: min_format={fmt.get('min_format')} max_format={fmt.get('max_format')}")
     if "min_format" not in fmt or "max_format" not in fmt:
-        problems.append("pack.mcmeta 缺 min_format／max_format（26.2 用這兩個欄位）")
+        problems.append("pack.mcmeta lacks min_format/max_format (26.2 uses these two fields)")
     elif game_version is not None:
         lo, hi = format_range(fmt)
         if lo <= tuple(game_version) <= hi:
-            say(f"  遊戲的資料包版本 {game_version[0]}.{game_version[1]}（jar 裡的 version.json）落在範圍內")
+            say(f"  The game's datapack version {game_version[0]}.{game_version[1]} "
+                f"(version.json in the jar) is within the range")
         else:
-            problems.append(f"pack.mcmeta 的範圍 {fmt['min_format']}～{fmt['max_format']} 不含遊戲的資料包版本 "
-                            f"{game_version[0]}.{game_version[1]}")
+            problems.append(f"The pack.mcmeta range {fmt['min_format']} to {fmt['max_format']} does not "
+                            f"include the game's datapack version {game_version[0]}.{game_version[1]}")
 
     lvl = nbtlib.load(os.path.join(save, "level.dat"))
     enabled = [str(s) for s in lvl["Data"]["DataPacks"]["Enabled"]]
     want = "file/" + os.path.basename(pack.root)
     say(f"level.dat DataPacks.Enabled = {enabled}")
     if want not in enabled:
-        problems.append(f"level.dat 的 DataPacks.Enabled 沒有 {want}")
+        problems.append(f"DataPacks.Enabled in level.dat does not list {want}")
 
     kinds = {k: 0 for k in TP_KINDS}
     for path in sorted(pack.functions):
@@ -203,8 +234,9 @@ def static_checks(save, pack, problems, say, game_version=None):
             kinds[top] += 1
             n_tp = sum(1 for ln in pack.functions[path] if ln.startswith("tp "))
             if n_tp != 1 or pack.tp(path) is None:
-                problems.append(f"{path}：tp 行應該恰好一行、絕對座標（實際 {n_tp} 行）")
-    say("函式 %d 個：ride %d、turn %d、go %d、sight %d、其他 %d" % (
+                problems.append(f"{path}: expected exactly one tp line with absolute coordinates "
+                                f"(found {n_tp})")
+    say("%d functions: ride %d, turn %d, go %d, sight %d, other %d" % (
         len(pack.functions), kinds["ride"], kinds["turn"], kinds["go"], kinds["sight"],
         len(pack.functions) - sum(kinds.values())))
 
@@ -216,44 +248,46 @@ def static_checks(save, pack, problems, say, game_version=None):
         for ln in lines:
             for ref in FN_REF_RE.findall(ln):
                 if ref not in fn_ids:
-                    missing.add(f"{path} 呼叫的函式 {ref}")
+                    missing.add(f"function {ref} called by {path}")
             for a, b in DIALOG_REF_RE.findall(ln):
                 if (a or b) not in dlg_ids:
-                    missing.add(f"{path} 打開的對話框 {a or b}")
+                    missing.add(f"dialog {a or b} opened by {path}")
     for a, b in DIALOG_REF_RE.findall(blob_dialogs):
         if (a or b) not in dlg_ids:
-            missing.add(f"對話框裡 show_dialog 的 {a or b}")
+            missing.add(f"show_dialog target {a or b} in a dialog")
     for (kind, tag), values in pack.tags.items():
         pool = fn_ids if kind == "function" else dlg_ids
         for v in values:
             if v.startswith(NS + ":") and v not in pool:
-                missing.add(f"標籤 #{tag} 的 {v}")
+                missing.add(f"{v} in tag #{tag}")
     for m in sorted(missing):
-        problems.append("不存在：" + m)
+        problems.append("Missing: " + m)
     for kind, tag in (("function", "minecraft:load"), ("function", "minecraft:tick"),
                       ("dialog", "minecraft:quick_actions"),
                       ("dialog", "minecraft:pause_screen_additions")):
         if not pack.tags.get((kind, tag)):
-            problems.append(f"沒有 #{tag}（{kind} 標籤）")
+            problems.append(f"No #{tag} ({kind} tag)")
 
     btn = line_buttons(pack)
     sbtn = sight_buttons(pack)
     vals = [n for _, _, _, n in btn] + [n for _, _, n, _ in sbtn]
-    say(f"對話框 {len(pack.dialogs)} 個；各線站表共 {len(btn)} 顆按鈕、景點清單 {len(sbtn)} 顆")
+    say(f"{len(pack.dialogs)} dialogs; {len(btn)} buttons in the line station lists, "
+        f"{len(sbtn)} in the attraction list")
     if any(v is None for v in vals):
-        problems.append("有站表／景點按鈕不是 /trigger <物件> set <n>")
+        problems.append("Some station list or attraction buttons are not /trigger <objective> set <n>")
     elif sorted(vals) != list(range(1, len(vals) + 1)):
-        problems.append("站表與景點按鈕的 trigger 值不是 1..N 連續不重複")
+        problems.append("The trigger values of the station list and attraction buttons are not 1..N "
+                        "without gaps or repeats")
     for name, _, _, path in sbtn:
         if path is None:
-            problems.append(f"景點清單的按鈕 {name} 沒有對應的 sight 函式")
+            problems.append(f"Attraction list button {name} has no matching sight function")
     for path, code, _, _ in btn:
         if ("go/" + fn_code(code)) not in pack.functions:
-            problems.append(f"{path} 的按鈕 {code} 沒有對應的 go 函式")
+            problems.append(f"Button {code} in {path} has no matching go function")
     return btn
 
 
-# ====================================================================== 讀回告示牌
+# ====================================================================== Read the signs back
 
 def _region_chunks(save):
     rdir = config.region_dir(save)
@@ -261,11 +295,13 @@ def _region_chunks(save):
 
 
 def scan_signs(save, targets, radius=48):
-    """讀回各 tp 目的地附近（±radius 格）的告示牌方塊實體。
+    """Reads back the sign block entities near each tp destination (±radius
+    blocks).
 
-    搭車告示牌都立在月台門那一排，離主位頂多三四十公尺；tp 的目的地就是
-    主位，所以掃它們附近就涵蓋全部的牌，不必把 1 GB 的存檔整個解一遍。
-    回傳 [(x, y, z, 原始 Compound)]。
+    Ride signs all stand in the row of platform screen doors, at most 30 to 40
+    meters from the primary position. A tp destination is a primary position,
+    so scanning near the destinations covers every sign without decompressing
+    the whole 1 GB save. Returns [(x, y, z, raw Compound)].
     """
     want = {}
     for x, _, z in targets:
@@ -303,15 +339,16 @@ def click_of(be):
 
 
 def sign_checks(save, pack, problems, say):
-    """存檔裡的告示牌點下去會去哪裡：每個函式、對話框都要存在。回傳挑給遊戲測的樣本。"""
+    """Where each sign in the save leads when clicked: every function and dialog
+    must exist. Returns the samples picked for the game to test."""
     targets = [pack.tp(p)[:3] for p in pack.functions
                if p.split("/")[0] in ("ride", "turn", "go") and pack.tp(p)]
     t0 = time.time()
     signs = scan_signs(save, targets)
     clicks = [(x, y, z, be, click_of(be)) for x, y, z, be in signs]
     with_click = [c for c in clicks if c[4] is not None]
-    say(f"告示牌：tp 目的地附近讀回 {len(signs)} 面，{len(with_click)} 面有點擊動作"
-        f"（{time.time() - t0:.0f}s）")
+    say(f"Signs: read back {len(signs)} near tp destinations, {len(with_click)} with a click action "
+        f"({time.time() - t0:.0f}s)")
     fn_ids = {"%s:%s" % (NS, p) for p in pack.functions}
     dlg_ids = {"%s:%s" % (NS, p) for p in pack.dialogs}
     n_run = n_dlg = 0
@@ -334,14 +371,15 @@ def sign_checks(save, pack, problems, say):
                 bad.append(f"({x},{y},{z}) show_dialog {ck.get('dialog')!r}")
             else:
                 samples.setdefault("dialog", (x, y, z, be))
-    say(f"  run_command {n_run} 面、show_dialog {n_dlg} 面；指向不存在的 {len(bad)} 面")
+    say(f"  run_command {n_run}, show_dialog {n_dlg}; {len(bad)} point to something missing")
     for b in bad[:20]:
-        problems.append("告示牌的點擊指向不存在的東西：" + b)
+        problems.append("A sign's click points to something missing: " + b)
     return samples
 
 
 def _chunk_table(save):
-    """{(cx, cz)} 存檔裡真的有寫出來的 chunk（只讀每個 region 檔的表頭）。"""
+    """{(cx, cz)}: the chunks actually written to the save (reads only the header
+    of each region file)."""
     have = set()
     for p in glob.glob(os.path.join(config.region_dir(save), "r.*.*.mca")):
         _, rx, rz, _ = os.path.basename(p).split(".")
@@ -353,10 +391,13 @@ def _chunk_table(save):
 
 
 def landing_checks(save, pack, problems, say):
-    """每個 ride/turn/go 的落點：蓋出來的範圍內要站得住（domain/walk 的規則），
-    面向的那個方向 1～3 格內要有告示牌（或還沒換成牌的月台門玻璃）。
+    """The landing point of each ride/turn/go: within the built area it must be
+    standable (the rules in domain/walk), and a sign (or platform screen door
+    glass not yet replaced by a sign) must stand 1 to 3 blocks ahead in the
+    direction faced.
 
-    --bbox 只蓋一小塊的世界，落點所在的 chunk 沒寫出來就跳過（那一站沒蓋）。
+    A world built with --bbox covers only a small area; a landing point whose
+    chunk was not written is skipped (that station was not built).
     """
     import math
     from mrt.domain import walk
@@ -382,7 +423,7 @@ def landing_checks(save, pack, problems, say):
             if walk.standable(vol.get, x, y, z):
                 n_ok += 1
             else:
-                bad.append("%s 的落點 (%d,%d,%d) 站不住：腳 %s／頭 %s／腳下 %s" % (
+                bad.append("%s lands at (%d,%d,%d), which is not standable: feet %s / head %s / below %s" % (
                     path, x, y, z, vol.get(x, y, z), vol.get(x, y + 1, z), vol.get(x, y - 1, z)))
             fx, fz = -math.sin(math.radians(yaw)), math.cos(math.radians(yaw))
             ahead = [vol.get(x + int(round(k * fx)), y, z + int(round(k * fz))) for k in (1, 2, 3)]
@@ -390,14 +431,14 @@ def landing_checks(save, pack, problems, say):
                 n_sign += 1
             elif any("pane" in b for b in ahead):
                 n_pane += 1
-    say(f"傳送落點：{len(targets)} 個落在有蓋出來的範圍，站得住 {n_ok} 個；"
-        f"面前 3 格內有告示牌 {n_sign} 個、只有月台門玻璃 {n_pane} 個")
+    say(f"Teleport landing points: {len(targets)} in the built area, {n_ok} standable; "
+        f"{n_sign} with a sign within 3 blocks ahead, {n_pane} with only platform screen door glass")
     problems.extend(bad[:20])
     if len(bad) > 20:
-        problems.append("……站不住的落點還有 %d 個" % (len(bad) - 20))
+        problems.append("…and %d more landing points that are not standable" % (len(bad) - 20))
 
 
-# ====================================================================== 遊戲內測試
+# ====================================================================== In-game tests
 
 def find_java(mc_dir, version):
     v = json.load(open(os.path.join(mc_dir, "versions", version, version + ".json"), encoding="utf-8"))
@@ -411,7 +452,8 @@ def find_java(mc_dir, version):
 
 
 def game_classpath(mc_dir, version):
-    """啟動器的版本檔 -> classpath（伺服器用不到原生函式庫，只收 jar）。"""
+    """Launcher version file -> classpath (the server needs no native libraries,
+    so only jars are collected)."""
     v = json.load(open(os.path.join(mc_dir, "versions", version, version + ".json"), encoding="utf-8"))
     cp = []
     for lib in v["libraries"]:
@@ -436,11 +478,13 @@ def _snbt(tag):
 
 
 def pos_check(name, tp, report=True):
-    """marker 執行完之後的 Pos／Rotation 要等於 tp 那一行（x、y、z 乘 10 取整，角度容許 ±0.1°）。
-    結果在 #hit（1 = 對）；report=False 不印 FAIL（反向對照自己判）。"""
+    """After the marker runs, its Pos/Rotation must equal the tp line (x, y and z
+    multiplied by 10 and rounded; angles within ±0.1°). The result goes to #hit
+    (1 = correct); report=False prints no FAIL (a negative control judges the
+    result itself)."""
     x, y, z, yaw, pitch = tp
     r = int(round(yaw * 10))
-    shift = 3600 if 2 <= (r % 3600) <= 3597 else 5400        # 別讓容許範圍跨過 0°
+    shift = 3600 if 2 <= (r % 3600) <= 3597 else 5400        # Keep the tolerance from wrapping across 0°.
     er = (r + shift) % 3600
     ep = int(round(pitch * 10))
     return [
@@ -460,14 +504,16 @@ def pos_check(name, tp, report=True):
 
 
 def ok_fail(name, cond, want=True):
-    """cond 是一段 execute 的 if 條件（不含 if）：成立就 ok、不成立就 FAIL（want=False 反過來）。"""
+    """cond is an execute if condition (without the "if"): ok when it holds, FAIL
+    when it does not (the reverse when want=False)."""
     yes, no = ("if", "unless") if want else ("unless", "if")
     return ["execute %s %s run say MRTCHK ok %s" % (yes, cond, name),
             "execute %s %s run say MRTCHK FAIL %s" % (no, cond, name)]
 
 
 def build_selftest(pack, btn, samples, out_dir, rules):
-    """產生 mrt_selftest 資料包。回傳 (預期的具名檢查, {計數名稱: 預期值}, 函式檔數)。"""
+    """Generates the mrt_selftest datapack. Returns (expected named checks,
+    {count name: expected value}, number of function files)."""
     from mrt.infrastructure import datapack as DP
     root = os.path.join(out_dir, TEST_NS)
     fdir = os.path.join(root, "data", TEST_NS, "function")
@@ -477,8 +523,8 @@ def build_selftest(pack, btn, samples, out_dir, rules):
     def fn(path, lines):
         files[path] = lines
 
-    # ---- 測試環境與測試個體 ----
-    meta = {"pack": {"description": "taipei_mrt 的一次性遊戲內測試（tools/check_datapack.py 產生）",
+    # ---- Test environment and test instance ----
+    meta = {"pack": {"description": "One-off in-game test for taipei_mrt (generated by tools/check_datapack.py)",
                      "min_format": DP.PACK_MIN_FORMAT, "max_format": DP.PACK_MAX_FORMAT}}
     env = {"type": "minecraft:function", "setup": TEST_NS + ":setup", "teardown": TEST_NS + ":teardown"}
     inst = {"type": "minecraft:function", "function": "minecraft:always_pass",
@@ -492,9 +538,11 @@ def build_selftest(pack, btn, samples, out_dir, rules):
              "scoreboard players set #ok mrt_t 0",
              "scoreboard players set #tok mrt_t 0",
              "forceload add 0 0",
-             # 進站提示的檢查要一口氣掃幾百次、每次一百多個選擇器
+             # The station entry notice check scans hundreds of times in one go,
+             # each time with over a hundred selectors.
              "gamerule max_command_sequence_length 2000000"]
-    # 進站提示的檢查在 teardown 做（新的一次執行，上面調高的指令上限才生效）
+    # The station entry notice check runs in teardown (a new execution, so the
+    # command limit raised above takes effect).
     hud_targets = []
     for path in probes:
         tp = pack.tp(path)
@@ -502,16 +550,16 @@ def build_selftest(pack, btn, samples, out_dir, rules):
                   if ln.startswith("scoreboard players set @s %s.area " % NS)), None)
         if tp is not None and g is not None:
             hud_targets.append((path, tp, g))
-    # 1. 開服時 #minecraft:load 跑過了嗎（這時我們還什麼都沒呼叫）
+    # 1. Whether #minecraft:load ran at startup (nothing has been called yet).
     setup += ok_fail("load_ran_at_startup", "score #setup %s.state matches 1.." % NS)
     expect.append("load_ran_at_startup")
     setup.append("execute store result score #beat0 mrt_t run scoreboard players get #beat %s.state" % NS)
-    # 2. 記分板物件都建了
+    # 2. Every scoreboard objective exists.
     for obj in ("state", "go", "menu", "area", "here"):
         setup.append("execute store success score #v mrt_t run scoreboard players set #probe %s.%s 0" % (NS, obj))
         setup += ok_fail("objective_%s" % obj, "score #v mrt_t matches 1")
         expect.append("objective_%s" % obj)
-    # 3. 世界初始設定
+    # 3. Initial world settings.
     for rule, val in rules:
         want = {"true": 1, "false": 0}.get(val, None)
         want = int(val) if want is None else want
@@ -521,19 +569,21 @@ def build_selftest(pack, btn, samples, out_dir, rules):
     setup.append("execute store result score #v mrt_t run time query time")
     setup += ok_fail("time_noon", "score #v mrt_t matches 6000")
     expect.append("time_noon")
-    # 4. /reload（再跑一次 sys/load）不能蓋掉之後改過的規則
+    # 4. /reload (running sys/load again) must not overwrite rules changed
+    #    afterwards.
     setup += ["gamerule keep_inventory false",
               "function %s:sys/load" % NS,
               "execute store result score #v mrt_t run gamerule keep_inventory"]
     setup += ok_fail("reload_keeps_player_rules", "score #v mrt_t matches 0")
     setup.append("gamerule keep_inventory true")
     expect.append("reload_keeps_player_rules")
-    # 5. 每一個 ride/turn/go 都在遊戲裡跑一次
+    # 5. Every ride/turn/go runs once in the game.
     for k, path in enumerate(probes):
         setup.append("execute positioned 0 100 0 summon minecraft:marker run function %s:p/%d" % (TEST_NS, k))
         fn("p/%d" % k, ["function %s:%s" % (NS, path)] + pos_check(path, pack.tp(path))
            + ["scoreboard players operation #ok mrt_t += #hit mrt_t", "kill @s"])
-    # 6. 站表的每一顆按鈕：trigger 值 -> sys/go -> 按鈕上那個站號的 go 函式的位置
+    # 6. Every station list button: trigger value -> sys/go -> the position of
+    #    the go function for the station code on the button.
     for path, code, obj, n in btn:
         tp = pack.tp("go/" + fn_code(code))
         if tp is None or obj is None:
@@ -545,7 +595,8 @@ def build_selftest(pack, btn, samples, out_dir, rules):
            + ["execute unless score @s %s matches 0 run scoreboard players set #hit mrt_t 0" % obj,
               "execute unless score @s %s matches 0 run say MRTCHK FAIL trigger_not_reset_%d" % (obj, n),
               "scoreboard players operation #tok mrt_t += #hit mrt_t", "kill @s"])
-    # 6b. 景點清單的每一顆按鈕：trigger 值 -> sys/go -> 那座景點的 sight 函式的位置
+    # 6b. Every attraction list button: trigger value -> sys/go -> the position
+    #     of that attraction's sight function.
     for name, obj, n, path in sight_buttons(pack):
         tp = pack.tp(path) if path else None
         if tp is None or obj is None:
@@ -557,31 +608,34 @@ def build_selftest(pack, btn, samples, out_dir, rules):
            + ["execute unless score @s %s matches 0 run scoreboard players set #hit mrt_t 0" % obj,
               "execute unless score @s %s matches 0 run say MRTCHK FAIL trigger_not_reset_%d" % (obj, n),
               "scoreboard players operation #tok mrt_t += #hit mrt_t", "kill @s"])
-    # 反向對照：沒有執行任何傳送的 marker，不能被判成落在某個 go 函式的位置
+    # Negative control: a marker that ran no teleport must not be judged to be at
+    # the position of a go function.
     first_go = next((p for p in probes if p.startswith("go/")), None)
     if first_go:
         setup.append("execute positioned 0 100 0 summon minecraft:marker run function %s:neg_tp" % TEST_NS)
         fn("neg_tp", pos_check("negative_control_tp", pack.tp(first_go), report=False)
            + ok_fail("negative_control_tp", "score #hit mrt_t matches 0") + ["kill @s"])
         expect.append("negative_control_tp")
-    # 反向對照：沒有這個編號的 trigger 值 -> 不動、歸零
+    # Negative control: a trigger value with no matching number -> no movement,
+    # and the value is reset.
     objs = {obj for _, _, obj, _ in btn if obj}
     if len(objs) == 1:
         obj = objs.pop()
         setup.append("execute positioned 0 100 0 summon minecraft:marker run function %s:neg_trig" % TEST_NS)
-        n_all = len(btn) + len(sight_buttons(pack))       # 景點按鈕排在站名按鈕後面
+        n_all = len(btn) + len(sight_buttons(pack))       # Attraction buttons follow the station buttons.
         fn("neg_trig", ["scoreboard players set @s %s %d" % (obj, n_all + 1), "function %s:sys/go" % NS]
            + ok_fail("trigger_unknown_value_stays", "entity @s[x=0.5,y=100,z=0.5,distance=..0.01]")
            + ok_fail("trigger_unknown_value_reset", "score @s %s matches 0" % obj) + ["kill @s"])
         expect += ["trigger_unknown_value_stays", "trigger_unknown_value_reset"]
-    # 6c. 世界高度：資料包的 dimension_type/overworld.json 把主世界加高到 config.Y_MAX
-    #     （台北101 的塔尖在 y≈580）。沒生效的話，原版 y319 以上根本放不了方塊
+    # 6c. World height: the datapack's dimension_type/overworld.json raises the
+    #     overworld to config.Y_MAX (the spire of Taipei 101 is at y≈580). If it
+    #     has no effect, no block can be placed above the vanilla y319.
     top = config.Y_MAX
     setup += ["setblock 0 %d 0 minecraft:gold_block" % top]
     setup += ok_fail("world_height_y%d" % top, "block 0 %d 0 minecraft:gold_block" % top)
     setup += ["setblock 0 %d 0 minecraft:air" % top]
     expect.append("world_height_y%d" % top)
-    # 7. 首次進入
+    # 7. First join.
     home = None
     for ln in pack.functions.get("sys/join", ()):
         m = re.match(r"^function %s:(go/\S+)$" % NS, ln)
@@ -596,19 +650,20 @@ def build_selftest(pack, btn, samples, out_dir, rules):
         join += ["execute if score #hit mrt_t matches 1 run say MRTCHK ok join_home_%s" % home.replace("/", "_")]
         expect.append("join_home_" + home.replace("/", "_"))
     fn("join", join + ["kill @s"])
-    # 8. /trigger mrt.menu：分派之後歸零（dialog show 對 marker 會失敗，不影響）
+    # 8. /trigger mrt.menu: reset after dispatch (dialog show fails on a marker,
+    #    which does not matter).
     setup.append("execute positioned 0 100 0 summon minecraft:marker run function %s:menu" % TEST_NS)
     fn("menu", ["scoreboard players set @s %s.menu 1" % NS, "function %s:sys/menu" % NS]
        + ok_fail("menu_trigger_reset", "score @s %s.menu matches 0" % NS) + ["kill @s"])
     expect.append("menu_trigger_reset")
-    # 9. 計數
+    # 9. Counts.
     setup += ["execute store result storage %s:r tp int 1 run scoreboard players get #ok mrt_t" % TEST_NS,
               "execute store result storage %s:r trig int 1 run scoreboard players get #tok mrt_t" % TEST_NS,
               "function %s:report with storage %s:r" % (TEST_NS, TEST_NS)]
     fn("report", ["$say MRTCHK count tp=$(tp) trig=$(trig)"])
     fn("setup", setup)
 
-    # ---- teardown：setup_ticks（100 tick）之後。區塊載入了、schedule 跳過幾次了 ----
+    # ---- Teardown: after setup_ticks (100 ticks). The chunk is loaded, and the schedule has run a few times ----
     td = ["say MRTCHK teardown",
           "execute store result score #beat1 mrt_t run scoreboard players get #beat %s.state" % NS,
           "scoreboard players operation #beat1 mrt_t -= #beat0 mrt_t"]
@@ -617,7 +672,7 @@ def build_selftest(pack, btn, samples, out_dir, rules):
     td += ok_fail("chunk_loaded", "loaded 0 100 0")
     expect.append("chunk_loaded")
     td.append("fill 0 99 0 15 99 15 minecraft:stone")
-    sign_list = []                       # (名稱, 方塊狀態, 方塊實體 Compound, 預期留得住)
+    sign_list = []                       # (name, block state, block entity Compound, expected to keep click_event)
     for kind, (x, y, z, be, state, src) in sorted(samples.items()):
         sign_list.append(("sign_%s_%s" % (kind, src), state, be, True))
     for path in sorted(pack.dialogs):
@@ -640,10 +695,12 @@ def build_selftest(pack, btn, samples, out_dir, rules):
         pattern = "{is_waxed:1b,front_text:{messages:[{click_event:%s}]}}" % _snbt(ck)
         td += ok_fail(name, "data block %d %d %d %s" % (x, y, z, pattern), want=keep)
         expect.append(name)
-    # 進站提示：把 sys/hud 的掃描原樣複製一份，只把 @a 換成 @s（GameTest 裡沒有玩家；
-    # @s 帶範圍參數時是拿執行者自己的座標去比，不必載入區塊）。每個傳送目的地
-    # tp 一個 marker 過去、清掉它的 mrt.area、掃一次：它要落在那一站的範圍
-    # （mrt.here = 函式裡記的車站編號），而且 hud_enter 要跑過（mrt.area 跟著更新）
+    # Station entry notice: copy the scan in sys/hud verbatim, replacing only @a
+    # with @s (GameTest has no players; @s with range arguments compares the
+    # executor's own coordinates, so no chunk needs to be loaded). For each
+    # teleport destination, tp a marker there, clear its mrt.area and scan once.
+    # It must fall within that station's range (mrt.here = the station number
+    # recorded in the function), and hud_enter must have run (mrt.area follows).
     scan = []
     for ln in pack.functions.get("sys/hud", ()):
         if ("%s.here" % NS) in ln or "sys/hud_enter" in ln:
@@ -660,7 +717,8 @@ def build_selftest(pack, btn, samples, out_dir, rules):
                         "execute unless score @s %s.here matches %d run say MRTCHK FAIL hud_area_%s"
                         % (NS, g, path.replace("/", "_")),
                         "kill @s"])
-    # 反向對照：站外（y=300 的高空）不能被判成在任何一站
+    # Negative control: a point outside every station (high in the air at y=300)
+    # must not be judged to be in any station.
     td.append("execute positioned 0 300 0 summon minecraft:marker run function %s:h_neg" % TEST_NS)
     fn("h_neg", ["function %s:hud_scan" % TEST_NS]
        + ok_fail("negative_control_hud_outside", "score @s %s.here matches 0" % NS) + ["kill @s"])
@@ -670,7 +728,8 @@ def build_selftest(pack, btn, samples, out_dir, rules):
     fn("report_hud", ["$say MRTCHK count hud=$(hud)"])
     td.append("forceload remove 0 0")
     fn("teardown", td)
-    # 反向對照：故意寫壞的函式，log 裡一定要看到它的載入錯誤
+    # Negative control: a deliberately broken function, whose load error must
+    # appear in the log.
     fn("broken", ["this_is_not_a_command 1 2 3"])
 
     os.makedirs(root, exist_ok=True)
@@ -702,7 +761,8 @@ def _dialog_sign(dialog):
 
 
 def synth_samples(pack):
-    """存檔裡還沒有搭車告示牌時，用生成器自己的 World.sign 做三面（跟蓋世界同一段程式）。"""
+    """When the save has no ride signs yet, makes three with the generator's own
+    World.sign (the same code that builds the world)."""
     from mrt.infrastructure.mcworld import World
     w = World(tempfile.mkdtemp(prefix="mrt_sign_"))
     ride = next(p for p in sorted(pack.functions) if p.startswith("ride/"))
@@ -726,7 +786,7 @@ def synth_samples(pack):
 
 
 def run_game(java, cp, work, timeout):
-    """跑 GameTest 伺服器；回傳 (結束碼, log 文字)。"""
+    """Runs the GameTest server; returns (exit code, log text, elapsed seconds)."""
     cmd = [java, "-Xmx2G", "-cp", cp, "net.minecraft.gametest.Main",
            "--universe", os.path.join(work, "universe"), "--packs", os.path.join(work, "packs"),
            "--report", os.path.join(work, "report.xml"), "--tests", TEST_NS + ":*"]
@@ -738,22 +798,26 @@ def run_game(java, cp, work, timeout):
     return p.returncode, log, time.time() - t0
 
 
-# log 的一筆紀錄以「[時:分:秒] [執行緒/等級]:」開頭，例外堆疊的後續行屬於同一筆
+# A log record starts with "[hh:mm:ss] [thread/level]: "; the following lines of
+# an exception stack trace belong to the same record.
 REC_RE = re.compile(r"^\[\d\d:\d\d:\d\d\] \[([^\]]+)/(INFO|WARN|ERROR|FATAL|DEBUG)\]: ")
-# 跟資料包無關、GameTest 伺服器自己會講的警告
+# Warnings the GameTest server emits on its own, unrelated to the datapack.
 BENIGN_RE = re.compile(r"Can't keep up!")
-# 兩個反向對照各自該留下的紀錄
+# The record each of the two negative controls should leave.
 CTL_FUNCTION = "Failed to load function %s:broken" % TEST_NS
 CTL_DIALOG = "Failed to get element ResourceKey[minecraft:dialog / %s:no_such_dialog]" % NS
 
 
-COUNT_NAMES = {"tp": "傳送函式在遊戲裡落到約定的位置與朝向",
-               "trig": "站表與景點按鈕經 trigger 分派落到按鈕上那一站／那座景點",
-               "hud": "進站提示檢查：傳送目的地落在那一站的範圍、hud_enter 有跑"}
+COUNT_NAMES = {"tp": "Teleport functions landing at the agreed position and facing in the game",
+               "trig": "Station list and attraction buttons dispatched by trigger to the station "
+                       "or attraction on the button",
+               "hud": "Station entry notice: teleport destinations within their station's range, "
+                      "with hud_enter run"}
 
 
 def records(log):
-    """log -> [(等級, 整筆文字)]；開頭 JVM 自己印的 WARNING 不算紀錄。"""
+    """log -> [(level, full record text)]; the WARNING lines the JVM prints at
+    the start are not records."""
     out = []
     for ln in log.splitlines():
         m = REC_RE.match(ln)
@@ -768,10 +832,12 @@ def analyse(log, expect, counts, problems, say):
     lines = log.splitlines()
     for pk in (config.DATAPACK_NAME, TEST_NS):
         if not any(("Included folder pack" in ln and pk in ln) for ln in lines):
-            problems.append(f"遊戲沒有收進資料包 {pk}（log 裡沒有 Included folder pack）")
+            problems.append(f"The game did not include datapack {pk} (no 'Included folder pack' in the log)")
     if not any("Started game test server" in ln for ln in lines):
-        problems.append("GameTest 伺服器沒有啟動成功（多半是資料包載入失敗，見下面的錯誤）")
-    # 一律嚴格：WARN 以上的紀錄除了兩個反向對照與白名單，全部算問題
+        problems.append("The GameTest server did not start (usually a datapack load failure; "
+                        "see the errors below)")
+    # Always strict: every record at WARN or above is a problem, except for the
+    # two negative controls and the allowlist.
     bad, ctl_fn, ctl_dlg = [], 0, 0
     for level, rec in records(log):
         if level not in ("WARN", "ERROR", "FATAL"):
@@ -783,17 +849,19 @@ def analyse(log, expect, counts, problems, say):
         elif not BENIGN_RE.search(rec):
             bad.append(rec)
     if ctl_fn == 1:
-        say(f"反向對照：log 裡恰好一筆「{CTL_FUNCTION}」—— 函式載入錯誤抓得到")
+        say(f"Negative control: exactly one '{CTL_FUNCTION}' in the log, so function load errors are caught")
     else:
-        problems.append(f"反向對照失敗：故意寫壞的 {TEST_NS}:broken 留下 {ctl_fn} 筆載入錯誤（應該 1 筆），"
-                        "這支工具的 log 比對不可靠")
+        problems.append(f"Negative control failed: the deliberately broken {TEST_NS}:broken left "
+                        f"{ctl_fn} load errors (expected 1), so this tool's log matching is unreliable")
     if ctl_dlg == 1:
-        say("反向對照：指向不存在對話框的牌，遊戲解不開（log 裡恰好一筆 Failed to get element）")
+        say("Negative control: the game cannot decode a sign that points to a nonexistent dialog "
+            "(exactly one 'Failed to get element' in the log)")
     else:
-        problems.append(f"反向對照失敗：不存在的對話框留下 {ctl_dlg} 筆解碼錯誤（應該 1 筆）")
+        problems.append(f"Negative control failed: the nonexistent dialog left {ctl_dlg} decoding errors "
+                        f"(expected 1)")
     for rec in bad[:15]:
         head = rec.splitlines()
-        problems.append("log 裡的警告／錯誤：" + " / ".join(h.strip() for h in head[:3])[:400])
+        problems.append("Warning or error in the log: " + " / ".join(h.strip() for h in head[:3])[:400])
     ok = {}
     fails = []
     count = None
@@ -808,31 +876,32 @@ def analyse(log, expect, counts, problems, say):
         else:
             fails.append(m.group(2))
     for f in fails:
-        problems.append("遊戲內檢查失敗：" + f)
+        problems.append("In-game check failed: " + f)
     missing = [e for e in expect if e not in ok and not any(f.split()[0] == e for f in fails)]
     for e in missing:
-        problems.append("遊戲內檢查沒有跑到：" + e)
-    say(f"遊戲內檢查：{len(ok)} 項通過、{len(fails)} 項失敗、{len(missing)} 項沒跑到")
+        problems.append("In-game check did not run: " + e)
+    say(f"In-game checks: {len(ok)} passed, {len(fails)} failed, {len(missing)} did not run")
     if count is None:
-        problems.append("遊戲內沒有回報計數（setup 函式沒跑完？）")
+        problems.append("The game reported no counts (the setup function may not have finished)")
     else:
         for k, v in counts.items():
             got = int(count.get(k, -1))
-            say("  %s：%d/%d" % (COUNT_NAMES.get(k, k), got, v))
+            say("  %s: %d/%d" % (COUNT_NAMES.get(k, k), got, v))
             if got != v:
-                problems.append(f"遊戲內 {k}：只有 {got}/{v} 個對")
+                problems.append(f"In-game {k}: only {got}/{v} correct")
     passed = any("All" in ln and "required tests passed" in ln for ln in lines)
     if not passed:
-        problems.append("GameTest 沒有回報「All required tests passed」")
+        problems.append("GameTest did not report 'All required tests passed'")
     return ok, fails
 
 
 def main():
-    ap = argparse.ArgumentParser(description="讀回並在真的遊戲裡驗證搭乘系統資料包")
+    ap = argparse.ArgumentParser(description="Read back the ride system datapack and verify it in the real game")
     ap.add_argument("save")
-    ap.add_argument("--no-game", action="store_true", help="只做讀回檢查，不開遊戲")
-    ap.add_argument("--no-signs", action="store_true", help="不讀回存檔裡的告示牌")
-    ap.add_argument("--keep", help="遊戲內測試的工作目錄（預設用暫存目錄，失敗時保留）")
+    ap.add_argument("--no-game", action="store_true", help="Run only the read-back checks; do not start the game")
+    ap.add_argument("--no-signs", action="store_true", help="Do not read back the signs in the world save")
+    ap.add_argument("--keep", help="Working directory for the in-game test (default: a temporary "
+                                   "directory, kept on failure)")
     ap.add_argument("--mc-dir", default=MC_DIR)
     ap.add_argument("--version", default=VERSION)
     ap.add_argument("--timeout", type=int, default=600)
@@ -842,10 +911,10 @@ def main():
 
     root = os.path.join(a.save, "datapacks", config.DATAPACK_NAME)
     if not os.path.isdir(root):
-        print(f"✗ 找不到資料包 {root}")
+        print(f"✗ Datapack not found: {root}")
         return 1
     pack = Pack(root)
-    say(f"== 一、從磁碟讀回 {root}")
+    say(f"== 1. Read back from disk: {root}")
     btn = static_checks(a.save, pack, problems, say, game_data_version(a.mc_dir, a.version))
     samples = {}
     if not a.no_signs:
@@ -855,14 +924,16 @@ def main():
             samples[kind] = (x, y, z, be, state, "save")
     landing_checks(a.save, pack, problems, say)
     if not a.no_game:
-        say("\n== 二、交給 Minecraft %s 的 GameTest 伺服器" % a.version)
+        say("\n== 2. Hand over to the Minecraft %s GameTest server" % a.version)
         synth = {k: v for k, v in synth_samples(pack).items() if k not in samples}
         if synth:
-            say("存檔裡沒有 %s 的告示牌可以取樣，這幾種改用 World.sign 產生的牌" % "／".join(sorted(synth)))
+            say("The save has no %s signs to sample; using signs made with World.sign instead"
+                % "/".join(sorted(synth)))
             samples.update(synth)
         java = find_java(a.mc_dir, a.version)
         if not java or not os.path.exists(os.path.join(a.mc_dir, "versions", a.version, a.version + ".jar")):
-            print(f"✗ 找不到 Minecraft {a.version} 或它的 Java（--mc-dir {a.mc_dir}）；只做讀回可以加 --no-game")
+            print(f"✗ Minecraft {a.version} or its Java not found (--mc-dir {a.mc_dir}); "
+                  f"add --no-game to run only the read-back checks")
             return 1
         cp = game_classpath(a.mc_dir, a.version)
         work = a.keep or tempfile.mkdtemp(prefix="mrt_dpcheck_")
@@ -873,32 +944,34 @@ def main():
         from mrt.application import ride_plan as RP
         rules = [(r, v) for r, v, _, _ in RP.GAME_RULES]
         expect, counts, nfile = build_selftest(pack, btn, samples, os.path.join(work, "packs"), rules)
-        say(f"測試資料包 {TEST_NS}：{nfile} 個函式、{len(expect)} 項具名檢查，"
-            f"外加 {counts['tp']} 個傳送函式、{counts['trig']} 顆站表按鈕、{counts['hud']} 個進站提示落點")
-        say(f"java：{java}\n工作目錄：{work}")
+        say(f"Test datapack {TEST_NS}: {nfile} functions, {len(expect)} named checks, "
+            f"plus {counts['tp']} teleport functions, {counts['trig']} station list buttons and "
+            f"{counts['hud']} station entry notice landing points")
+        say(f"java: {java}\nWorking directory: {work}")
         try:
             code, log, dt = run_game(java, cp, work, a.timeout)
         except subprocess.TimeoutExpired:
-            problems.append(f"遊戲在 {a.timeout}s 內沒有結束")
+            problems.append(f"The game did not finish within {a.timeout}s")
             code, log, dt = -1, "", a.timeout
-        say(f"GameTest 伺服器結束碼 {code}（{dt:.0f}s），log 在 {os.path.join(work, 'server.log')}")
+        say(f"GameTest server exit code {code} ({dt:.0f}s); log at {os.path.join(work, 'server.log')}")
         for ln in log.splitlines():
             if "Included folder pack" in ln or "GAME TESTS COMPLETE" in ln \
                     or "required tests" in ln or "[台北捷運]" in ln or "MRTCHK count" in ln:
                 say("  | " + ln.strip()[:240])
         if code != 0:
-            problems.append(f"GameTest 伺服器結束碼 {code}（不是 0）")
+            problems.append(f"GameTest server exit code {code} (not 0)")
         analyse(log, expect, counts, problems, say)
         if not problems and not a.keep:
             shutil.rmtree(work, ignore_errors=True)
 
     print()
     if problems:
-        print(f"✗ {len(problems)} 個問題：")
+        print(f"✗ {len(problems)} problems:")
         for p in problems[:60]:
             print("  - " + p)
         return 1
-    print("✓ 資料包讀回" + ("檢查全部通過（沒有開遊戲）" if a.no_game else "與遊戲內驗證全部通過"))
+    print("✓ Datapack " + ("read-back checks all passed (game not started)" if a.no_game
+                            else "read-back and in-game checks all passed"))
     return 0
 
 

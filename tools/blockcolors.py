@@ -1,19 +1,25 @@
 #!/usr/bin/env python3
-"""方塊 -> 顏色：從裝好的遊戲 jar 裡的方塊模型與材質算平均色。
+"""Block -> color: the average color of the block models and textures in the installed
+game jar.
 
-verify_render 的配色是手填的四十幾種，新材質一律畫成洋紅。景點建築一次會用上
-上百種方塊（石英、陶瓦、銅、各色玻璃……），手填跟不上，而且填錯了看圖的人
-也不會知道。這裡照遊戲自己的解析順序走：blockstates/<方塊>.json 的第一個變體
--> models/block/<模型>.json（沿 parent 往上找）-> 材質圖 -> 不透明像素的平均色。
-朝上的面（俯視圖）與側面（立面圖）分開算：原木頂面是年輪、側面是樹皮。
+verify_render has a hand-picked palette of forty-odd colors and draws every other
+texture magenta. An attraction building uses a hundred or more blocks at once (quartz,
+terracotta, copper, stained glass in every color...). A hand-picked table cannot keep up,
+and a wrong entry would go unnoticed by whoever reads the image. This module follows
+the game's own resolution order: the first variant in blockstates/<block>.json
+-> models/block/<model>.json (following parent upward) -> texture image -> average color
+of the opaque pixels. The top face (top-down maps) and the side face (elevations) are
+computed separately: a log's top shows growth rings and its side shows bark.
 
-材質是 Mojang 的，只在本機讀來算顏色，不寫進專案。算好的表快取在暫存目錄。
-生物群系染色的材質（草、樹葉、藤蔓、水）在 jar 裡是灰階，照平原的顏色補回去。
+The textures belong to Mojang. They are read locally only to compute colors and are
+never written into the project. The computed table is cached in the temporary directory.
+Biome-tinted textures (grass, leaves, vines, water) are grayscale in the jar, so the
+plains colors are applied to them.
 
-用法（當函式庫）：
-    bc = BlockColors()            # 找不到遊戲就回 None 色，呼叫端自己決定
-    bc.rgb("minecraft:oak_stairs[facing=east]", face="side") -> (r, g, b) 或 None
-    bc.alpha("minecraft:glass_pane")                          -> 0..1 的覆蓋率
+Usage (as a library):
+    bc = BlockColors()            # Without the game, colors are None and the caller decides.
+    bc.rgb("minecraft:oak_stairs[facing=east]", face="side") -> (r, g, b) or None
+    bc.alpha("minecraft:glass_pane")                          -> coverage from 0 to 1
 """
 import io
 import json
@@ -25,7 +31,8 @@ import zipfile
 MC_DIR = os.path.expanduser("~/Library/Application Support/minecraft")
 VERSION = "26.2"
 
-# 生物群系染色（平原）：材質是灰階，遊戲執行時乘上這個顏色
+# Biome tint (plains): the textures are grayscale, and the game multiplies them by this
+# color at run time.
 TINT = {
     "grass_block_top": (145, 189, 89), "short_grass": (145, 189, 89), "tall_grass_top": (145, 189, 89),
     "tall_grass_bottom": (145, 189, 89), "fern": (145, 189, 89), "large_fern_top": (145, 189, 89),
@@ -54,7 +61,7 @@ class BlockColors:
         self.available = os.path.exists(self.jar_path)
         self._dirty = False
 
-    # ---- jar 讀取 ----
+    # ---- Reading the jar ----
     def _z(self):
         if self._zip is None:
             self._zip = zipfile.ZipFile(self.jar_path)
@@ -67,7 +74,8 @@ class BlockColors:
             return None
 
     def _model_textures(self, model):
-        """模型 id -> 材質變數表（沿 parent 合併，子模型優先），變數引用 #x 解開。"""
+        """Model id -> texture variable table, merged along parent with the child first and
+        #x references resolved."""
         tex = {}
         seen = 0
         while model and seen < 12:
@@ -77,7 +85,7 @@ class BlockColors:
             if m is None:
                 break
             for k, v in (m.get("textures") or {}).items():
-                if isinstance(v, dict):          # 26.2：{"sprite": ..., "force_translucent": ...}
+                if isinstance(v, dict):          # 26.2: {"sprite": ..., "force_translucent": ...}
                     v = v.get("sprite")
                 tex.setdefault(k, v)
             model = m.get("parent")
@@ -102,7 +110,8 @@ class BlockColors:
         return v.get("model")
 
     def _texture_rgba(self, tex):
-        """材質 id -> (r, g, b, 覆蓋率)。動畫材質（直條拼接）只取第一格。"""
+        """Texture id -> (r, g, b, coverage). Animated textures (frames stacked vertically)
+        use only the first frame."""
         from PIL import Image
         name = tex.split(":")[-1]
         if not name.startswith("block/"):
@@ -129,7 +138,8 @@ class BlockColors:
         return (int(r), int(g), int(b), round(a, 3))
 
     def _resolve(self, block):
-        """方塊名 -> {"top": [r,g,b,a], "side": [r,g,b,a]}（解不出來回 None）。"""
+        """Block name -> {"top": [r,g,b,a], "side": [r,g,b,a]}, or None if it cannot be
+        resolved."""
         if block in ("air", "cave_air", "void_air"):
             return {"top": [0, 0, 0, 0.0], "side": [0, 0, 0, 0.0]}
         if block in ("water", "bubble_column"):
@@ -141,7 +151,8 @@ class BlockColors:
         model = self._first_model(block)
         tex = self._model_textures(model) if model else {}
         if not tex:
-            # 告示牌、旗幟、箱子這類方塊實體：模型只有 particle 或根本沒有，退回同名材質
+            # Block entities such as signs, banners and chests have only a particle texture in
+            # their model, or no model at all, so fall back to the texture of the same name.
             guess = {"particle": "block/" + block}
             for suf, base in (("_wall_hanging_sign", "_planks"), ("_hanging_sign", "_planks"),
                               ("_wall_sign", "_planks"), ("_sign", "_planks")):

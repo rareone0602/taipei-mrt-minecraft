@@ -1,42 +1,45 @@
 #!/usr/bin/env python3
-"""線形：取樣、縱斷面、軌道離線位、路線變體挑選。
+"""Alignment: sampling, vertical profile, track offsets and route variant selection.
 
-這裡全是純函式 —— 輸入折線與標籤，輸出座標與高度，不碰存檔也不寫方塊。
-原本這些和「把方塊放進世界」的程式混在同一支 build_line.py 裡，但兩者的
-變動理由完全不同：斷面長怎樣是美術決定，線形算得對不對是工程決定。
-分開之後線形可以單獨測（見 tests/test_alignment.py），不必產生一個世界。
+Everything here is a pure function: polylines and tags go in, coordinates and heights
+come out, and no world save is touched and no block written. This code used to share
+build_line.py with the code that puts blocks into the world, but the two change for
+entirely different reasons: what a cross-section looks like is an artistic decision,
+while whether the alignment is computed correctly is an engineering one. Separated,
+the alignment can be tested on its own (see tests/test_alignment.py) without
+generating a world.
 
-比例 1 方塊 = 1 公尺。座標 X = 東、Z = 南。
+Scale: 1 block = 1 meter. Coordinates: X = east, Z = south.
 """
 import math
 
-GROUND     = 64        # 超平坦地表最上層方塊
-STEP       = 0.5       # 沿線取樣間距（公尺）
-MAX_GRADE  = 0.04      # 最大坡度 4%
-PIER_EVERY = 25        # 橋墩間距
+GROUND     = 64        # Top block of the superflat ground
+STEP       = 0.5       # Sampling interval along the line (meters)
+MAX_GRADE  = 0.04      # Maximum grade: 4%
+PIER_EVERY = 25        # Pier spacing
 
-# 各型態的走行面相對地面高度
+# Track bed height above the ground for each structure type
 PROFILE = {"bridge": 13, "ground": 1, "tunnel": -20}
 
 PLATFORM_LEN = 70
 
-# ---- 站體尺寸（dy 皆相對走行面 y）----
-# 地下站是「島式月台 + 上方穿堂層」的雙層箱涵：
-#   dy -2 底板 / y 走行面 / y+1 月台面 / dy 6 穿堂樓板 / dy 10 頂板
-# 共 13 格高，所以隧道分層必須拉到 15 m 間距。
-BOX_HALF      = 12     # 站體半寬（含 2 格襯砌）
-PLAT_HALF     = 6      # 島式月台半寬 -> 13 m 寬
-STN_TRACK_OFF = 8      # 站內軌道中心離線位
-TUN_TRACK_OFF = 3      # 區間隧道軌道中心離線位
-MEZZ_DY       = 6      # 穿堂層樓板
-BOX_TOP_DY    = 10     # 站體頂板
-FLARE_M       = 40     # 軌道由 ±3 張開到 ±8 的過渡長度
+# ---- Station box dimensions (every dy is relative to the track bed y) ----
+# An underground station is a two-level box structure, an island platform with a concourse above:
+#   dy -2 base slab / y track bed / y+1 platform / dy 6 concourse floor slab / dy 10 roof slab
+# That is 13 blocks tall, so tunnel layers must be spaced 15 m apart.
+BOX_HALF      = 12     # Station box half-width (including 2 blocks of lining)
+PLAT_HALF     = 6      # Island platform half-width -> 13 m wide
+STN_TRACK_OFF = 8      # Track center offset inside a station
+TUN_TRACK_OFF = 3      # Track center offset in a running tunnel
+MEZZ_DY       = 6      # Concourse floor slab
+BOX_TOP_DY    = 10     # Station box roof slab
+FLARE_M       = 40     # Transition length over which the tracks spread from ±3 to ±8
 
 
-# ---------- 取樣與平滑 ----------
+# ---------- Sampling and smoothing ----------
 
 def resample(pts, kinds, step):
-    """等距重新取樣，回傳 (x, z, ux, uz, kind)"""
+    """Resample at equal intervals; return (x, z, ux, uz, kind)."""
     out, acc = [], 0.0
     for i in range(len(pts) - 1):
         (x0, z0), (x1, z1) = pts[i], pts[i + 1]
@@ -55,11 +58,12 @@ def resample(pts, kinds, step):
 
 
 def drop_reversal(pts, kinds, thresh=140.0):
-    """砍掉折線裡原地折返的那一段，只留較長的一半。
+    """Cut off the part of a polyline that doubles back on itself, keeping the longer half.
 
-    OSM relation 串接出來的幾何偶爾會走到底再原路折回（安坑輕軌終點就有一處
-    整整 180 度的折返）。留著的話偏移出去的兩股道會在同一批格子上打架，
-    鐵軌互相打斷 —— 實測那 220 公尺就吃掉 551 格。
+    Geometry chained from an OSM relation occasionally runs to the end and comes back
+    the same way (the Ankeng LRT terminus has a full 180-degree reversal). Left in, the
+    two offset tracks fight over the same cells and break each other's rails; measured,
+    those 220 meters cost 551 cells.
     """
     for i in range(1, len(pts) - 1):
         a = (pts[i][0] - pts[i-1][0], pts[i][1] - pts[i-1][1])
@@ -78,11 +82,12 @@ def drop_reversal(pts, kinds, thresh=140.0):
 
 
 def _smooth_tangents(out, step, win_m=4.0):
-    """方向向量改用前後 win_m 公尺的位置差重算。
+    """Recompute each direction vector from the positions win_m meters before and after.
 
-    OSM 折線的頂點常常是硬轉角，逐段取方向會讓法線在頂點瞬間翻掉，
-    偏移出去的鐵軌因此橫跳一大段，兩股道甚至會打到同一格 ——
-    實測安坑輕軌有 553 格被兩股道搶著佔用，等於兩邊各被打斷一次。
+    The vertices of an OSM polyline are often sharp corners. Taking the direction per
+    segment flips the normal instantly at a vertex, so the offset rails jump sideways
+    over a long stretch, and the two tracks can even land on the same cell. Measured on
+    the Ankeng LRT, 553 cells were claimed by both tracks, which breaks each of them once.
     """
     k = max(1, int(win_m / step))
     n = len(out)
@@ -98,11 +103,12 @@ def _smooth_tangents(out, step, win_m=4.0):
 
 
 def vertical_profile(kinds, step=STEP, grade=MAX_GRADE):
-    """把各段的目標高度用坡度上限平滑成可行的縱斷面。
+    """Smooth the target heights into a vertical profile that respects the grade limit.
 
-    做法是取「下包絡線」：y[i] = min_j (target[j] + grade*距離)。
-    兩次線性掃描即可，效果是隧道會把前後的高架往下拉出引道 —
-    這正是真實路線進洞前必須降坡的行為。
+    It takes the lower envelope: y[i] = min_j (target[j] + grade * distance).
+    Two linear sweeps suffice. As a result, a tunnel pulls the viaduct on either side
+    down into an approach ramp, which is exactly how a real line must descend before
+    entering a tunnel.
     """
     tgt = [GROUND + PROFILE.get(k, 1) for k in kinds]
     y = tgt[:]
@@ -115,10 +121,11 @@ def vertical_profile(kinds, step=STEP, grade=MAX_GRADE):
 
 
 def track_offsets(samples, ys, grounds, stn_idx):
-    """每個取樣點的軌道中心離線位。
+    """Return the track center offset at each sample.
 
-    區間是 ±3（雙線隧道），地下站要張開到 ±8 才塞得下中間的島式月台，
-    中間留 FLARE_M 公尺線性過渡 —— 直接跳過去的話鐵軌會斷成兩截。
+    Between stations it is ±3 (a double-track tunnel). An underground station must
+    spread to ±8 to fit the island platform in the middle, with a linear transition of
+    FLARE_M meters in between; jumping straight across would break the rails in two.
     """
     n = len(samples)
     toff = [float(TUN_TRACK_OFF)] * n
@@ -127,7 +134,7 @@ def track_offsets(samples, ys, grounds, stn_idx):
     for i in stn_idx:
         g = int(grounds[i]) if grounds is not None else GROUND
         if structure_for_ground(int(ys[i]), g) != "tunnel":
-            continue                                   # 高架站維持側式月台
+            continue                                   # Elevated stations keep side platforms
         lo, hi = max(0, i - half), min(n - 1, i + half)
         for k in range(lo, hi + 1):
             toff[k] = max(toff[k], float(STN_TRACK_OFF))
@@ -141,29 +148,38 @@ def track_offsets(samples, ys, grounds, stn_idx):
 
 
 def half_width(toff):
-    """走行面半寬：軌道中心外側再留 2 格才有側牆。"""
+    """Return the track bed half-width: the side wall stands 2 blocks beyond the track center."""
     return max(5, int(round(toff)) + 2)
 
-# ---------- 結構型態 ----------
+# ---------- Structure types ----------
 
-# 非地下站的穿堂層放哪裡。高架站軌面高出地面夠多時穿堂放在橋下（真實的
-# 文湖線、淡水線高架站都是這樣），否則跨在月台上方（淡水線平面站的天橋式穿堂）。
-CONC_UNDER_MIN = 9     # 軌面高出地面至少這麼多，橋下才塞得下一層穿堂（樓板在地面上 2 格）
-ELEV_UNDER_DY  = 6     # 橋下穿堂：站立面 = 軌面 - 6（樓板 -7，頂板就是 -1 的橋面板）
-ELEV_OVER_DY   = 8     # 月台上方穿堂：站立面 = 軌面 + 8（樓板 +7 疊在 +6 的站屋屋頂上）
+# Where the concourse of a station that is not underground goes. When the rail top of an
+# elevated station is high enough above the ground, the concourse goes under the viaduct (as
+# at the real elevated stations of the Wenhu Line and the Tamsui Line); otherwise it spans
+# above the platforms (the footbridge concourse of the Tamsui Line's at-grade stations).
+CONC_UNDER_MIN = 9     # The rail top must be at least this far above the ground to fit a concourse
+                       # under the viaduct (floor slab 2 blocks above the ground)
+ELEV_UNDER_DY  = 6     # Concourse under the viaduct: standing surface = rail top - 6
+                       # (floor slab at -7; the roof slab is the deck at -1)
+ELEV_OVER_DY   = 8     # Concourse above the platforms: standing surface = rail top + 8
+                       # (floor slab at +7, on top of the station building roof at +6)
 
 
-# 各型態的穿堂站立面相對軌面的高差。站內軌面若有坡，穿堂樓板跟著軌面走，
-# 所以「某個取樣點的穿堂站立面」= int(ys[i]) + LEVEL_DY[型態]。
+# Height of the concourse standing surface above the rail top, per type. If the rail top slopes
+# inside a station, the concourse floor slab follows it, so the concourse standing surface at a
+# given sample = int(ys[i]) + LEVEL_DY[type].
 LEVEL_DY = {"tunnel": MEZZ_DY + 1, "under": -ELEV_UNDER_DY, "over": ELEV_OVER_DY}
 
 
 def station_kind(y, ground):
-    """車站穿堂層的型態：
-    "tunnel"  地下島式站，穿堂在軌面 +7（MEZZ_DY + 1）
-    "under"   高架站，穿堂在橋下、月台正下方（軌面 -6）
-    "over"    平面站與矮高架，穿堂是跨在兩座側式月台上方的天橋（軌面 +8）
-    整座車站只用中心取樣點判斷一次，各處的高度再用 LEVEL_DY 算。
+    """Return the concourse type of a station:
+    "tunnel"  Underground island-platform station; concourse at rail top +7 (MEZZ_DY + 1)
+    "under"   Elevated station; concourse under the viaduct, directly below the platforms
+              (rail top -6)
+    "over"    At-grade and low elevated stations; the concourse is a footbridge spanning the
+              two side platforms (rail top +8)
+    The whole station is classified once, from its center sample; heights elsewhere come
+    from LEVEL_DY.
     """
     if structure_for_ground(y, ground) == "tunnel":
         return "tunnel"
@@ -173,17 +189,18 @@ def station_kind(y, ground):
 
 
 def station_levels(y, ground):
-    """(型態, 穿堂站立面 y)。出入口井、轉乘通道、月台樓梯都以這個為準，
-    所以只能有這一個定義。"""
+    """Return (type, concourse standing surface y). Exit shafts, transfer passages and platform
+    stairs all go by this, so it must be the only definition."""
     k = station_kind(y, ground)
     return k, y + LEVEL_DY[k]
 
 
 def structure_for_ground(y, ground):
-    """蓋哪種結構要看軌面與「當地地面」的高差，不是看 OSM 標籤。
+    """Choose the structure from the rail top's height above the local ground, not the OSM tags.
 
-    標籤決定目標高度，但坡度平滑後引道會把高架一路拉到地面以下；
-    那些點若仍當高架蓋，橋面會直接埋進土裡。
+    The tags set the target height, but after grade smoothing an approach ramp can pull
+    a viaduct all the way below the ground. Built as a viaduct there, the deck would be
+    buried in the soil.
     """
     if y >= ground + 6:
         return "viaduct"
@@ -192,11 +209,12 @@ def structure_for_ground(y, ground):
     return "tunnel"
 
 def extend_ends(samples, step, need_start=0.0, need_end=0.0):
-    """把取樣序列沿兩端的切線方向各往外延伸幾公尺（種類沿用端點的）。
+    """Extend the samples a few meters outward along the tangent at each end (keeping its kind).
 
-    終點站的站體以站點為中心前後各 35 m，但 OSM 的路線幾何在終點站的站點就
-    結束了：淡水、頂埔、鶯桃福德……站體只有半座，月台樓梯與轉乘通道也沒地方放。
-    真實的終點站本來就有一段尾軌，多延伸出去正好。
+    A terminus station box extends 35 m either side of the station node, but the OSM line
+    geometry ends at the terminus node: at Tamsui, Dingpu, Yingtao Fude and others only
+    half the station box got built, leaving no room for platform stairs or transfer
+    passages. A real terminus has a tail track anyway, so extending the line fits.
     """
     if not samples:
         return samples
@@ -214,14 +232,16 @@ def extend_ends(samples, step, need_start=0.0, need_end=0.0):
 
 
 def terminus_extension(samples, station_pts, others=(), margin=5.0, junction_m=30.0):
-    """線形兩端各要延伸多少公尺，才放得下端點附近的車站：回傳 (起點, 終點)。
+    """Return how far to extend each end to fit the stations near it, in meters: (start, end).
 
-    station_pts 是這條線的站點座標。端點 35 m 內有站點時，延伸到站點外
-    半座站體再加 margin；站點落在端點之外（最多 35 m）也算進去。
+    station_pts are the station node coordinates of this line. When a station node lies
+    within 35 m of an end, the line extends half a station box beyond the node, plus
+    margin; a node beyond the end (up to 35 m) also counts.
 
-    others 是同一條線其他變體的取樣點：端點 junction_m 內有別的變體經過，
-    表示這裡不是終點而是支線接上幹線的地方（七張、北投），延伸出去的
-    尾軌會直直插進幹線的站體 —— 那種端點不延伸。
+    others are the samples of the line's other variants. If another variant passes within
+    junction_m of an end, that end is not a terminus but the point where a branch joins
+    the trunk (Qizhang, Beitou), and an extended tail track would run straight into the
+    trunk's station box; such ends are not extended.
     """
     half_m = PLATFORM_LEN / 2
     need = [0.0, 0.0]
@@ -230,25 +250,26 @@ def terminus_extension(samples, station_pts, others=(), margin=5.0, junction_m=3
         if any(math.hypot(ox - x, oz - z) <= junction_m for ox, oz in others):
             continue
         for sx, sz in station_pts:
-            along = ((sx - x) * ux + (sz - z) * uz) * sgn     # 正值 = 在端點之外
+            along = ((sx - x) * ux + (sz - z) * uz) * sgn     # Positive = beyond the end
             off = abs(-(sx - x) * uz + (sz - z) * ux)
             if -half_m <= along <= half_m and off <= 30:
                 need[slot] = max(need[slot], half_m + along + margin)
     return need[0], need[1]
 
 
-# ---------- 路線變體 ----------
+# ---------- Route variants ----------
 
 def _length(pts):
     return sum(math.dist(pts[i], pts[i + 1]) for i in range(len(pts) - 1))
 
 
 def _same_corridor(a, b, tol=600, len_ratio=0.2):
-    """兩條折線是否為同一路廊的上下行。
+    """Tell whether two polylines are the two directions of the same corridor.
 
-    端點相同或互換即可，容差放到 600 m —— 上下行常在終點站前後
-    幾百公尺處各自收尾（文湖線動物園端就差了 476 m）。
-    但光看端點會把短支線誤判成同路廊，所以再要求長度相差 20% 以內。
+    Matching or swapped endpoints are enough, with a tolerance of 600 m: the two
+    directions often end separately a few hundred meters around a terminus (476 m apart
+    at the Taipei Zoo end of the Wenhu Line). Endpoints alone would mistake a short
+    branch for the same corridor, so the lengths must also differ by no more than 20%.
     """
     pa, pb = a["points"], b["points"]
     la, lb = _length(pa), _length(pb)
@@ -262,15 +283,18 @@ def _same_corridor(a, b, tol=600, len_ratio=0.2):
 
 
 def select_variants(variants, tol=60, min_new_m=400):
-    """挑出幾何互不重複的一組路線。
+    """Pick a set of routes whose geometry does not overlap.
 
-    同一條線在 OSM 常有多個 relation：上下行各一（幾何幾乎重疊）、
-    支線、以及直達車/普通車等營運模式。全部照蓋會讓上下行變成兩座
-    並排的結構；只蓋最長的又會漏掉支線。
+    One line often has several OSM relations: one per direction (with nearly identical
+    geometry), branches, and service patterns such as express and local. Building all of
+    them turns the two directions into two parallel structures; building only the longest
+    misses the branches.
 
-    分兩步，因為單靠覆蓋率調不出同時滿足兩者的門檻：
-      1. 先用端點配對把「上下行」收斂成一條（端點相同或互換即同一路廊）。
-      2. 再對倖存者算未覆蓋的絕對長度，只收下真正帶來新幾何的。
+    It works in two steps, because no coverage threshold alone satisfies both:
+      1. Collapse the two directions into one by matching endpoints (matching or swapped
+         endpoints mean the same corridor).
+      2. For the survivors, compute the absolute uncovered length and keep only those
+         that bring genuinely new geometry.
     """
     uniq = []
     for v in sorted(variants, key=lambda v: -len(v["points"])):

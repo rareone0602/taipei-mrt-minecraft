@@ -1,30 +1,39 @@
 #!/usr/bin/env python3
-"""區塊高度圖（Heightmaps）：Status=full 的區塊存檔時一定要帶的四張表。
+"""Chunk heightmaps (Heightmaps): the four tables a chunk with Status=full must carry when saved.
 
-遊戲找出生點、重生點（PlayerSpawnFinder.getLevelRespawnPos）是直接查區塊的
-MOTION_BLOCKING 高度圖取「這一柱最高的一格」，WORLD_SURFACE／OCEAN_FLOOR 用來
-排除水面，再從柱頂往下找第一個頂面完整的方塊。區塊原本寫出去的是空的
-Heightmaps（遊戲自己存的 full 區塊從來不會這樣），而玩家曾經生在
-(0.5, -63, 0.5) —— 世界最底下、岩床上一格的石頭裡。
+The game finds the spawn and respawn points (PlayerSpawnFinder.getLevelRespawnPos)
+by reading the chunk's MOTION_BLOCKING heightmap directly for the highest block
+in the column, uses WORLD_SURFACE / OCEAN_FLOOR to rule out water surfaces, and
+then searches down from the top of the column for the first block with a full
+top face. Chunks used to be written with empty Heightmaps (full chunks saved
+by the game itself never are), and the player once spawned at (0.5, -63, 0.5):
+at the very bottom of the world, inside the stone one block above the bedrock.
 
-26.2 的 full 區塊存四種（ChunkStatus.FINAL_HEIGHTMAPS；遊戲自己存的 full 區塊
-一律是這四個鍵，逐一解過 GameTest 伺服器存出來的區塊確認）：
+A full chunk in 26.2 stores four types (ChunkStatus.FINAL_HEIGHTMAPS; every
+full chunk the game saves has exactly these four keys, confirmed by decoding
+chunks saved by the GameTest server one by one):
 
-    WORLD_SURFACE              不是空氣（air / cave_air / void_air 以外都算）
+    WORLD_SURFACE              not air (anything other than air / cave_air / void_air)
     OCEAN_FLOOR                BlockState.blocksMotion()
-    MOTION_BLOCKING            blocksMotion() 或含流體（水、熔岩、含水方塊）
-    MOTION_BLOCKING_NO_LEAVES  同上，但樹葉不算
+    MOTION_BLOCKING            blocksMotion() or contains a fluid (water, lava, waterlogged blocks)
+    MOTION_BLOCKING_NO_LEAVES  as above, but leaves do not count
 
-每張表 256 筆，索引 = x + z*16（區塊內座標），值 = 那一柱最高一格「擋住」的
-方塊的 y + 1 - Y_MIN（整柱都不擋就是 0）。每筆 ceil(log2(世界高度+1)) bit、不跨 long
-—— 與 block_states 同一套打包法。原版 384 格高是 9 bit、一個 long 7 筆、37 個 long；
-這個世界為了台北101 加高到 704 格（config.WORLD_HEIGHT），是 10 bit、6 筆、43 個 long。
+Each table has 256 entries, index = x + z*16 (coordinates within the chunk),
+value = y + 1 - Y_MIN of the highest blocking block in that column (0 if
+nothing in the column blocks). Each entry takes ceil(log2(world height + 1))
+bits and does not span longs: the same packing as block_states. The vanilla
+384-block height is 9 bits, 7 entries per long, 37 longs; this world is raised
+to 704 blocks for Taipei 101 (config.WORLD_HEIGHT), which is 10 bits,
+6 entries per long, 43 longs.
 
-**分類只有這一份**（classify / flags）。blocksMotion() 不是「有沒有碰撞箱」：
-告示牌（含壁掛、懸掛）、旗幟、壓力板雖然穿得過去，遊戲在方塊屬性上標了
-forceSolidOn，高度圖一律算它們擋；反過來雪片（全部 8 層）、鷹架、梯子、
-蜘蛛網、竹筍算不擋。這份表是拿 26.2 的 Heightmap.Types.*.isOpaque() 對全部
-32,366 個方塊狀態逐一比對過的，不是照直覺寫的 —— 改它之前先重跑一次比對。
+**This is the only classification** (classify / flags). blocksMotion() does not
+mean "has a collision box": signs (including wall and hanging signs), banners
+and pressure plates can be walked through, but the game marks them
+forceSolidOn in their block properties, so the heightmaps always count them as
+blocking. Conversely, snow layers (all 8), scaffolding, ladders, cobwebs and
+bamboo shoots count as not blocking. This table was checked state by state
+against 26.2's Heightmap.Types.*.isOpaque() for all 32,366 block states, not
+written from intuition; rerun that comparison before changing it.
 """
 import functools
 
@@ -32,11 +41,11 @@ import numpy as np
 
 from mrt.config import Y_MIN, Y_MAX, SEC_MIN, SEC_MAX
 
-# 存檔裡的鍵名與位元順序（flags() 的第 k 個 bit 對應 TYPES[k]）
+# Key names in the save and their bit order (bit k of flags() is TYPES[k]).
 TYPES = ("WORLD_SURFACE", "OCEAN_FLOOR", "MOTION_BLOCKING", "MOTION_BLOCKING_NO_LEAVES")
 
 def layout(height):
-    """世界高度 -> (每筆幾 bit, 一個 long 幾筆, 幾個 long)。384 -> (9, 7, 37)。"""
+    """Map a world height to (bits per entry, entries per long, number of longs). 384 -> (9, 7, 37)."""
     bits = height.bit_length()
     per = 64 // bits
     return bits, per, -(-256 // per)
@@ -46,11 +55,12 @@ BITS, PER_LONG, N_LONGS = layout(Y_MAX - Y_MIN + 1)     # 704 -> (10, 6, 43)
 
 AIR_BLOCKS = frozenset({"minecraft:air", "minecraft:cave_air", "minecraft:void_air"})
 
-# 不管什麼狀態都含流體的方塊（其餘的方塊要看 waterlogged=true）
+# Blocks that contain a fluid in every state (any other block depends on waterlogged=true).
 ALWAYS_FLUID = frozenset("minecraft:" + n for n in (
     "water", "lava", "bubble_column", "kelp", "kelp_plant", "seagrass", "tall_seagrass"))
 
-# ---- blocksMotion() 為否的方塊：整族用字尾（逐一確認過沒有誤收）、其餘逐一列出 ----
+# ---- Blocks for which blocksMotion() is false ----
+# Whole families by suffix (each checked for false matches); the rest one by one.
 _NOT_SOLID_SUFFIX = ("_button", "_carpet", "candle", "_sapling", "rail", "torch",
                      "copper_golem_statue", "_skull")
 _NOT_SOLID_PREFIX = ("potted_",)
@@ -82,7 +92,7 @@ _NOT_SOLID = frozenset("minecraft:" + n for n in """
     piglin_wall_head player_head player_wall_head zombie_head zombie_wall_head
 """.split())
 
-# 樹葉：MOTION_BLOCKING_NO_LEAVES 不算它們
+# Leaves: MOTION_BLOCKING_NO_LEAVES does not count them.
 _LEAVES_SUFFIX = "_leaves"
 
 
@@ -95,14 +105,15 @@ def _split(block):
 
 
 def _solid(base, props):
-    """BlockState.blocksMotion()。"""
+    """Return BlockState.blocksMotion()."""
     if base in _NOT_SOLID:
         return False
     name = base[len("minecraft:"):] if base.startswith("minecraft:") else base
     if name.endswith(_NOT_SOLID_SUFFIX) or name.startswith(_NOT_SOLID_PREFIX):
         return False
-    # 唯一一個看狀態的：沒有柱子、四面都不接的樹脂磚牆沒有碰撞箱
-    # （其他牆有 forceSolidOn，只有它沒有）
+    # The only state-dependent case: a resin brick wall with no post and no
+    # connection on any side has no collision box (every other wall has
+    # forceSolidOn; this one does not).
     if base == "minecraft:resin_brick_wall" and "up=false" in props and all(
             f"{d}=none" in props for d in ("north", "south", "east", "west")):
         return False
@@ -110,14 +121,19 @@ def _solid(base, props):
 
 
 def has_fluid(block):
-    """含流體（BlockState.getFluidState() 不是空的）：水、熔岩、含水的方塊。"""
+    """Return whether the block contains a fluid.
+
+    That is, BlockState.getFluidState() is not empty: water, lava, waterlogged blocks.
+    """
     base, props = _split(block)
     return base in ALWAYS_FLUID or "waterlogged=true" in props
 
 
 def classify(block):
-    """方塊字串 -> 四種高度圖各自算不算擋住：(WORLD_SURFACE, OCEAN_FLOOR,
-    MOTION_BLOCKING, MOTION_BLOCKING_NO_LEAVES)。None 當成空氣。"""
+    """Map a block string to whether it blocks in each of the four heightmaps.
+
+    Returns (WORLD_SURFACE, OCEAN_FLOOR, MOTION_BLOCKING, MOTION_BLOCKING_NO_LEAVES).
+    None is treated as air."""
     if block is None:
         return (False, False, False, False)
     base, props = _split(block)
@@ -129,24 +145,28 @@ def classify(block):
 
 @functools.lru_cache(maxsize=None)
 def flags(block):
-    """classify() 壓成一個位元組：第 k 個 bit 是 TYPES[k]。
-    全世界不到一千種方塊字串，快取起來每個區塊只剩查表。"""
+    """Pack classify() into one byte: bit k is TYPES[k].
+
+    The whole world has fewer than a thousand distinct block strings, so with
+    caching each chunk is only a table lookup."""
     return sum(1 << k for k, v in enumerate(classify(block)) if v)
 
 
 def flags_lut(names):
-    """palette（方塊字串清單）-> uint8 查表陣列。"""
+    """Map a palette (a list of block strings) to a uint8 lookup array."""
     return np.array([flags(n) for n in names], dtype=np.uint8)
 
 
 def column_heights(section_flags, sec_min=SEC_MIN, sec_max=SEC_MAX):
-    """由上往下掃 section，算出四張高度圖。
+    """Scan the sections from the top down and compute the four heightmaps.
 
-    section_flags(sy) 回傳這個 section 每格的 flags（uint8，(16,16,16) 的 [y][z][x]），
-    或 None 表示整個 section 都不擋（例如地面以上沒寫過的空氣）。
-    回傳 int32 陣列 (4, 16, 16) = [TYPES 的順序][z][x]，值是 y + 1 - Y_MIN，
-    整柱都不擋是 0。四張表都找齊就提早停 —— 絕大多數的柱子在地表那個
-    section 就結束了，底下的隧道根本不必看。
+    section_flags(sy) returns the flags of every cell in the section (uint8,
+    (16,16,16) as [y][z][x]), or None when nothing in the section blocks (for
+    example, unwritten air above the ground).
+    Returns an int32 array (4, 16, 16) = [TYPES order][z][x] whose values are
+    y + 1 - Y_MIN, or 0 where nothing in the column blocks. It stops early once
+    all four tables are found: almost every column ends in the section that
+    holds the ground surface, so the tunnels below never need to be read.
     """
     out = np.zeros((4, 16, 16), dtype=np.int32)
     todo = np.ones((4, 16, 16), dtype=bool)
@@ -161,7 +181,8 @@ def column_heights(section_flags, sec_min=SEC_MIN, sec_max=SEC_MAX):
         m = ((f[None] >> bits) & 1).astype(bool)          # (4, y, z, x)
         hit = m.any(axis=1) & todo                        # (4, z, x)
         if hit.any():
-            top = 15 - np.argmax(m[:, ::-1], axis=1)      # 每柱最高那一格的 y（section 內）
+            # y of the highest cell in each column, within the section.
+            top = 15 - np.argmax(m[:, ::-1], axis=1)
             out[hit] = (sy * 16 + top[hit]) + 1 - Y_MIN
             todo &= ~hit
             if not todo.any():
@@ -170,10 +191,12 @@ def column_heights(section_flags, sec_min=SEC_MIN, sec_max=SEC_MAX):
 
 
 def heights_from_palettes(sections):
-    """{sy: (palette 名稱清單, 長度 4096 的索引)} -> (4, 256) 的高度圖。
+    """Map {sy: (palette names, 4096 indices)} to (4, 256) heightmaps.
 
-    讀回存檔時用：section 已經是完整的方塊（背景地層寫檔時就填進去了），
-    缺的 section 當成全空氣 —— 遊戲自己存的區塊也會省略全空的 section。
+    Used when reading a save back: the sections already hold complete blocks
+    (the background strata are filled in when the file is written), and a
+    missing section is treated as all air; chunks saved by the game also omit
+    sections that are entirely air.
     """
     def section_flags(sy):
         s = sections.get(sy)
@@ -185,13 +208,16 @@ def heights_from_palettes(sections):
 
 
 def pack(values, height=None):
-    """256 筆高度 -> N_LONGS 個有號 long（與遊戲的 SimpleBitStorage 相同：
-    第 i 筆放在第 i // PER_LONG 個 long 的第 (i % PER_LONG) * BITS 個 bit 起，不跨 long）。
-    height 預設是這個世界的高度；測試拿遊戲存的原版高度（384）區塊來比對時才指定。"""
+    """Pack 256 heights into N_LONGS signed longs.
+
+    Matches the game's SimpleBitStorage: entry i goes into long i // PER_LONG,
+    starting at bit (i % PER_LONG) * BITS, and does not span longs.
+    height defaults to this world's height; it is given only when a test
+    compares against a chunk the game saved at the vanilla height (384)."""
     bits, per, n_longs = layout(height) if height else (BITS, PER_LONG, N_LONGS)
     v = np.asarray(values, dtype=np.uint64).reshape(-1)
     if v.size != 256:
-        raise ValueError(f"高度圖要剛好 256 筆，拿到 {v.size}")
+        raise ValueError(f"A heightmap needs exactly 256 entries, got {v.size}")
     buf = np.zeros(n_longs * per, dtype=np.uint64)
     buf[:256] = v
     buf = buf.reshape(n_longs, per)
@@ -201,17 +227,19 @@ def pack(values, height=None):
 
 
 def unpack(longs, height=None):
-    """N_LONGS 個 long -> 256 筆高度（int32，索引 x + z*16）。height 同 pack()。"""
+    """Unpack N_LONGS longs into 256 heights (int32, index x + z*16). height is as in pack()."""
     bits, per, n_longs = layout(height) if height else (BITS, PER_LONG, N_LONGS)
     a = np.asarray(longs, dtype=np.int64).view(np.uint64).reshape(-1)
     if a.size != n_longs:
-        raise ValueError(f"高度圖要剛好 {n_longs} 個 long，拿到 {a.size}")
+        raise ValueError(f"A heightmap needs exactly {n_longs} longs, got {a.size}")
     shifts = (np.arange(per, dtype=np.uint64) * np.uint64(bits))
     vals = (a[:, None] >> shifts) & np.uint64((1 << bits) - 1)
     return vals.reshape(-1)[:256].astype(np.int32)
 
 
 def top_y(value):
-    """高度圖的值 -> 那一柱最高一格擋住的方塊的 y（整柱都不擋回 Y_MIN - 1）。
-    就是遊戲 ChunkAccess.getHeight() 回傳的東西。"""
+    """Map a heightmap value to the y of the highest blocking block in the column.
+
+    Returns Y_MIN - 1 if nothing in the column blocks. This is what the game's
+    ChunkAccess.getHeight() returns."""
     return int(value) - 1 + Y_MIN
