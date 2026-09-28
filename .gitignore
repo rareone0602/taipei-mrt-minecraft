@@ -1,21 +1,23 @@
-# 產物：世界存檔 (1 GB+)
+# Output: the world save (over 1 GB).
 /out/
 
-# 虛擬環境（worktree 裡常是指回主目錄的 symlink，所以不加結尾的 /）
+# Virtual environment. In a worktree this is often a symlink back to the main
+# checkout, so there is no trailing slash.
 /.venv
 
-# DEM 原始資料 (83 MB，來源見 README「資料來源」)
+# Raw DEM data (83 MB; sources in docs/building.md).
 /data/dem/
 
-# 管線中間產物與圖片
+# Pipeline intermediates and images.
 /data/*.npy
 /data/*.png
 /data/*.log
 /data/*.blend
 /data/*.blend1
 
-# 示範素材的原始螢幕錄影（三段 2.9 GB）與中間檔。demo/ 下進版控的只有成品，
-# 要重做成品跑 demo/make_demo.py
+# Raw screen recordings for the demo (three takes, 2.9 GB) and intermediates.
+# Only the finished files in demo/ are tracked; rerun demo/make_demo.py to
+# rebuild them.
 /demo/raw-*.mov
 /demo/.work/
 
@@ -24,5 +26,6 @@
 __pycache__/
 *.pyc
 
-# Claude Code 的本機設定（含這台機器的絕對路徑，對別人沒有意義）
+# Claude Code's local settings (absolute paths on this machine, meaningless to
+# anyone else).
 /.claude/

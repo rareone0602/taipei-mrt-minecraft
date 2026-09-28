@@ -1,59 +1,62 @@
-DATA LICENSE — data/
-資料授權
+DATA LICENCE: data/
 
 The source code in this repository is licensed under GPL-3.0 (see LICENSE).
-This file covers the DATA ONLY.
-
-本專案的程式碼採用 GPL-3.0（見 LICENSE）。這份文件只涵蓋資料。
+This file covers the data only.
 
 
-WHAT THIS COVERS / 涵蓋範圍
----------------------------
+WHAT THIS COVERS
+----------------
 
 Everything under data/ is derived from OpenStreetMap and is therefore
-licensed under the Open Database License (ODbL) v1.0, NOT GPL-3.0:
+licensed under the Open Database License (ODbL) v1.0, not GPL-3.0:
 
-    data/lines/*.json            路線幾何 (OSM relations)
-    data/stations.json           車站節點
+    data/lines/*.json            line geometry (OSM relations)
+    data/stations.json           station nodes
     data/stations_fallback.csv
-    data/way_tags.json           way 標籤
-    data/entrances.json          出入口
-    data/station_buildings.json  站體建物輪廓
-    data/platform_levels.json    月台樓層
-    data/indoor.json             地下人行動線（穿堂、地下街連通道、樓梯、電梯）
-    data/sidings.json            袋狀軌、橫渡線與機廠線（railway=subway 的 service way）
-    data/attractions.json        觀光景點的建物輪廓與 building:part（台北101、中正紀念堂……）
-    data/mc_lines.json           以上投影到 Minecraft 座標後的結果
-    data/mc_stations.csv
+    data/way_tags.json           way tags
+    data/entrances.json          station exits
+    data/station_buildings.json  station building outlines
+    data/platform_levels.json    platform levels
+    data/indoor.json             underground walkways (concourses, underground
+                                 mall passages, stairs, lifts)
+    data/sidings.json            pocket tracks, crossovers and depot leads
+                                 (service ways tagged railway=subway)
+    data/attractions.json        building outlines and building:part for the
+                                 attractions (Taipei 101, the Chiang Kai-shek
+                                 Memorial Hall and the rest)
+    data/mc_lines.json           all of the above projected into Minecraft
+    data/mc_stations.csv         coordinates
     data/station_coords.md
 
 These are a Derivative Database under ODbL section 1.0. The ODbL is
 share-alike: if you publicly use or convey a modified version of this
-data, you must offer it under ODbL as well.
+data, you must offer it under the ODbL as well.
 
-data/heightmap.json holds only grid metadata (origin, spacing, extent) —
-no elevation values — and carries no third-party terms. The elevation
-data it describes is NOT distributed in this repository; see README
-「資料來源」for how to obtain it and under what terms.
+data/heightmap.json holds only grid metadata (origin, spacing, extent),
+no elevation values, and carries no third-party terms. The elevation
+data it describes is not distributed in this repository; docs/building.md
+(data sources) says how to obtain it and under what terms.
 
 
-PRODUCED WORKS / 產出作品 — demo/
-----------------------------------
+PRODUCED WORKS: demo/
+---------------------
 
-demo/ 下的截圖、影片與全網示意圖，是從上面那些資料生成的世界裡拍出來、畫出來
-的。依 ODbL 第 4.3 條，它們是 Produced Work（不是 Derivative Database），公開
-使用時要附上來源標示：
+The screenshots, videos and network map in demo/ were filmed or drawn
+from a world generated from the data above. Under ODbL section 4.3 they
+are Produced Works, not a Derivative Database, and any public use must
+carry this notice:
 
     Contains information from OpenStreetMap, which is made available
     here under the Open Database License (ODbL).
 
-demo/network-map.png 直接畫 data/mc_lines.json 與 data/mc_stations.csv 的內容，
-所以它同時也再現了資料本身；散布修改過的版本時比照上面的 share-alike 條款。
-demo/make_demo.py 是程式碼，適用 GPL-3.0。
+demo/network-map.png plots data/mc_lines.json and data/mc_stations.csv
+directly, so it also reproduces the data itself; a modified version is
+distributed under the share-alike terms above. demo/make_demo.py is code
+and falls under GPL-3.0.
 
 
-ATTRIBUTION / 姓名標示
-----------------------
+ATTRIBUTION
+-----------
 
     © OpenStreetMap contributors
     https://www.openstreetmap.org/copyright
@@ -62,14 +65,15 @@ Required by ODbL section 4.2 for any public conveyance of this data or
 a derivative of it.
 
 
-TERRAIN SOURCES NOT REDISTRIBUTED HERE / 未隨附的地形資料
----------------------------------------------------------
+TERRAIN SOURCES NOT REDISTRIBUTED HERE
+--------------------------------------
 
-The DEM files the pipeline consumes are excluded from this repository
+The DEM files the pipeline reads are excluded from this repository
 (see .gitignore) and are not licensed by this file:
 
-  - 內政部國土測繪中心 20 m DTM — 依該中心的開放資料條款
-  - Copernicus DEM GLO-30 — © DLR e.V. 2010-2014 and © Airbus Defence
+  - National Land Surveying and Mapping Center (Ministry of the Interior,
+    Taiwan) 20 m DTM, under the centre's open-data terms
+  - Copernicus DEM GLO-30: © DLR e.V. 2010-2014 and © Airbus Defence
     and Space GmbH 2014-2018, under COPERNICUS by the European Union
     and ESA
 

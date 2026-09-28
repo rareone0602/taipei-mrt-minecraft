@@ -1,213 +1,312 @@
 # CLAUDE.md
 
-台北捷運 Minecraft 1:1 重建。專案背景、資料來源與各階段的設計決策見 `README.md`
-—— 那份文件是這個專案的真相來源，這份只講「在這裡工作要遵守什麼」。
+A 1:1 rebuild of the Taipei Metro in Minecraft. The background, data sources and
+design decisions are in `README.md` and `docs/`, which are the project's source
+of truth. This file covers only the rules for working here.
 
-## 硬性規則
+## Style
 
-- **Python 一律用 `./.venv/bin/python`**，絕不用系統 python。要裝套件用
-  `./.venv/bin/pip`。（venv 是 3.9.6，別用 `X | Y` 這種 3.10+ 的型別語法。）
-- **所有程式註解、docstring 與印出來的訊息都用繁體中文（台灣）**，與既有風格一致。
-- **不要動 `out/`**。裡面是 1 GB 的既有存檔，重跑 `build_world` 要 20 分鐘以上。
-  要測試就 `--out` 指到暫存目錄。
-- 暫存檔放 scratchpad，不要寫進專案目錄。
-- **`demo/` 只放成品**。原始螢幕錄影 `demo/raw-*.mov`（三段 2.9 GB）與中間檔
-  `demo/.work/` 都在 `.gitignore` 裡。剪接點、字幕、抓圖的秒數全部寫在
-  `demo/make_demo.py`，改素材要改那支腳本再重跑
-  （`./.venv/bin/python demo/make_demo.py`），不要手工改成品。
-- 任何 HTTP 請求都不要帶個人資料（姓名、email）。Overpass 的 User-Agent 只報專案名稱
-  （`infrastructure/overpass.USER_AGENT`；overpass-api.de 對 curl 預設的 UA 回 406）。
+The project follows phy's style guide:
+[STYLE.md](https://github.com/rareone0602/phy_friends/blob/main/STYLE.md)
+([raw](https://raw.githubusercontent.com/rareone0602/phy_friends/main/STYLE.md)).
+Where this file and the guide disagree, the guide wins. In practice:
 
-## 架構
+- **Code is American English** (§10): identifiers, comments, docstrings,
+  generated `.mcfunction` comments and commit messages. Comments are formal,
+  full sentences that say why. A commit's subject is imperative, in sentence
+  case and about 50 characters, with the why in the body.
+- **Prose is British English, as The Economist writes it** (§3): `README.md`,
+  `docs/`, `LICENSE-DATA`, and everything the code prints for people (progress
+  logs, reports, argparse help, error messages). Sentence case, the exact word
+  in a short sentence, numbers rather than adjectives, no exclamation marks, no
+  emoji, no hype.
+- **Text inside the game is bilingual**, Chinese and English, as on the Taipei
+  Metro's own signs, which are what is being rebuilt. Never drop the Chinese.
+  The English half uses the Metro's own terms (Exit, Transfer, Terminus) and is
+  otherwise British English.
+- **Chinese stays where it is data**: station and line names, OSM tags, strings
+  the code matches against data, and test fixtures.
+- **Show, then ship** (§11): discuss anything big first, and let phy review
+  before anything is pushed or published. Pushing is phy's call, each time.
 
-Clean Architecture。**相依方向一律由外往內，內層不得引用外層**：
+## Hard rules
+
+- **Python is always `./.venv/bin/python`**, never the system Python. Install
+  packages with `./.venv/bin/pip`. The venv is 3.9.6, so no 3.10+ syntax such as
+  `X | Y` in type hints.
+- **Leave `out/` alone.** It holds the existing 1 GB world save, and rebuilding
+  it with `build_world` takes over 20 minutes. To test, point `--out` at a
+  temporary directory.
+- Temporary files go in the scratchpad, never in the project directory.
+- **`demo/` holds finished files only.** The raw screen recordings
+  (`demo/raw-*.mov`) and the intermediates in `demo/.work/` are in `.gitignore`.
+  Every cut, caption and still is timed in `demo/make_demo.py`. To change the
+  demo, change that script and rerun it (`./.venv/bin/python demo/make_demo.py`);
+  never edit a finished file by hand.
+- No HTTP request may carry personal data (names, email addresses). The Overpass
+  User-Agent gives only the project name (`infrastructure/overpass.USER_AGENT`;
+  overpass-api.de answers curl's default User-Agent with a 406).
+
+## Architecture
+
+Clean Architecture. **Dependencies point inwards only; an inner layer never
+imports an outer one:**
 
 ```
 mrt/
-  config.py         專案路徑與世界垂直範圍。所有層都可以引用
-  domain/           純規則，零 I/O：線形、鐵軌形狀、建築幾何、隧道分層、高程取樣、
-                    地下街動線 (concourse)、真實出入口與轉乘通道的擺放與避讓 (exits)、
-                    疊式車站與袋狀軌 (stacked)、行走可達性 (walk)、
-                    搭乘系統的路網與上車位置 (network)
-  ports/            內層對外層開的介面：BlockSink（逐格）、ChunkSink（整段批次）、
-                    SignSink（告示牌：文字元件、發光、點擊指令、開對話框）
-  application/      用例：把 domain 算出來的東西寫進 BlockSink；站內標誌 (signage)、
-                    資料包規格 (ride_plan)、出生點 (spawn)、觀光景點 (attractions/)
-  adapters/         外部資料進來：OSM (osm/)、DEM (dem/)、投影 (projection.py)
-  infrastructure/   外部技術細節：Anvil 存檔寫入 (mcworld)、讀回 (savereader)、
-                    Overpass HTTP (overpass)、高度圖 (heightmap)、資料包 (datapack，
-                    含把主世界加高的 dimension_type)
+  config.py         Project paths and the world's vertical range. Any layer may
+                    import it.
+  domain/           Pure rules, no I/O: alignment, track geometry, building
+                    geometry, tunnel depth bands, elevation sampling, underground
+                    mall routes (concourse), placing real exits and transfer
+                    passages and keeping them clear (exits), stacked stations and
+                    pocket tracks (stacked), walkability (walk), and the ride
+                    network and boarding positions (network).
+  ports/            Interfaces the inner layers expose to the outer ones:
+                    BlockSink (block by block), ChunkSink (whole sections),
+                    SignSink (signs: text components, glow, click commands,
+                    dialogs).
+  application/      Use cases that write what domain computes into a BlockSink:
+                    station signs (signage), the datapack spec (ride_plan), the
+                    spawn point (spawn), and the attractions (attractions/).
+  adapters/         External data coming in: OSM (osm/), DEM (dem/), projection
+                    (projection.py).
+  infrastructure/   External technical detail: Anvil save writing (mcworld),
+                    reading back (savereader), Overpass HTTP (overpass),
+                    heightmaps (heightmap), and the datapack (datapack, including
+                    the dimension_type that raises the overworld).
 
-cli/                組合根。唯一看得到全部實作的地方，決定要把方塊寫進哪個 World。
-                    `cli.build_world.plan_segments()` 只規劃不蓋，工具與試算腳本
-                    靠它拿到跟生成器一模一樣的路段
-tools/              驗證與檢視：獨立讀回存檔，不信生成器的自述
-tests/              不需要產生世界就能跑的測試
+cli/                The composition root, and the only place that sees every
+                    implementation and decides which World the blocks go into.
+                    `cli.build_world.plan_segments()` plans without building, so
+                    tools and scratch scripts get exactly the segments the
+                    generator uses.
+tools/              Verification and inspection: they read the save back on
+                    their own and don't trust the generator's account of itself.
+tests/              Tests that run without generating a world.
 ```
 
-各層可以引用誰，定義在 `tests/test_architecture.py` 的 `ALLOWED`：
+What each layer may import is defined by `ALLOWED` in
+`tests/test_architecture.py`:
 
-| 層 | 可引用 |
+| layer | may import |
 |---|---|
-| `ports` | 只有標準函式庫 |
+| `ports` | the standard library only |
 | `domain` | `domain`, `ports` |
 | `application` | `domain`, `ports`, `application` |
 | `infrastructure` | `ports`, `infrastructure` |
 | `adapters` | `domain`, `ports`, `infrastructure`, `adapters` |
 
-**改完一定要跑 `./.venv/bin/python tests/run_all.py`。** 目錄名稱擋不住任何人，
-真正讓分層站得住的是 `test_architecture.py` —— 它會 parse 每個模組的 import
-把違規揪出來。
+**After any change, run `./.venv/bin/python tests/run_all.py`.** Directory names
+stop nobody. What keeps the layers honest is `test_architecture.py`, which parses
+every module's imports and names the offenders.
 
-### 這樣切的理由
+### Why it is cut this way
 
-- 生成器早就把世界當參數收（`def build_station(w, ...)`），只呼叫 `w.set()`。
-  介面本來就存在，`ports/block_sink.py` 只是把它講出來。所以測試可以塞
-  `DictSink` 進去，不必產生存檔。
-- 線形算式（`domain/alignment.py`）和斷面砌法（`application/build_line.py`）
-  變動的理由不同：斷面長怎樣是美術決定，線形算得對不對是工程決定。
-- `domain/tunnel_layers.py` 曾經 `import build_world`（而且沒用到）。
-  那個循環相依已經拿掉。
+- The generator always took the world as an argument (`def build_station(w, ...)`)
+  and only ever called `w.set()`. The interface already existed;
+  `ports/block_sink.py` merely states it. So a test can pass in a `DictSink`
+  instead of producing a save.
+- The alignment maths (`domain/alignment.py`) and the cross-section masonry
+  (`application/build_line.py`) change for different reasons: what a section
+  looks like is an artistic decision, whether the alignment is right is an
+  engineering one.
+- `domain/tunnel_layers.py` once did `import build_world` (and never used it).
+  That cycle is gone.
 
-## 常用指令
+A naming wart: `domain/concourse.py` and `application/build_concourse.py` model
+the underground malls (地下街), not the station concourse (穿堂). The prose and
+comments say "underground mall"; the module names are older.
+
+## Common commands
 
 ```bash
-# 資料管線（依序）
-./.venv/bin/python -m mrt.adapters.osm.fetch_network      # OSM 路線幾何
-./.venv/bin/python -m mrt.adapters.osm.fetch_stations     # 車站節點
-./.venv/bin/python -m mrt.adapters.osm.fetch_way_tags     # way 標籤
-./.venv/bin/python -m mrt.adapters.osm.fetch_branch       # 非標準代號的支線
-./.venv/bin/python -m mrt.adapters.osm.fetch_details      # 出入口／站體／月台樓層
-./.venv/bin/python -m mrt.adapters.osm.fetch_indoor       # 地下人行動線（地下街）
-./.venv/bin/python -m mrt.adapters.osm.fetch_sidings      # 袋狀軌／橫渡線／機廠線
-./.venv/bin/python -m mrt.adapters.osm.fetch_attractions  # 觀光景點的建物輪廓（台北101……）
-./.venv/bin/python -m mrt.adapters.projection             # 投影到 MC 座標
-./.venv/bin/python -m mrt.adapters.dem.make_heightmap     # DEM -> 高程網格
+# Data pipeline (in order)
+./.venv/bin/python -m mrt.adapters.osm.fetch_network      # OSM line geometry
+./.venv/bin/python -m mrt.adapters.osm.fetch_stations     # station nodes
+./.venv/bin/python -m mrt.adapters.osm.fetch_way_tags     # way tags
+./.venv/bin/python -m mrt.adapters.osm.fetch_branch       # branches with non-standard refs
+./.venv/bin/python -m mrt.adapters.osm.fetch_details      # exits, station buildings, platform levels
+./.venv/bin/python -m mrt.adapters.osm.fetch_indoor       # underground walkways (underground malls)
+./.venv/bin/python -m mrt.adapters.osm.fetch_sidings      # pocket tracks, crossovers, depot leads
+./.venv/bin/python -m mrt.adapters.osm.fetch_attractions  # attraction building outlines (Taipei 101 etc.)
+./.venv/bin/python -m mrt.adapters.projection             # project into MC coordinates
+./.venv/bin/python -m mrt.adapters.dem.make_heightmap     # DEM -> elevation grid
 
-# 生成
-./.venv/bin/python -m cli.build_world                     # 全網 + 地形
-./.venv/bin/python -m cli.build_world --rails             # 順便鋪鐵軌
-./.venv/bin/python -m cli.build_line --lines BR           # 只蓋幾條線（快，不含地形）
+# Generation
+./.venv/bin/python -m cli.build_world                     # whole network + terrain
+./.venv/bin/python -m cli.build_world --rails             # and lay track
+./.venv/bin/python -m cli.build_line --lines BR           # a few lines only (fast, no terrain)
 ./.venv/bin/python -m cli.build_world --out /tmp/w \
-    --bbox -900 -1400 400 250                             # 只產生台北車站一帶（十幾秒）
+    --bbox -900 -1400 400 250                             # just around Taipei Main Station (tens of seconds)
 ./.venv/bin/python -m cli.build_world --out /tmp/w --bbox ... \
-    --sights taipei101                                    # 只蓋某幾座景點（--no-sights 全不蓋）
+    --sights taipei101                                    # only some attractions (--no-sights for none)
 
-# 測試與驗證
-./.venv/bin/python tests/run_all.py                       # 全部單元測試
-./.venv/bin/python tools/verify_render.py <存檔> out.png  # 讀回算俯視圖
-./.venv/bin/python tools/verify_rails.py [存檔]           # 讀回驗證鐵軌連通性
-./.venv/bin/python tools/verify_exits.py <存檔>           # 讀回每座出入口，從街上走到月台
-./.venv/bin/python tools/verify_concourse.py <存檔> --stations 台北車站 北門 中山 雙連
-./.venv/bin/python tools/verify_exits.py <存檔> \
-    --levels 府中 西門 中正紀念堂 古亭 東門                 # 疊式站要走得到兩層月台
-./.venv/bin/python tools/verify_tracks.py <存檔> --station 西門 --expect 4 --levels 2
-./.venv/bin/python tools/verify_tracks.py <存檔> --pocket 大安 信義安和 --expect 3
-                                                          # 讀回每一刀有幾股鐵軌、各在哪個高度
-./.venv/bin/python tools/verify_spawn.py <存檔> [--all]   # 讀回出生點與區塊高度圖，照遊戲的邏輯找一次出生點
-./.venv/bin/python tools/verify_rides.py <存檔>           # 讀回每面搭車告示牌與資料包的傳送目的地
-./.venv/bin/python tools/check_datapack.py <存檔>         # 資料包交給真的 26.2（無頭 GameTest 伺服器）載入執行
-./.venv/bin/python tools/slice_world.py 忠孝復興          # ASCII 剖面
-./.venv/bin/python tools/verify_attractions.py <存檔>     # 讀回每座景點的高度、輪廓、傳送點、說明牌
-./.venv/bin/python tools/render_view.py <存檔> --bbox X0 Z0 X1 Z1 --out 前綴 \
-    --views south,east,iso,top                            # 立面／等角／俯視圖（顏色取自遊戲材質）
+# Tests and verification
+./.venv/bin/python tests/run_all.py                       # all unit tests
+./.venv/bin/python tools/verify_render.py <save> out.png  # read back and render a top-down map
+./.venv/bin/python tools/verify_rails.py [save]           # read back and check track connectivity
+./.venv/bin/python tools/verify_exits.py <save>           # read back every exit and walk from street to platform
+./.venv/bin/python tools/verify_concourse.py <save> --stations 台北車站 北門 中山 雙連
+./.venv/bin/python tools/verify_exits.py <save> \
+    --levels 府中 西門 中正紀念堂 古亭 東門                 # stacked stations must reach both platform levels
+./.venv/bin/python tools/verify_tracks.py <save> --station 西門 --expect 4 --levels 2
+./.venv/bin/python tools/verify_tracks.py <save> --pocket 大安 信義安和 --expect 3
+                                                          # read back how many tracks each cut has, and at what height
+./.venv/bin/python tools/verify_spawn.py <save> [--all]   # read back the spawn point and heightmaps; find spawn as the game does
+./.venv/bin/python tools/verify_rides.py <save>           # read back every ride sign and its datapack destination
+./.venv/bin/python tools/check_datapack.py <save>         # load and run the datapack in the real 26.2 (headless GameTest server)
+./.venv/bin/python tools/slice_world.py 忠孝復興          # ASCII cross-section
+./.venv/bin/python tools/verify_attractions.py <save>     # read back each attraction's height, outline, viewpoint and plaque
+./.venv/bin/python tools/render_view.py <save> --bbox X0 Z0 X1 Z1 --out prefix \
+    --views south,east,iso,top                            # elevations, isometric and top-down views (colours from the game's textures)
 ```
 
-驗證的規則有兩條，別搞混：`verify_concourse` 是「不出地面」（腳要比當地地表低
-兩格，逐格看地形），`verify_exits` 是「不踩土」（腳下只准是人造方塊）。
-後者更嚴，出入口亭本身就在地面上，用前者驗不了它。`verify_exits` 對轉乘站
-另外要求所有出入口在同一個連通分量裡（轉乘通道通不通）。
+Station names on the command line are in Chinese because they match the data.
 
-**穿堂層的高度只有一個定義**：`alignment.station_kind` / `LEVEL_DY`
-（地下 +7、橋下 −6、月台上方 +8）。蓋車站的、擺出入口井的、接轉乘通道的、
-驗證的都從那裡拿，別在別處再算一次 —— 差一格就是一整站走不通。
-疊式車站（`domain/stacked.py`：府中、西門、中正紀念堂、古亭、東門）也守這一條：
-上層就是原本的島式站，下層整層複製到 `LEVEL_H` 格底下，穿堂仍在 +7。
-要改層距只能改 `LEVEL_H`。
+There are two walking rules; don't mix them up. `verify_concourse` checks that a
+walk **never surfaces** (feet at least two blocks below the local ground, checked
+block by block against the terrain). `verify_exits` checks that it **never treads
+on soil** (only man-made blocks underfoot). The second is stricter, and the
+first cannot check an exit kiosk, which stands on the ground by design. At a
+transfer station `verify_exits` also requires every exit to be in one connected
+component, which is how it knows the transfer passages work.
 
-**共用站體的兩條線在 `assign_bands` 裡是自己人**（`shared=`），而且規劃完
-一定要看 `check_clearance` 的那一行：帶號沒衝突不代表箱涵沒交疊。
-西門的釘樁曾經把板南線嚇到帶 2，台北車站的板南線因此撞進淡水信義線的站體，
-帶號驗算完全沒發現。**「是自己人」的半徑（`stacked.ALLY_M`）只能貼著
-「真的是同一座結構」的長度**（半座站體 + `SPLIT_M`，約 350 m）：原本設 500 m，
-古亭以南並行 500 m、中線只差 7～13 m 的松山新店線與中和新蘆線就被判成不必
-分層，兩座箱涵在同一個深度上重疊了 400 m。
+**The concourse height has one definition**: `alignment.station_kind` /
+`LEVEL_DY` (+7 underground, −6 under the viaduct, +8 above the platform). The
+station builder, the exit shafts, the transfer passages and the verifiers all
+take it from there. Don't compute it anywhere else: one block out and a whole
+station can't be walked. Stacked stations (`domain/stacked.py`: Fuzhong, Ximen,
+Chiang Kai-shek Memorial Hall, Guting, Dongmen) keep to the same rule: the upper
+level is the ordinary island station, the lower level is a copy `LEVEL_H` blocks
+below it, and the concourse stays at +7. The level spacing changes only through
+`LEVEL_H`.
 
-**工具挑線形幾何一律過 `alignment.select_variants`。** OSM 同一條線常有上下行
-兩個 relation，淡水信義線在大安一帶差 19 m；工具自己挑最近的一份就會挑到
-生成器沒蓋的那一份，然後回報一個不存在的問題。
+**Two lines sharing a station box are allies in `assign_bands`** (`shared=`), and
+after planning, always read the `check_clearance` line: bands without a conflict
+do not mean box structures without an overlap. Ximen's pinning once scared the
+Bannan line into band 2, and at Taipei Main Station it drove straight into the
+Tamsui-Xinyi line's station box; the band check never noticed. **The ally radius
+(`stacked.ALLY_M`) must hug the length of what really is one structure** (half a
+station box plus `SPLIT_M`, about 350 m). It was once 500 m, and south of Guting
+the Songshan-Xindian and Zhonghe-Xinlu lines, which run side by side for 500 m
+with centre lines 7 to 13 m apart, were judged not to need separate depths. Their
+box structures overlapped at the same depth for 400 m.
 
-**上車位置只有一個定義**：`network.plan_berths`（`cli.build_world` 算一次）。月台上的
-搭車告示牌（`signage`）與資料包的傳送目的地（`ride_plan`）都吃同一份 `berths`，
-函式 id 只從 `network.ride_fn / turn_fn / go_fn / MENU_DIALOG` 來、命名空間只從
-`config.DATAPACK_NS` 來 —— 牌子寫的指令跟資料包的檔名是同一份約定的兩端。
-每個 ride/turn/go 函式恰好一行 `tp @s x y z yaw pitch`，`verify_rides` 靠它讀回。
+**Tools pick alignment geometry through `alignment.select_variants`, always.**
+OSM often has two relations for one line, one per direction, and near Daan the
+Tamsui-Xinyi pair are 19 m apart. A tool that picks the nearest one for itself
+picks the one the generator didn't build, and reports a problem that doesn't
+exist.
 
-**告示牌的兩條地雷**：`verify_exits` 靠「第一行以『出口』開頭、第二行是站名」認出入口亭，
-別的牌子第一行不准以「出口」開頭；黃色混凝土是月台警示帶（兩支驗證器都靠它認月台），
-路線色帶不准用它。點擊動作只放第一行 —— 遊戲對每一行的 click_event 都會執行一次。
+**Boarding positions have one definition**: `network.plan_berths` (computed once
+by `cli.build_world`). The ride signs on the platforms (`signage`) and the
+datapack's teleport destinations (`ride_plan`) consume the same `berths`.
+Function ids come only from `network.ride_fn / turn_fn / go_fn / MENU_DIALOG`,
+and the namespace only from `config.DATAPACK_NS`: the command on a sign and the
+file name in the datapack are two ends of one agreement. Every ride, turn and go
+function is exactly one line, `tp @s x y z yaw pitch`, which is how
+`verify_rides` reads it back.
 
-**世界是 704 格高（y−64..639），不是原版的 384。** 台北101 的塔尖在 y≈580。高度只在
-`config.Y_MIN / Y_MAX` 定義一次：區塊的 section 數、高度圖的位元數（10 bit、43 個 long）、
-資料包的 `dimension_type/overworld.json`、讀回工具都從那裡拿，別再寫死 319 或 384。
-資料包沒載入的話遊戲會照原版高度讀，y319 以上全部消失 —— `check_datapack` 在遊戲裡放一塊
-y639 的方塊驗這件事。地形仍照 `terrain.Y_CAP` 壓在 312 以下。
+**Two traps with signs.** `verify_exits` recognises an exit kiosk by a first line
+that starts with `出口` and a second line that is the station name, so no other
+sign's first line may start with `出口`. Yellow concrete is the platform's
+warning strip (both verifiers use it to find platforms), so no line-colour band
+may use it. Click actions go on the first line only: the game runs every line's
+click_event once.
 
-**觀光景點（`application/attractions/`）一座一個模組，用 `BUILDS = {id: 類別}` 登記**，
-套件自動掃描，新增景點不必改共用的檔。位置、方位、輪廓一律照 `data/attractions.json`
-（OSM）；長相照公開的建築事實寫成參數化的程式，**不抄任何文字、圖片或 3D 模型**。
-景點比車站、出入口、地下街都晚蓋，所有寫入都經過 `Guard`：`cli.build_world.sight_keepout`
-算出的禁區（出入口井、地下街的實際格子、路線斷面）一律不寫。景點的地面在 `plan()` 查完，
-`build()` 每個 region 各被呼叫一次。改了景點要跑 `verify_attractions`（高度比公開數字、
-輪廓、傳送點站不站得住），附近有出入口的再跑一次 `verify_exits`、跟 `--no-sights` 比。
-景點的傳送函式 `sight/<id>` 跟 ride/turn/go 同一個約定（恰好一行 tp），路徑只從
-`kit.sight_fn` 來；說明牌與穿堂景點牌的第一行同樣不准以「出口」開頭。
+**The world is 704 blocks tall (y−64..639), not vanilla's 384.** Taipei 101's
+spire is at about y580. The height is defined once, in `config.Y_MIN / Y_MAX`:
+the section count per chunk, the heightmap's bit width (10 bits, 43 longs), the
+datapack's `dimension_type/overworld.json` and the readers all take it from
+there, so never hard-code 319 or 384 again. If the datapack isn't loaded, the
+game reads the world at vanilla height and everything above y319 vanishes;
+`check_datapack` places a block at y639 in the game to check exactly that. The
+terrain is still capped below 312 by `terrain.Y_CAP`.
 
-**遊戲本身可以當驗證器。** 裝好的 26.2 client jar 附一個無頭 GameTest 伺服器
-（`net.minecraft.gametest.Main`，用 launcher 附的 java），在沙盒裡跑得起來（一般伺服器要
-開 port，跑不了）：`check_datapack` 用它載入資料包、執行每個傳送函式再讀回落點；
-`heightmap.py` 的打包與方塊分類也是拿它存出來的區塊逐位元比過的（告示牌、旗幟、壓力板
-在高度圖上算「擋」，跟直覺相反）。它沒有玩家：右鍵點牌、對話框畫面要進遊戲才驗得到。
-格式問題別憑記憶：`net.minecraft.data.Main --reports` 會吐出完整的指令樹與登錄表。
+**Attractions (`application/attractions/`) are one module each, registered with
+`BUILDS = {id: class}`.** The package scans itself, so a new attraction needs no
+change to shared files. Position, orientation and outline come from
+`data/attractions.json` (OSM); the look is a parametric program written from
+public architectural facts. **Copy no text, image or 3D model.** Attractions are
+built after the stations, exits and underground malls, and every write goes
+through `Guard`: the keep-out zone from `cli.build_world.sight_keepout` (exit
+shafts, the underground malls' actual blocks, line cross-sections) is never
+written. An attraction's ground level is looked up in `plan()`, and `build()` is
+called once per region. After changing an attraction, run `verify_attractions`
+(heights against published figures, outline, whether the viewpoint can be stood
+on); if there are exits nearby, run `verify_exits` as well and compare with
+`--no-sights`. An attraction's teleport function `sight/<id>` follows the same
+agreement as ride/turn/go (exactly one tp line), and its path comes only from
+`kit.sight_fn`. Plaques and the concourse attraction signs, too, may not start
+their first line with `出口`.
 
-## 授權
+**The game itself can be a verifier.** The installed 26.2 client jar ships a
+headless GameTest server (`net.minecraft.gametest.Main`, run with the launcher's
+bundled Java) that runs inside the sandbox; an ordinary server needs to open a
+port and can't. `check_datapack` uses it to load the datapack, run every teleport
+function and read back where it lands. `heightmap.py`'s packing and block
+classification were checked bit for bit against chunks it saved (signs, banners
+and pressure plates count as blocking in the heightmap, against intuition). It
+has no player: right-clicking a sign and dialog screens can only be checked in
+the game. For formats, don't trust memory: `net.minecraft.data.Main --reports`
+dumps the full command tree and registries.
 
-程式碼 GPL-3.0（`LICENSE`），`data/` 是 ODbL 1.0（`LICENSE-DATA`，繼承自
-OpenStreetMap）。兩者都是 copyleft。新增資料檔到 `data/` 時要確認來源條款，
-並更新 `LICENSE-DATA` 的檔案清單 —— 那份清單目前逐檔列出，不是萬用比對。
+## Licences
 
-## 驗證的態度
+The code is GPL-3.0 (`LICENSE`); `data/` is ODbL 1.0 (`LICENSE-DATA`, inherited
+from OpenStreetMap). Both are copyleft. When adding a data file to `data/`,
+check the source's terms and update the file list in `LICENSE-DATA`, which names
+every file individually rather than using a wildcard.
 
-**不相信生成器的自述，一律從磁碟獨立讀回來比對。** `tools/` 底下每一支都是
-這個原則的產物，README 的「驗證」一節列了它們各自抓到過什麼。
+## How to verify
 
-`verify_render.py` 有個坑：終端輸出只列前 20 種方塊，新加的材質排不進去就
-看不到提示 —— 要直接掃圖上有沒有洋紅像素才算數（洋紅會被高度陰影調暗，判斷條件是
-`g=0 且 r=b`，不是 `r>200`）。手填配色以外的方塊照遊戲材質上色（`tools/blockcolors.py`
-讀裝好的 jar），洋紅只代表「連材質都算不出顏色」—— 通常是方塊 id 打錯了。
+**Don't trust the generator's account of itself; read everything back from disk
+independently.** Every tool in `tools/` exists because of this rule, and
+docs/verification.md lists what each one has caught.
 
-**驗證器自己也會騙人。** 三個真的發生過的例子：把「地下」定成一個全域的
-y 上限，車站多加兩座、地面低 3 m，整條地下街就被判成地表，六十個出入口
-各成一個分量；驗證器用出口編號當鍵，西門捷運站 1 號與西門地下街 1 號互相蓋掉，
-壞的那一半根本不會出現在報表裡；讀回的高度只到出口牌上方 6 m，高架站的
-月台在 14 m 上面，整批高架站被判成走不到月台。看到離奇的結果，先懷疑驗證器。
+`verify_render.py` has a trap: the terminal lists only the 20 commonest blocks,
+so a new material may never show up there. Scan the image for magenta pixels
+instead. Magenta is darkened by the height shading, so the test is `g=0 and r=b`,
+not `r>200`. Blocks outside the hand-picked palette are coloured from the game's
+textures (`tools/blockcolors.py` reads the installed jar); magenta means even the
+texture couldn't produce a colour, which usually means a mistyped block id.
 
-**單元測試過了不代表蓋出來能走。** 測試用的是直線，真實線形斜 45 度時
-兩格寬的樓梯相鄰兩階只有斜角相接，走到一半就斷 —— 只有 `--bbox` 蓋一小塊、
-`verify_exits` 讀回來走一遍才看得到。改了車站或樓梯的幾何，至少蓋一個
-斜線的站（六張犁、淡水）驗過再說。
+**Verifiers lie too.** Three real cases. Defining "underground" as one global
+y ceiling: add two stations with ground 3 m lower and the whole underground mall
+was judged to be on the surface, with sixty exits each in its own component. A
+verifier keyed on exit numbers: Ximen station's exit 1 and the Ximen underground
+mall's exit 1 overwrote each other, and the broken half never appeared in the
+report. Reading heights back only up to 6 m above the exit sign: elevated
+platforms sit 14 m up, so every elevated station was judged unable to reach its
+platform. When a result looks absurd, suspect the verifier first.
 
-**`ShaftStair` 的 `g0` 是樓板、`y_to` 是站立面，兩扇門開在同一面牆上。**
-井底那扇門的上限夾在井口平台之下，站立面落差不到 3 格門洞就矮到鑽不過去
-（淡江大學就是這樣壞的）。街面與穿堂差 0～2 m 的出入口走 `exits.place_gate`
-（平面出入口），別把 `MIN_RISE` 調回 2。
+**Passing unit tests does not mean the build can be walked.** The tests use
+straight lines. On a real alignment at 45 degrees, two adjacent steps of a
+two-wide stair touch only at a corner, and the stair breaks halfway. Only
+building a small area with `--bbox` and walking it with `verify_exits` shows
+that. After changing station or stair geometry, build at least one diagonal
+station (Liuzhangli, Tamsui) and check it before going further.
 
-**井與通道要避開別條線，不只避開自己這一區的東西。** 地下街的連絡梯井從 y61 挖到
-深層那條線的穿堂，中途一定經過淺層那幾條線的深度 —— 台北車站往淡水信義線的那座井
-曾經把板南線月台挖掉十幾公尺，`out/` 的舊存檔裡還是那樣。`build_concourse.plan` 現在
-收 `exits.index_segments` 的占用表；新增任何會垂直穿越的東西都要查它。
+**In `ShaftStair`, `g0` is a floor and `y_to` a standing surface, and both doors
+are in the same wall.** The bottom door's top is clamped below the landing at the
+top of the shaft, so when the standing surfaces differ by less than 3 blocks the
+doorway becomes too low to pass (that is how Tamkang University broke). Exits
+where the street and the concourse differ by 0 to 2 m use `exits.place_gate`
+(at-grade exits); don't set `MIN_RISE` back to 2.
 
-**改了生成器，要對照舊版存檔。** `git worktree add <暫存目錄> HEAD` 加一個
-`data/heightmap.npy` 的 symlink 就能用舊程式蓋同一塊地，再逐格 diff
-（`savereader.read_volume` 兩邊各讀一次）；共用幹線把十二座車站挖空、
-樓梯頂端差一格，都是這樣才看出來哪些差異是刻意的、哪些是壞掉的。
+**Shafts and passages must avoid other lines, not just what is in their own
+area.** The underground mall's link-stair shafts dig from y61 down to the deepest
+line's concourse, and on the way they must pass the depths of the shallower
+lines. At Taipei Main Station the shaft down to the Tamsui-Xinyi line once dug
+more than ten metres out of the Bannan line's platform, and the old save in
+`out/` still shows it. `build_concourse.plan` now takes the occupancy table from
+`exits.index_segments`; anything new that crosses depths vertically must check
+it.
+
+**After changing the generator, compare against a save from the old version.**
+`git worktree add <temp dir> HEAD` plus a symlink to `data/heightmap.npy` builds
+the same area with the old code; then diff block by block
+(`savereader.read_volume` on each side). That is how a shared trunk that hollowed
+out twelve stations, and stair tops one block off, were told apart from the
+differences that were meant.
