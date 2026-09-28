@@ -4,7 +4,7 @@ Every line, station and exit of the Taipei Metro at one block to the metre, gene
 
 ## Download
 
-[The finished world](https://drive.google.com/file/d/19EMGXq1fSBxTu75KZ2nqXuztkm0jARfG/view?usp=sharing) is a 198 MB zip on Google Drive, 1.27 GB unzipped, for Minecraft Java Edition 26.2. It was last updated on 27 September 2026, with the ride system, the 14 attractions and the world raised to y639. Unzip it and put the `Taipei MRT` folder in `saves/`:
+[The finished world](https://drive.google.com/file/d/19EMGXq1fSBxTu75KZ2nqXuztkm0jARfG/view?usp=sharing) is a 198 MB zip on Google Drive, 1.27 GB unzipped, for Minecraft Java Edition 26.2; it also runs in 26.3. It was last updated on 29 September 2026, when the signs, menus and plaques that were in Chinese only gained English. Unzip it and put the `Taipei MRT` folder in `saves/`:
 
 ```bash
 mv "Taipei MRT" ~/Library/Application\ Support/minecraft/saves/     # macOS
