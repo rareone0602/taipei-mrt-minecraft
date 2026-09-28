@@ -6,20 +6,20 @@ Screenshots from the world, and the long version of getting about in it.
 
 | | |
 |:--:|:--:|
-| <img src="../demo/taipei101.jpg" width="420" alt="Taipei 101 from its viewpoint"> | <img src="../demo/taipei101-down.jpg" width="420" alt="The view down from the spire of Taipei 101"> |
-| **Taipei 101.** The viewpoint you teleport to. OSM's `building:part` entries stack up the tapered base, the eight flared segments and the spire. | **Looking down from the spire.** 508 m up, which is why the world was raised to y639. Below is the roof of the shopping centre. |
-| <img src="../demo/sights-menu.jpg" width="420" alt="The attractions menu"> | <img src="../demo/route-map.jpg" width="420" alt="The route map"> |
-| **★ Attractions.** The last button on the route map: 14 attractions, with tooltips giving the year each was completed and the nearest station. | **Route map.** Click a line, then a station, and you are teleported there. Tooltips list interchanges and nearby attractions. |
-| <img src="../demo/arrival.jpg" width="420" alt="Arriving at a station"> | <img src="../demo/exit.jpg" width="420" alt="Gongguan exit 2"> |
-| **Arrival.** The station name as a title in the line's colour, the station code and line as a subtitle, and the next station in the action bar. | **Exit.** Up the stairs from the platform, and the sign carries the real number: Gongguan exit 2. |
-| <img src="../demo/platform.jpg" width="420" alt="An island platform"> | <img src="../demo/sign.jpg" width="420" alt="A station-name sign at Taipei Main Station"> |
-| **Island platform.** An underground station's island platform, with a yellow warning strip along each edge. | **Station-name sign.** With the real codes: `R10;BL12 台北車站`. Taken before the ride system; a ride sign now stands here (see [signs](stations.md#signs)). |
-| <img src="../demo/tunnel.jpg" width="420" alt="A twin-track tunnel"> | <img src="../demo/concourse.jpg" width="420" alt="A concourse and interchange passage"> |
-| **Twin-track tunnel.** A track on each side, and rails that connect across the whole network. | **Walkways.** The concourse and an interchange passage. From exit to platform you never step on soil. |
-| <img src="../demo/cutaway.jpg" width="420" alt="A cutaway of an underground station"> | <img src="../demo/sunset.jpg" width="420" alt="An alignment running to the skyline"> |
-| **Station cutaway.** The stairs in an underground station box, from concourse to platform. | **Alignment.** One block to the metre, all the way to the skyline. |
+| <img src="../demo/route-map.jpg" width="420" alt="The Tamsui-Xinyi Line's station list, with the tooltip for Taipei Main Station"> | <img src="../demo/arrival.jpg" width="420" alt="Arriving at Zhonghe on the Circular Line"> |
+| **Route map.** Click a line, then a station, and you are teleported there. The tooltip on Taipei Main Station lists its interchanges and the attraction nearby. | **Arrival.** The station name as a title in the line's colour, the station code and line as a subtitle, and the next station in the action bar: Zhonghe, on the Circular Line. |
+| <img src="../demo/sign.jpg" width="420" alt="A ride sign on the platform at Taipei Main Station"> | <img src="../demo/platform.jpg" width="420" alt="The Tamsui-Xinyi Line platform at Taipei Main Station"> |
+| **Ride sign.** Right-click it and you ride to the next station: this one runs towards Guangci/Fengtian Temple, next stop NTU Hospital. | **Island platform.** The Tamsui-Xinyi Line at Taipei Main Station, with a yellow warning strip along each edge and the line's red above the platform screen doors. |
+| <img src="../demo/exit.jpg" width="420" alt="The sign for Ximen exit 1"> | <img src="../demo/main-station.jpg" width="420" alt="Taipei Main Station and its exit kiosks from above"> |
+| **Exit.** Ximen exit 1. The sign carries the real number, the station's name in Chinese and English, and "Exit 1". | **Taipei Main Station from above.** The station building and, dotted around it, the kiosks of its exits, each where OSM puts it. |
+| <img src="../demo/taipei101.jpg" width="420" alt="Taipei 101 from its viewpoint"> | <img src="../demo/taipei101-top.jpg" width="420" alt="The top of Taipei 101 and its spire"> |
+| **Taipei 101.** The viewpoint you teleport to. OSM's `building:part` entries stack up the tapered base, the eight flared segments and the spire. | **The top.** The last sections and the spire, 508 m up, which is why the world was raised to y639. |
+| <img src="../demo/sights-menu.jpg" width="420" alt="The attractions menu"> | <img src="../demo/presidential.jpg" width="420" alt="The Presidential Office Building from above"> |
+| **★ Attractions.** The last button on the route map: 14 attractions, with tooltips giving the year each was completed and the nearest station. | **Presidential Office Building.** Completed in 1919. One of its two courtyards, from above. |
+| <img src="../demo/longshan.jpg" width="420" alt="Longshan Temple from above"> | <img src="../demo/viaduct.jpg" width="420" alt="The Circular Line's viaduct"> |
+| **Longshan Temple.** Founded in 1738, and 223 m from Longshan Temple station, as in the city. | **Circular Line.** The viaduct near Zhonghe, on its alignment from OSM. |
 
-The last two were taken in spectator mode from inside the ground. When the camera is inside a solid block Minecraft does not draw the surface, which is how the tunnels and station boxes show through. The world has no holes in it.
+All twelve come from one recording, made on 28 September 2026. The views from above were taken in spectator mode.
 
 ## Getting about
 

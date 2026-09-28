@@ -1,30 +1,33 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Cut the three raw gameplay recordings into the demo material for the README.
+"""Cut the gameplay recording into the demo material for the README.
 
-The raw recordings are macOS screen recordings and are not in version control:
-they are too large (2.9 GB for the three). raw-1 and raw-2 are 1932x1240 with
-the window frame in the picture; raw-3 is full screen (3024x1898, 120 fps),
-recorded after the ride system and the attractions were done. This script is
-the only link between them and the files in the repo: which segments the
-videos use, what the captions say and which second each still is taken from
-are all written here, not tuned by hand.
+The recording, demo/raw-4.mov, is a macOS screen recording made on 28
+September 2026: full screen, 3024x1898 at 120 fps, 12 minutes 20 seconds and
+6 GB, so it is not in version control. This script is the only link between
+it and the files in the repo: which segments the video uses, what the
+captions say and which second each still is taken from are all written here,
+not tuned by hand.
 
     ./.venv/bin/python demo/make_demo.py               # Rebuild everything under demo/.
     ./.venv/bin/python demo/make_demo.py --only map    # Redraw only the network map.
-    ./.venv/bin/python demo/make_demo.py --only sights # Rebuild only the attractions video and its stills.
+    ./.venv/bin/python demo/make_demo.py --only video  # Rebuild only the video and its cover.
 
 Outputs:
-    hero.gif          The animation at the top of the README (tunnel cutaway at sunset).
-    tour.mp4          56-second demo video, with title cards and captions.
-    tour-thumb.jpg    The video's cover (clicking it in the README opens the video).
-    sights.mp4        Demo video of the attractions and the ride system (raw-3):
-                      attractions menu, Taipei 101, route map, leaving the station.
-    sights-thumb.jpg  Its cover.
-    network-map.png   Network diagram, drawn directly from the projected alignment data.
-    platform / sign / tunnel / concourse / cutaway / sunset .jpg   Six stills.
-    taipei101 / taipei101-down / sights-menu / route-map / arrival / exit .jpg
-                      Six stills from raw-3.
+    hero.gif        The animation at the top of the README (the Circular Line's viaduct).
+    tour.mp4        The demo video: route map, a ride, Taipei Main Station, six attractions
+                    and the Circular Line, with a title page and an end page.
+    tour-thumb.jpg  The video's cover (clicking it in the README opens the video).
+    network-map.png Network diagram, drawn directly from the projected alignment data.
+    route-map / arrival / sign / platform / exit / main-station / taipei101 /
+    taipei101-top / sights-menu / presidential / longshan / viaduct .jpg
+                    Twelve stills.
+
+Every word is set in Shantell Sans on paper, after phy's style guide
+(https://github.com/rareone0602/phy_friends/blob/main/STYLE.md): no words over
+the picture (§7), so each caption is a note on the rule under it; no
+gradients, shadows or glows; graphite inks, never black. The font and its
+licence are in demo/fonts/, copied from the guide's kit.
 
 Needs ffmpeg (this machine's ffmpeg is built without libfreetype, so all text is
 drawn with PIL as PNGs and overlaid, rather than with drawtext), plus pillow and
@@ -37,255 +40,248 @@ import os
 import subprocess
 import sys
 
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 
 DEMO = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(DEMO)
 WORK = os.path.join(DEMO, ".work")          # Intermediate files, not in version control.
-RAW1 = os.path.join(DEMO, "raw-1.mov")
-RAW2 = os.path.join(DEMO, "raw-2.mov")
-RAW3 = os.path.join(DEMO, "raw-3.mov")      # Full screen: the attractions and the ride system.
+RAW = os.path.join(DEMO, "raw-4.mov")
+FACE = os.path.join(DEMO, "fonts", "ShantellSans-Variable.ttf")
 
-TTF = "/System/Library/Fonts/STHeiti Medium.ttc"     # Heiti TC
-TTF_L = "/System/Library/Fonts/STHeiti Light.ttc"
-
-CROP = "crop=1704:956:114:133"      # raw-1/2: remove the macOS window frame, keeping only the game.
-# raw-3 is full-screen 16:10. Cropping 16:9 from the top cuts off exactly the
-# hotbar at the bottom, and the dialog's Back button at the very bottom falls
-# entirely outside the crop instead of being cut in half.
-CROP3 = "crop=3024:1701:0:0"
-SCALE = "scale=1280:720:flags=lanczos,setsar=1"
+# The recording is full-screen 16:10. Cropping 16:9 from the top cuts off
+# exactly the hotbar at the bottom.
+CROP = "crop=3024:1701:0:0"
+# For ten seconds after a teleport, "Triggered [...]" stays in the chat area
+# at the bottom left. This tighter 16:9 crop ends above it and keeps the
+# station title, the subtitle and the action bar.
+CROP_NOCHAT = "crop=2700:1519:162:0"
 FPS = 30
 XFADE = 0.5
 
-EQ_DARK = "eq=brightness=0.05:contrast=1.10:saturation=1.12"   # Underground, on the dark side.
-EQ_SKY = "eq=contrast=1.06:saturation=1.10"                    # Shots with sky.
-EQ_SUNSET = "eq=contrast=1.05:saturation=1.12"
-EQ_3 = "eq=contrast=1.04:saturation=1.08"                      # raw-3 is bright already; adjust lightly.
-EQ_3_DARK = "eq=brightness=0.06:contrast=1.08:saturation=1.10"
+EQ = "eq=contrast=1.04:saturation=1.08"                         # The game is bright already.
+EQ_DARK = "eq=brightness=0.06:contrast=1.08:saturation=1.10"    # Underground.
 
-W, H = 1280, 720
-LINE_COLORS = [(198, 132, 44), (227, 0, 44), (0, 134, 89),
-               (248, 182, 28), (0, 112, 189), (255, 219, 0)]
+# ---- Paper and type (STYLE.md §4, §5, §8) ----
+# A 1280x720 frame is a slide, which is the notebook page with everything
+# x1.5, so the rules are 48 px apart.
+SLIDE = 1.5
+L = int(32 * SLIDE)                 # Rule spacing.
+MARGIN_X = int(88 * SLIDE)          # The margin line.
+TEXT_X = MARGIN_X + L // 2          # Words start just right of the margin line.
+PAPER = (0xfb, 0xf9, 0xf3)
+RULE = (0xcf, 0xdb, 0xe8)
+MARGIN = (0xe6, 0xaa, 0xa3)
+INK = (0x3d, 0x3c, 0x39)
+INK_2 = (0x6d, 0x6a, 0x63)
+INK_3 = (0x97, 0x93, 0x8a)
+INFORMAL = 100                      # The dial: a hobby project.
 
-# Video shots: (source, start in seconds, length in seconds, grade, caption key).
+# Sizes step by 1.2 from the 18 px print (STYLE.md §5), then x1.5 for a slide.
+TITLE = int(64 * SLIDE)
+H3 = int(26 * SLIDE)
+CAPTION = int(22 * SLIDE)           # Also the intro.
+SMALL = int(15 * SLIDE)
+
+W, PICTURE_H = 1280, 720            # The picture is 15 rules tall, top and bottom on rules.
+STRIP_H = 2 * L                     # The caption sits on the first rule under the picture.
+H = PICTURE_H + STRIP_H             # 816 px: 17 rules.
+SCALE = "scale=%d:%d:flags=lanczos,setsar=1" % (W, PICTURE_H)
+
+# Video shots: (start in seconds, length in the recording, speed-up, crop, grade, caption key).
 SHOTS = [
-    (RAW2, 176.0, 11.0, EQ_SKY,  "xray"),
-    (RAW1,  51.0,  7.5, EQ_SUNSET, "sunset"),
-    (RAW2,  40.0, 11.5, EQ_DARK, "tunnel"),
-    (RAW2,  25.0,  9.0, EQ_DARK, "platform"),
-    (RAW2, 197.0,  7.0, EQ_DARK, "concourse"),
-    (RAW2, 212.5,  7.5, EQ_DARK, None),
+    (1.0,    9.0, 1, CROP,        EQ,      "route"),         # Route map -> Tamsui-Xinyi Line -> Taipei Main Station.
+    (378.8, 10.0, 1, CROP_NOCHAT, EQ_DARK, "ride"),          # The ride sign, then five stations, one per click.
+    (434.5,  7.5, 1, CROP,        EQ,      "main_station"),  # Spectator mode above Taipei Main Station.
+    (40.0,   4.0, 1, CROP_NOCHAT, EQ,      "taipei101"),     # The viewpoint in front of Taipei 101.
+    (44.0,  52.0, 4, CROP_NOCHAT, EQ,      "spire"),         # Up the side of the tower to the spire.
+    (188.5,  7.0, 1, CROP,        EQ,      "presidential"),  # Over the courtyards of the Presidential Office.
+    (283.5,  3.0, 1, CROP_NOCHAT, EQ,      "museum"),        # Up into the museum's dome.
+    (304.5,  4.0, 1, CROP_NOCHAT, EQ,      "ferris"),        # The Miramar Ferris Wheel.
+    (514.0, 10.0, 2, CROP,        EQ,      "sun_yat_sen"),   # Back from the Sun Yat-sen Memorial Hall's roof.
+    (655.5, 20.0, 2, CROP_NOCHAT, EQ,      "longshan"),      # From Longshan Temple station to the temple.
+    # Zhonghe's arrival is too short to read a caption of its own, so it
+    # shares the viaduct's, and the strip holds still across the dissolve.
+    (689.0,  2.5, 1, CROP_NOCHAT, EQ,      "viaduct"),       # Arrival on Zhonghe's elevated platform.
+    (694.0, 16.0, 2, CROP_NOCHAT, EQ,      "viaduct"),       # Along the Circular Line's viaduct.
 ]
 
-# Captions: key -> (headline, subline, accent bar color).
+# Captions are chrome, so lower case; names keep their case (STYLE.md §3).
 CAPTIONS = {
-    "xray":      (u"隧道剖面", u"把地表切掉：線形一路延伸到天際線", (255, 219, 0)),
-    "sunset":    (u"1 方塊 = 1 公尺", u"482 km² 的範圍，不可能手工堆", (227, 0, 44)),
-    "tunnel":    (u"地下段", u"雙線隧道，全網鐵軌相通", (198, 132, 44)),
-    "platform":  (u"島式月台", u"月台門邊的黃色警示帶、站名告示牌", (0, 134, 89)),
-    "concourse": (u"穿堂層與轉乘通道", u"從街上任何一座出入口都走得到月台", (248, 182, 28)),
+    "route":        u"the route map: a line, then a station, and you land on its platform",
+    "ride":         u"right-click the sign on the platform to ride to the next station",
+    "main_station": u"Taipei Main Station: every kiosk is a real exit, at its real position",
+    "taipei101":    u"Taipei 101, 508 m to the tip of its spire",
+    "spire":        u"the world is raised to y639 to fit it; vanilla stops at y319",
+    "presidential": u"the Presidential Office Building, 1919",
+    "museum":       u"under the dome of the National Taiwan Museum, 1915",
+    "ferris":       u"the Miramar Ferris Wheel, 100 m, on the roof of its mall",
+    "sun_yat_sen":  u"the Sun Yat-sen Memorial Hall, 1972",
+    "longshan":     u"Longshan Temple, 223 m from its station, as in Taipei",
+    "viaduct":      u"from Zhonghe along the Circular Line's viaduct",
 }
 
-# Stills: file name -> (source, second, grade).
+TITLE_PAGE = (u"Taipei Metro, 1:1",
+              u"rebuilt in Minecraft, one block to the metre",
+              u"193 stations · 472 exits · recorded 28 sep 2026 · silent")
+END_PAGE = (u"there are no trains.",
+            u"you are teleported instead, which at least keeps to the timetable.",
+            u"github.com/rareone0602/taipei-mrt-minecraft · map data © OpenStreetMap contributors")
+TITLE_S, END_S = 3.2, 3.6
+
+# The cover is a frame of the Taipei 101 shot, with the caption telling what
+# the video holds; the length is filled in once the video is cut.
+COVER = (42.0, CROP_NOCHAT, EQ,
+         u"the demo, %d seconds: the route map, a ride and six attractions")
+
+# Stills: file name -> (second, crop, grade).
 STILLS = {
-    "platform":  (RAW2, 216.5, EQ_DARK),
-    "sign":      (RAW2,  29.5, EQ_DARK),
-    "tunnel":    (RAW2,  45.0, EQ_DARK),
-    "concourse": (RAW2, 200.0, EQ_DARK),
-    "cutaway":   (RAW2, 103.0, EQ_SKY),
-    "sunset":    (RAW1,  54.5, EQ_SUNSET),
+    "route-map":     (391.0, CROP,        EQ),       # Tamsui-Xinyi Line list, Taipei Main Station's tooltip.
+    "arrival":       (690.3, CROP_NOCHAT, EQ),       # Zhonghe, Circular Line.
+    "sign":          (379.3, CROP_NOCHAT, EQ_DARK),  # A ride sign at Taipei Main Station.
+    "platform":      (396.0, CROP_NOCHAT, EQ_DARK),  # The Tamsui-Xinyi Line platform at Taipei Main Station.
+    "exit":          (261.0, CROP,        EQ),       # Ximen exit 1.
+    "main-station":  (441.0, CROP,        EQ),       # Taipei Main Station and its exit kiosks.
+    "taipei101":     (42.0,  CROP_NOCHAT, EQ),       # From the viewpoint.
+    "taipei101-top": (90.0,  CROP,        EQ),       # The top sections and the spire.
+    "sights-menu":   (272.5, CROP,        EQ),       # National Taiwan Museum's tooltip.
+    "presidential":  (193.0, CROP,        EQ),       # The Presidential Office Building from above.
+    "longshan":      (674.0, CROP,        EQ),       # Longshan Temple from above.
+    "viaduct":       (699.0, CROP_NOCHAT, EQ),       # The Circular Line's viaduct.
 }
 
-# The segment for hero.gif: the tunnel cutaway at sunset; 5 seconds comes to 2.5 MB.
-HERO = (RAW1, 52.0, 5.0, EQ_SUNSET)
-
-# ---- Attractions video (raw-3) ----
-# After a teleport, "Triggered [...]" stays in the chat area at the bottom left
-# for ten seconds, so this video's captions go at the top left.
-SIGHT_SHOTS = [
-    (RAW3,   0.3,  6.5, EQ_3, None),          # The ★ attractions menu; hovering the cursor shows tooltips.
-    (RAW3,   6.9,  7.4, EQ_3, "t101"),        # Teleport to the viewpoint in front of Taipei 101.
-    (RAW3,  46.5,  8.5, EQ_3, "sections"),    # Up along the tower: the eight flared sections.
-    (RAW3,  95.5, 10.0, EQ_3, "spire"),       # The top, the 91st-floor observatory, the spire.
-    (RAW3, 136.5,  8.5, EQ_3, "down"),        # Looking down from the spire.
-    (RAW3, 155.8,  9.6, EQ_3, None),          # Route map -> Songshan-Xindian Line -> Gongguan.
-    (RAW3, 165.4,  4.2, EQ_3_DARK, "arrive"), # Arrival: the station name as a large title.
-    (RAW3, 201.0,  9.9, EQ_3_DARK, "exit"),   # Leaving the station: stairs -> the Exit 2 sign.
-    (RAW3, 222.8,  5.6, EQ_3, None),          # Route map -> Bannan Line -> Ximen (tooltip: nearby attractions).
-]
-
-SIGHT_CAPTIONS = {
-    "t101":     (u"台北101", u"照真實位置 1:1，塔尖在地面上 508 m", (0, 112, 189)),
-    "sections": (u"八節花斗", u"27～90 樓分八節、每節八層", (0, 134, 89)),
-    "spire":    (u"世界加高到 y639", u"原版只到 y319，台北101 蓋不到一半", (227, 0, 44)),
-    "down":     (u"從塔尖往下看", u"輪廓與方位取自 OpenStreetMap", (248, 182, 28)),
-    "arrive":   (u"路線圖一點就到", u"點路線、點站名，傳送到那一站的月台", (0, 134, 89)),
-    "exit":     (u"走出站", u"每座出入口開在真實位置、掛真實編號", (198, 132, 44)),
-}
-
-# Stills: file name -> (source, second, grade, crop). A crop of None means CROP3.
-# Frames within ten seconds of a teleport have the bottom cropped off as well,
-# so the "Triggered" line in the chat area stays out of the picture.
-CROP3_NOCHAT = "crop=2700:1519:162:0"
-SIGHT_STILLS = {
-    "taipei101":      (RAW3,  12.5, EQ_3, CROP3_NOCHAT),
-    "taipei101-down": (RAW3, 144.0, EQ_3, None),
-    "sights-menu":    (RAW3,   3.0, EQ_3, None),
-    "route-map":      (RAW3, 224.2, EQ_3, None),
-    "arrival":        (RAW3, 226.5, EQ_3_DARK, "crop=2738:1540:143:0"),
-    "exit":           (RAW3, 210.0, EQ_3, None),
-}
+# The segment for hero.gif: along the Circular Line's viaduct.
+HERO = (695.0, 5.0, CROP_NOCHAT, EQ)
 
 
 def run(cmd):
     subprocess.run(cmd, check=True)
 
 
-def font(size, light=False):
-    return ImageFont.truetype(TTF_L if light else TTF, size, index=0)
+def ensure_raqm():
+    """Re-run under Homebrew's library path if Pillow cannot load raqm.
 
-
-def need_raw(paths):
-    missing = [p for p in paths if not os.path.exists(p)]
-    if missing:
-        raise SystemExit("Missing raw recordings: %s (they are not in version control; "
-                         "ask the author for them)"
-                         % ", ".join(os.path.basename(p) for p in missing))
-
-
-# --------------------------------------------------------------------------
-# Layers: title cards, captions, covers
-# --------------------------------------------------------------------------
-
-def text(d, xy, s, f, fill, off=3):
-    d.text((xy[0] + off, xy[1] + off), s, font=f, fill=(0, 0, 0, 190))
-    d.text(xy, s, font=f, fill=fill)
-
-
-def width_of(d, s, f):
-    return d.textbbox((0, 0), s, font=f)[2]
-
-
-def color_bar(d, y, h):
-    seg = W / float(len(LINE_COLORS))
-    for i, c in enumerate(LINE_COLORS):
-        d.rectangle([i * seg, y, (i + 1) * seg, y + h], fill=c + (255,))
-
-
-def backdrop(still, dim, blur):
-    """Use a game screenshot as the background, darkened and slightly blurred so the text stands out."""
-    im = Image.open(os.path.join(WORK, still)).convert("RGB")
-    im = im.resize((W, H), Image.LANCZOS).filter(ImageFilter.GaussianBlur(blur))
-    return ImageEnhance.Brightness(im).enhance(dim).convert("RGBA")
-
-
-TOUR_TITLE = (u"台北捷運", u"Minecraft 1:1 重建",
-              u"1 方塊 = 1 公尺   ·   482 km²   ·   全部程式化生成")
-TOUR_END = [
-    (u"193 座車站", u"地下島式月台、高架與平面側式月台，都有穿堂層與驗票閘門"),
-    (u"476 座出入口", u"開在真實位置、掛真實編號；每一座都走得到月台"),
-    (u"8.9 km 地下街", u"台北車站一帶，照 OSM 的室內動線蓋"),
-]
-SIGHT_TITLE = (u"台北101 與觀光景點", u"台北捷運 Minecraft 1:1 重建",
-               u"14 處景點   ·   路線圖一點就到   ·   世界加高到 y639")
-SIGHT_END = [
-    (u"14 處觀光景點", u"位置、方位、輪廓照 OSM；台北101 從地面到塔尖 508 m"),
-    (u"193 座車站", u"路線圖、月台的搭車告示牌、穿堂的售票機，點了就到"),
-    (u"472 座出入口", u"開在真實位置、掛真實編號；每一座都走得到月台"),
-]
-
-
-def title_card(still="still_sunset.png", lines=TOUR_TITLE):
-    big, mid, small = lines
-    im = backdrop(still, 0.42, 2.0)
-    d = ImageDraw.Draw(im)
-    color_bar(d, 0, 10)
-    color_bar(d, H - 10, 10)
-    f1, f2, f3 = font(104), font(46), font(28, light=True)
-    text(d, ((W - width_of(d, big, f1)) // 2, 222), big, f1, (255, 255, 255, 255))
-    text(d, ((W - width_of(d, mid, f2)) // 2, 350), mid, f2, (150, 205, 255, 255))
-    d.line([(W // 2 - 190, 430), (W // 2 + 190, 430)], fill=(90, 100, 115, 255), width=2)
-    text(d, ((W - width_of(d, small, f3)) // 2, 456), small, f3, (200, 210, 220, 255))
-    return im
-
-
-def end_card(still="still_tunnel.png", rows=TOUR_END):
-    im = backdrop(still, 0.33, 3.0)
-    d = ImageDraw.Draw(im)
-    color_bar(d, 0, 10)
-    color_bar(d, H - 10, 10)
-    f1, f2, f3 = font(40), font(30, light=True), font(26)
-    y = 168
-    for head, sub in rows:
-        d.rectangle([210, y + 6, 216, y + 44], fill=(0, 112, 189, 255))
-        text(d, (240, y), head, f1, (255, 255, 255, 255))
-        text(d, (240, y + 52), sub, f2, (170, 180, 192, 255))
-        y += 128
-    s = "github.com/rareone0602/taipei-mrt-minecraft"
-    text(d, ((W - width_of(d, s, f3)) // 2, 588), s, f3, (150, 205, 255, 255))
-    return im
-
-
-def caption_layer(head, sub, accent, top=False):
-    """Draw a bottom-left caption: accent bar + headline + subline, over a vignette rising from the bottom.
-
-    top=True places it at the top left with the vignette falling from the top
-    (used when the chat area occupies the bottom left)."""
-    im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    grad = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(grad)
-    edge = 250 if top else H - 470           # Depth of the vignette.
-    for i in range(edge):
-        a = int(150 * ((edge - i) / float(edge)) ** 1.5)
-        y = i if top else H - 1 - i
-        gd.line([(0, y), (W, y)], fill=(0, 0, 0, a))
-    im = Image.alpha_composite(im, grad)
-    d = ImageDraw.Draw(im)
-    x, y = 72, (48 if top else 574)
-    d.rectangle([x, y + 8, x + 7, y + 46], fill=accent + (255,))
-    text(d, (x + 26, y), head, font(42), (255, 255, 255, 255))
-    text(d, (x + 26, y + 56), sub, font(26, light=True), (198, 208, 218, 255))
-    return im
-
-
-TOUR_THUMB = (u"台北捷運 · Minecraft 1:1 重建", u"56 秒示範影片：隧道、月台、穿堂、轉乘通道")
-
-
-def thumbnail(still="still_platform.png", lines=TOUR_THUMB, out="tour-thumb.jpg"):
-    """Draw a video cover.
-
-    Clicking it in the README opens the video, so it must read as a video at a glance.
+    Pillow's wheel carries raqm but finds fribidi only at run time. Without
+    raqm the hand does not bounce and repeated letters do not swap in their
+    alternates (STYLE.md §5).
     """
-    im = Image.open(os.path.join(WORK, still)).convert("RGB")
-    im = im.resize((W, H), Image.LANCZOS).filter(ImageFilter.GaussianBlur(1.2))
-    im = ImageEnhance.Brightness(im).enhance(0.52)
-    d = ImageDraw.Draw(im, "RGBA")
-    seg = W / float(len(LINE_COLORS))
-    for i, c in enumerate(LINE_COLORS):
-        d.rectangle([i * seg, 0, (i + 1) * seg, 9], fill=c)
-        d.rectangle([i * seg, H - 9, (i + 1) * seg, H], fill=c)
-    cx, cy, r = W // 2, 322, 76
-    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(255, 255, 255, 235))
-    d.polygon([(cx - 24, cy - 38), (cx - 24, cy + 38), (cx + 40, cy)], fill=(18, 20, 26))
-    for s, y, f, fill in ((lines[0], 452, font(46), (255, 255, 255)),
-                          (lines[1], 520, font(26, light=True), (205, 214, 224))):
-        text(d, ((W - width_of(d, s, f)) // 2, y), s, f, fill, off=2)
-    im.save(os.path.join(DEMO, out), quality=88)
-    print("  " + out)
+    from PIL import features
+    if features.check("raqm"):
+        return
+    lib = "/opt/homebrew/lib"
+    if os.environ.get("DYLD_LIBRARY_PATH") == lib or \
+            not os.path.exists(os.path.join(lib, "libfribidi.0.dylib")):
+        raise SystemExit("Pillow cannot load raqm, which the text needs for Shantell "
+                         "Sans's bounce and alternates; install fribidi (brew install fribidi)")
+    env = dict(os.environ, DYLD_LIBRARY_PATH=lib)
+    os.execve(sys.executable, [sys.executable] + sys.argv, env)
+
+
+def need_raw():
+    if not os.path.exists(RAW):
+        raise SystemExit("Missing the raw recording %s (it is not in version control; "
+                         "ask the author for it)" % os.path.relpath(RAW, REPO))
+
+
+# --------------------------------------------------------------------------
+# Paper and pencil
+# --------------------------------------------------------------------------
+
+def face(size, hand=False, informal=INFORMAL, weight=300):
+    """Shantell Sans at one setting of the dial (STYLE.md §5).
+
+    The hand (titles, captions, notes) is never neater than 50 and bounces in
+    the top half of the dial; the print never bounces. Everything is Light
+    (300) unless pressed harder.
+    """
+    f = ImageFont.truetype(FACE, size, layout_engine=ImageFont.Layout.RAQM)
+    informality = max(informal, 50) if hand else informal
+    bounce = max(0, informality - 50) if hand else 0
+    f.set_variation_by_axes([weight, informality, bounce, 0])
+    return f
+
+
+def noise(h, w, seed):
+    """Fine fractal noise in 0..1: a pixel octave over a coarser one."""
+    rng = np.random.default_rng(seed)
+    coarse = rng.random((h // 4 + 1, w // 4 + 1))
+    coarse = np.asarray(Image.fromarray((coarse * 255).astype(np.uint8))
+                        .resize((w, h), Image.BILINEAR)) / 255.0
+    return 0.6 * rng.random((h, w)) + 0.4 * coarse
+
+
+def paper(w, h, rules=True, margin=True, top=0, tooth=True):
+    """A sheet of lined notebook paper, with its tooth multiplied over it.
+
+    top is how far the sheet sits below the top of the frame, so a strip under
+    the picture carries on the frame's rules rather than starting its own.
+    """
+    im = Image.new("RGB", (w, h), PAPER)
+    d = ImageDraw.Draw(im)
+    if rules:
+        for y in range(L - top % L, h, L):
+            d.line([(0, y), (w, y)], fill=RULE, width=2)
+    if margin:
+        d.line([(MARGIN_X, 0), (MARGIN_X, h)], fill=MARGIN, width=2)
+    if not tooth:
+        return im
+    grain = 1.0 - 0.4 * 0.12 * noise(h, w, seed=11)       # The tooth, at 40%.
+    return Image.fromarray((np.asarray(im) * grain[..., None]).astype(np.uint8))
+
+
+def graphite(layer, seed=7):
+    """The graphite filter (STYLE.md §6): pencil grain taken out of the ink's alpha."""
+    a = np.asarray(layer).astype(float)
+    n = 0.5 + 0.12 * np.random.default_rng(seed).standard_normal(a.shape[:2])
+    a[..., 3] *= np.clip(2.1 - 2.4 * n, 0.0, 1.0)
+    return Image.fromarray(a.astype(np.uint8))
+
+
+def write(im, rule_y, s, f, ink, tilt=0.0, pencil=False):
+    """Write one line with its baseline on the rule at rule_y.
+
+    tilt is anticlockwise, in degrees (STYLE.md §6: the title -1°).
+    """
+    layer = Image.new("RGBA", im.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    if TEXT_X + d.textlength(s, font=f) > im.width - L:
+        raise ValueError("%r is too long for one line; shorten it" % s)
+    d.text((TEXT_X, rule_y), s, font=f, fill=ink + (255,), anchor="ls")
+    if pencil:
+        layer = graphite(layer)
+    if tilt:
+        layer = layer.rotate(tilt, resample=Image.BICUBIC, center=(TEXT_X, rule_y))
+    im.paste(layer, (0, 0), layer)
+
+
+def strip(caption):
+    """The paper under the picture, with the caption as a note on its first rule."""
+    im = paper(W, STRIP_H, top=PICTURE_H)
+    if caption:
+        write(im, L, caption, face(CAPTION, hand=True), INK_2)
+    return im
+
+
+def page(lines, big):
+    """A full page: a line in the hand, one in the print, and small print."""
+    head, intro, small = lines
+    im = paper(W, H)
+    if big:
+        write(im, 8 * L, head, face(TITLE, hand=True), INK, tilt=1.0, pencil=True)
+    else:
+        write(im, 8 * L, head, face(H3, hand=True), INK)
+    write(im, 10 * L, intro, face(CAPTION), INK_2)
+    write(im, 11 * L, small, face(SMALL), INK_2)
+    return im
 
 
 # --------------------------------------------------------------------------
 # Frames
 # --------------------------------------------------------------------------
 
-def crop_of(src):
-    return CROP3 if src == RAW3 else CROP
-
-
-def grab(src, ss, eq, out, width=1280, png=False, crop=None):
-    vf = "%s,%s,scale=%d:-2:flags=lanczos" % (crop or crop_of(src), eq, width)
-    cmd = ["ffmpeg", "-v", "error", "-y", "-ss", str(ss), "-i", src,
+def grab(ss, crop, eq, out, width=1280, png=False):
+    vf = "%s,%s,scale=%d:-2:flags=lanczos" % (crop, eq, width)
+    cmd = ["ffmpeg", "-v", "error", "-y", "-ss", str(ss), "-i", RAW,
            "-frames:v", "1", "-vf", vf]
     if not png:
         cmd += ["-q:v", "3"]
@@ -293,80 +289,36 @@ def grab(src, ss, eq, out, width=1280, png=False, crop=None):
 
 
 def build_stills():
-    """Grab the six README stills, and keep full-size PNGs as title-card backgrounds."""
     print("Stills:")
-    for name, (src, ss, eq) in STILLS.items():
-        grab(src, ss, eq, os.path.join(DEMO, name + ".jpg"))
+    for name, (ss, crop, eq) in STILLS.items():
+        grab(ss, crop, eq, os.path.join(DEMO, name + ".jpg"))
         print("  %s.jpg" % name)
-    for name in ("sunset", "tunnel", "platform"):
-        src, ss, eq = STILLS[name]
-        grab(src, ss, eq, os.path.join(WORK, "still_%s.png" % name),
-             width=1704, png=True)
-
-
-def build_cards():
-    print("Cards:")
-    title_card().save(os.path.join(WORK, "title.png"))
-    end_card().save(os.path.join(WORK, "end.png"))
-    for key, (head, sub, accent) in CAPTIONS.items():
-        caption_layer(head, sub, accent).save(os.path.join(WORK, "cap_%s.png" % key))
-    print("  title / end / %d captions" % len(CAPTIONS))
-    thumbnail()
 
 
 # --------------------------------------------------------------------------
 # Video
 # --------------------------------------------------------------------------
 
-def render_card(png, dur, out, fade_in=True):
-    vf = "%s,fps=%d,format=yuv420p" % (SCALE, FPS)
-    if fade_in:
-        vf = "fade=in:st=0:d=0.5," + vf
+def render_page(png, dur, out):
     run(["ffmpeg", "-v", "error", "-y", "-loop", "1", "-t", str(dur), "-i", png,
-         "-vf", vf, "-c:v", "libx264", "-preset", "slow", "-crf", "18", out])
-
-
-def render_shot(src, ss, dur, eq, cap, out):
-    vf = "%s,%s,%s,fps=%d" % (crop_of(src), eq, SCALE, FPS)
-    if cap is None:
-        run(["ffmpeg", "-v", "error", "-y", "-ss", str(ss), "-t", str(dur), "-i", src,
-             "-vf", vf + ",format=yuv420p", "-an",
-             "-c:v", "libx264", "-preset", "slow", "-crf", "18", out])
-        return
-    png = os.path.join(WORK, "cap_%s.png" % cap)
-    fc = ("[0:v]%s[v];"
-          "[1:v]format=rgba,fade=in:st=0.5:d=0.5:alpha=1,"
-          "fade=out:st=%.2f:d=0.6:alpha=1[c];"
-          "[v][c]overlay=0:0:shortest=1,format=yuv420p[o]" % (vf, dur - 1.6))
-    run(["ffmpeg", "-v", "error", "-y", "-ss", str(ss), "-t", str(dur), "-i", src,
-         "-loop", "1", "-t", str(dur), "-i", png,
-         "-filter_complex", fc, "-map", "[o]", "-an",
+         "-vf", "fps=%d,format=yuv420p" % FPS,
          "-c:v", "libx264", "-preset", "slow", "-crf", "18", out])
 
 
-def build_video():
-    print("Video:")
-    cut(SHOTS, "", "tour.mp4")
+def render_shot(shot, strip_png, out):
+    """Render one shot as the picture over its strip of paper."""
+    ss, dur, speed, crop, eq, _ = shot
+    fc = ("[0:v]%s,%s,%s,setpts=PTS/%g,fps=%d,pad=%d:%d:0:0[v];"
+          "[v][1:v]overlay=0:%d,format=yuv420p[o]"
+          % (crop, eq, SCALE, speed, FPS, W, H, PICTURE_H))
+    run(["ffmpeg", "-v", "error", "-y", "-ss", str(ss), "-t", str(dur), "-i", RAW,
+         "-i", strip_png, "-filter_complex", fc, "-map", "[o]", "-an",
+         "-c:v", "libx264", "-preset", "slow", "-crf", "18", out])
+    return dur / speed
 
 
-def cut(shots, prefix, name):
-    """Cross-dissolve the title card, the shots and the end card into one video.
-
-    prefix keeps each video's intermediate files in .work/ apart."""
-    parts = []
-    p = os.path.join(WORK, "%s00_title.mp4" % prefix)
-    render_card(os.path.join(WORK, "%stitle.png" % prefix), 2.8, p)
-    parts.append((p, 2.8))
-    for i, (src, ss, dur, eq, cap) in enumerate(shots):
-        p = os.path.join(WORK, "%s%02d_%s.mp4" % (prefix, i + 1, cap or "plain"))
-        render_shot(src, ss, dur, eq, cap, p)
-        parts.append((p, dur))
-        print("  Shot %d: %s +%.1fs" % (i + 1, os.path.basename(src), dur))
-    p = os.path.join(WORK, "%s99_end.mp4" % prefix)
-    render_card(os.path.join(WORK, "%send.png" % prefix), 3.6, p, fade_in=False)
-    parts.append((p, 3.6))
-
-    # Cross-dissolve: each join shortens the total by one XFADE.
+def cut(parts, out):
+    """Cross-dissolve the parts into one video; each join shortens it by one XFADE."""
     inputs = []
     for f, _ in parts:
         inputs += ["-i", f]
@@ -377,54 +329,66 @@ def cut(shots, prefix, name):
         fc.append("%s[%d:v]xfade=transition=fade:duration=%.2f:offset=%.3f%s"
                   % (cur, i, XFADE, off, lab))
         cur, acc = lab, off + parts[i][1]
-    fc.append("%sformat=yuv420p,fade=out:st=%.2f:d=0.8[o]" % (cur, acc - 0.8))
-    out = os.path.join(DEMO, name)
+    # The end fades to paper, not to black.
+    fc.append("%sfade=out:st=%.2f:d=0.8:color=0x%02x%02x%02x,format=yuv420p[o]"
+              % ((cur, acc - 0.8) + PAPER))
     run(["ffmpeg", "-v", "error", "-y"] + inputs +
         ["-filter_complex", ";".join(fc), "-map", "[o]",
          "-c:v", "libx264", "-preset", "slow", "-crf", "25", "-tune", "animation",
          "-pix_fmt", "yuv420p", "-movflags", "+faststart", out])
-    print("  %s (%.1f s, %.1f MB)" % (name, acc, os.path.getsize(out) / 1e6))
     return acc
 
 
-def build_sights():
-    """Build everything from raw-3 in one pass: stills, cards, video and cover."""
-    print("Attraction stills:")
-    for name, (src, ss, eq, crop) in SIGHT_STILLS.items():
-        grab(src, ss, eq, os.path.join(DEMO, name + ".jpg"), crop=crop)
-        print("  %s.jpg" % name)
-    for name in ("taipei101", "taipei101-down"):
-        src, ss, eq, crop = SIGHT_STILLS[name]
-        grab(src, ss, eq, os.path.join(WORK, "still_%s.png" % name),
-             width=1704, png=True, crop=crop)
+def build_video():
+    print("Video:")
+    parts = []
+    p = os.path.join(WORK, "00_title.mp4")
+    page(TITLE_PAGE, big=True).save(os.path.join(WORK, "title.png"))
+    render_page(os.path.join(WORK, "title.png"), TITLE_S, p)
+    parts.append((p, TITLE_S))
+    for i, shot in enumerate(SHOTS):
+        key = shot[5]
+        png = os.path.join(WORK, "strip_%s.png" % key)
+        strip(CAPTIONS[key]).save(png)
+        p = os.path.join(WORK, "%02d_%s.mp4" % (i + 1, key))
+        parts.append((p, render_shot(shot, png, p)))
+        print("  Shot %d: %s, %.1f s" % (i + 1, key, parts[-1][1]))
+    p = os.path.join(WORK, "99_end.mp4")
+    page(END_PAGE, big=False).save(os.path.join(WORK, "end.png"))
+    render_page(os.path.join(WORK, "end.png"), END_S, p)
+    parts.append((p, END_S))
 
-    print("Attraction cards:")
-    title_card("still_taipei101.png", SIGHT_TITLE).save(os.path.join(WORK, "s_title.png"))
-    end_card("still_taipei101-down.png", SIGHT_END).save(os.path.join(WORK, "s_end.png"))
-    for key, (head, sub, accent) in SIGHT_CAPTIONS.items():
-        caption_layer(head, sub, accent, top=True).save(os.path.join(WORK, "cap_%s.png" % key))
-    print("  title / end / %d captions" % len(SIGHT_CAPTIONS))
+    out = os.path.join(DEMO, "tour.mp4")
+    length = cut(parts, out)
+    print("  tour.mp4 (%.1f s, %.1f MB)" % (length, os.path.getsize(out) / 1e6))
+    build_cover(length)
 
-    print("Attraction video:")
-    acc = cut(SIGHT_SHOTS, "s_", "sights.mp4")
-    thumbnail("still_taipei101.png",
-              (u"台北101 與觀光景點",
-               u"%d 秒示範影片：景點選單、台北101、路線圖、走出站" % round(acc)),
-              "sights-thumb.jpg")
+
+def build_cover(length):
+    """Draw the video's cover: a frame of it, as it looks in the video."""
+    ss, crop, eq, caption = COVER
+    frame = os.path.join(WORK, "cover_frame.png")
+    grab(ss, crop, eq, frame, png=True)
+    im = Image.new("RGB", (W, H))
+    im.paste(Image.open(frame).convert("RGB").resize((W, PICTURE_H), Image.LANCZOS), (0, 0))
+    im.paste(strip(caption % round(length)), (0, PICTURE_H))
+    im.save(os.path.join(DEMO, "tour-thumb.jpg"), quality=88)
+    print("  tour-thumb.jpg")
 
 
 def build_gif():
     """Render hero.gif.
 
-    GIF has no inter-frame compression, so it gets only 5 seconds, 560 px and
-    12 fps; any more passes 3 MB.
+    GIF has no inter-frame compression, and a flight over grass changes most
+    pixels in every frame, so it gets only 5 seconds, 560 px, 10 fps and 128
+    colors; any more passes 3 MB.
     """
-    src, ss, dur, eq = HERO
-    vf = ("%s,%s,fps=12,scale=560:-1:flags=lanczos,split[a][b];"
-          "[a]palettegen=max_colors=200:stats_mode=diff[p];"
-          "[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" % (CROP, eq))
+    ss, dur, crop, eq = HERO
+    vf = ("%s,%s,fps=10,scale=560:-1:flags=lanczos,split[a][b];"
+          "[a]palettegen=max_colors=128:stats_mode=diff[p];"
+          "[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" % (crop, eq))
     out = os.path.join(DEMO, "hero.gif")
-    run(["ffmpeg", "-v", "error", "-y", "-ss", str(ss), "-t", str(dur), "-i", src,
+    run(["ffmpeg", "-v", "error", "-y", "-ss", str(ss), "-t", str(dur), "-i", RAW,
          "-vf", vf, "-loop", "0", out])
     print("hero.gif (%.1f MB)" % (os.path.getsize(out) / 1e6))
 
@@ -433,14 +397,16 @@ def build_gif():
 # Network diagram
 # --------------------------------------------------------------------------
 
-MAP_W, MAP_H, MAP_PAD, MAP_TOP, MAP_BOTTOM = 2000, 1500, 70, 150, 130
-MAP_BG = (14, 16, 21)
+# A chart is set at the neat end of the dial and sits on blank paper, with no
+# rules behind it, since they would read as gridlines (STYLE.md §8). The lines
+# keep the Metro's own colours: they are the data, the only colour on the page.
+MAP_W, MAP_H, MAP_PAD, MAP_BOTTOM = 2000, 1440, 70, 150
 LEGEND = [
-    ("BR", u"文湖線", "#A74C00"), ("R", u"淡水信義線", "#FF0000"),
-    ("G", u"松山新店線", "#1e7b54"), ("O", u"中和新蘆線", "#ff8c00"),
-    ("BL", u"板南線", "#007ec7"), ("Y", u"環狀線", "#ffd900"),
-    ("A", u"機場捷運", "#d4cde7"), ("V", u"淡海輕軌", "#FEBEB5"),
-    ("K", u"安坑輕軌", "#c3b091"), ("LB", u"三鶯線", "#6DB7D0"),
+    ("BR", u"Wenhu Line", "#A74C00"), ("R", u"Tamsui-Xinyi Line", "#FF0000"),
+    ("G", u"Songshan-Xindian Line", "#1e7b54"), ("O", u"Zhonghe-Xinlu Line", "#ff8c00"),
+    ("BL", u"Bannan Line", "#007ec7"), ("Y", u"Circular Line", "#ffd900"),
+    ("A", u"Taoyuan Airport MRT", "#d4cde7"), ("V", u"Danhai LRT", "#FEBEB5"),
+    ("K", u"Ankeng LRT", "#c3b091"), ("LB", u"Sanying Line", "#6DB7D0"),
 ]
 NAMED = {"orange": "#ff8c00", "red": "#ff0000", "blue": "#0000ff"}
 
@@ -448,7 +414,7 @@ NAMED = {"orange": "#ff8c00", "red": "#ff0000", "blue": "#0000ff"}
 def rgb(c):
     c = str(NAMED.get(str(c).lower(), c)).lstrip("#")
     if len(c) != 6:
-        return (200, 200, 200)
+        return INK_3
     return tuple(int(c[i:i + 2], 16) for i in (0, 2, 4))
 
 
@@ -464,51 +430,52 @@ def build_map():
     xs = [p[0] for vs in lines.values() for v in vs for p in v["points"]]
     zs = [p[1] for vs in lines.values() for v in vs for p in v["points"]]
     x0, x1, z0, z1 = min(xs), max(xs), min(zs), max(zs)
-    iw, ih = MAP_W - 2 * MAP_PAD, MAP_H - MAP_TOP - MAP_BOTTOM
+    iw, ih = MAP_W - 2 * MAP_PAD, MAP_H - 2 * MAP_PAD - MAP_BOTTOM
     s = min(iw / float(x1 - x0), ih / float(z1 - z0))      # Meters -> pixels.
     ox = MAP_PAD + (iw - (x1 - x0) * s) / 2
-    oz = MAP_TOP + (ih - (z1 - z0) * s) / 2
+    oz = MAP_PAD + (ih - (z1 - z0) * s) / 2
 
     def pt(x, z):
         return (ox + (x - x0) * s, oz + (z - z0) * s)
 
-    im = Image.new("RGB", (MAP_W, MAP_H), MAP_BG)
+    # Flat paper, as the guide's chart styles have it: a per-pixel tooth
+    # would take the PNG from 0.1 MB to 2.6 MB.
+    im = paper(MAP_W, MAP_H, rules=False, margin=False, tooth=False)
     d = ImageDraw.Draw(im)
-    # Lay a background-colored outline first, so lines stay distinct where they cross.
+    # Lay a paper-colored outline first, so lines stay distinct where they cross.
     for w, colorize in ((9, False), (5, True)):
         for variants in lines.values():
             for v in variants:
-                c = rgb(v.get("colour")) if colorize else MAP_BG
+                c = rgb(v.get("colour")) if colorize else PAPER
                 d.line([pt(x, z) for x, z in v["points"]], fill=c, width=w, joint="curve")
 
     for st in stations:
         px, pz = pt(int(st["mc_x"]), int(st["mc_z"]))
-        d.ellipse([px - 3, pz - 3, px + 3, pz + 3], fill=(245, 245, 245), outline=MAP_BG)
+        d.ellipse([px - 3.5, pz - 3.5, px + 3.5, pz + 3.5], fill=PAPER, outline=INK_2, width=2)
+    label = face(24, informal=0)
     for st in stations:
         if st["ref"].startswith("R10"):          # Taipei Main Station = the projection origin.
             px, pz = pt(int(st["mc_x"]), int(st["mc_z"]))
-            d.ellipse([px - 7, pz - 7, px + 7, pz + 7], outline=(255, 255, 255), width=3)
-            d.text((px + 14, pz - 26), u"台北車站", font=font(20), fill=(255, 255, 255))
+            d.ellipse([px - 9, pz - 9, px + 9, pz + 9], outline=INK, width=3)
+            # The centre is crowded, so the label stands off in the clear
+            # space above, joined to the ring by a leader.
+            lx, lz = px + 70, pz - 200
+            d.line([(px + 5, pz - 8), (lx - 6, lz + 6)], fill=INK_2, width=2)
+            d.text((lx, lz), u"Taipei Main Station", font=label, fill=INK, anchor="ls")
             break
 
-    d.text((MAP_PAD, 46), u"台北捷運全網", font=font(52), fill=(255, 255, 255))
-    d.text((MAP_PAD + 4, 112),
-           u"十條營運路線 + 支線　·　1 方塊 = 1 公尺　·　線形、站點與顏色取自 OpenStreetMap",
-           font=font(22, light=True), fill=(150, 160, 175))
-
-    lx, ly, f = MAP_PAD, MAP_H - MAP_BOTTOM + 26, font(20)
+    lx, ly = MAP_PAD, MAP_H - MAP_PAD - MAP_BOTTOM + 60
     for i, (code, name, col) in enumerate(LEGEND):
-        cx, cy = lx + (i % 5) * 372, ly + (i // 5) * 40
-        d.rectangle([cx, cy + 6, cx + 30, cy + 12], fill=rgb(col))
-        d.text((cx + 44, cy - 2), u"%s　%s" % (code, name), font=f, fill=(215, 222, 230))
+        cx, cy = lx + (i % 5) * 372, ly + (i // 5) * 48
+        d.line([(cx, cy - 8), (cx + 30, cy - 8)], fill=rgb(col), width=6)
+        d.text((cx + 44, cy), u"%s  %s" % (code, name), font=label, fill=INK, anchor="ls")
 
     bar = 5000 * s                                # The scale bar is 5000 blocks in the world.
-    bx, by = MAP_W - MAP_PAD - bar, 96
-    d.line([(bx, by), (bx + bar, by)], fill=(215, 222, 230), width=3)
+    bx, by = MAP_W - MAP_PAD - bar, MAP_PAD + 20
+    d.line([(bx, by), (bx + bar, by)], fill=INK_2, width=3)
     for e in (bx, bx + bar):
-        d.line([(e, by - 8), (e, by + 8)], fill=(215, 222, 230), width=3)
-    d.text((bx + bar / 2 - 26, by + 14), "5 km", font=font(20, light=True),
-           fill=(215, 222, 230))
+        d.line([(e, by - 8), (e, by + 8)], fill=INK_2, width=3)
+    d.text((bx + bar / 2, by + 40), "5 km", font=label, fill=INK_2, anchor="ms")
 
     im.save(os.path.join(DEMO, "network-map.png"))
     print("network-map.png (%.2f px/m)" % s)
@@ -516,16 +483,17 @@ def build_map():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--only", choices=("stills", "cards", "video", "gif", "map", "sights"),
-                    help="run only this step (video needs cards first)")
+    ap.add_argument("--only", choices=("stills", "video", "gif", "map"),
+                    help="run only this step")
     a = ap.parse_args()
+    ensure_raqm()
     os.makedirs(WORK, exist_ok=True)
-    steps = [a.only] if a.only else ["stills", "cards", "video", "gif", "map", "sights"]
-    need_raw(sorted({p for s in steps if s not in ("map", "cards")
-                     for p in ([RAW3] if s == "sights" else [RAW1, RAW2])}))
+    steps = [a.only] if a.only else ["stills", "video", "gif", "map"]
+    if any(s != "map" for s in steps):
+        need_raw()
     for name in steps:
-        {"stills": build_stills, "cards": build_cards, "video": build_video,
-         "gif": build_gif, "map": build_map, "sights": build_sights}[name]()
+        {"stills": build_stills, "video": build_video,
+         "gif": build_gif, "map": build_map}[name]()
 
 
 if __name__ == "__main__":

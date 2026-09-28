@@ -2,7 +2,7 @@
 
 Fourteen landmarks built 1:1 where they stand, with their outlines taken from OpenStreetMap and their looks from published architectural facts.
 
-![Taipei 101 from its viewpoint, with the shopping mall and a skybridge at its foot](../demo/taipei101.jpg)
+![Taipei 101 from its viewpoint, with the shopping mall at its foot](../demo/taipei101.jpg)
 
 Taipei 101 from the viewpoint its teleport lands on.
 

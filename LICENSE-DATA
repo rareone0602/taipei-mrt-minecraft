@@ -52,7 +52,9 @@ carry this notice:
 demo/network-map.png plots data/mc_lines.json and data/mc_stations.csv
 directly, so it also reproduces the data itself; a modified version is
 distributed under the share-alike terms above. demo/make_demo.py is code
-and falls under GPL-3.0.
+and falls under GPL-3.0. demo/fonts/ holds the typeface every caption is set
+in, Shantell Sans, under the SIL Open Font License 1.1
+(demo/fonts/OFL-ShantellSans.txt).
 
 
 ATTRIBUTION

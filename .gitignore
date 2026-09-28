@@ -15,7 +15,8 @@
 /data/*.blend
 /data/*.blend1
 
-# Raw screen recordings for the demo (three takes, 2.9 GB) and intermediates.
+# Raw screen recordings for the demo (raw-4.mov, the one in use, is 6 GB) and
+# intermediates.
 # Only the finished files in demo/ are tracked; rerun demo/make_demo.py to
 # rebuild them.
 /demo/raw-*.mov

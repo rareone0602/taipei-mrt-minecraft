@@ -38,8 +38,11 @@ Where this file and the guide disagree, the guide wins. In practice:
   it with `build_world` takes over 20 minutes. To test, point `--out` at a
   temporary directory.
 - Temporary files go in the scratchpad, never in the project directory.
-- **`demo/` holds finished files only.** The raw screen recordings
-  (`demo/raw-*.mov`) and the intermediates in `demo/.work/` are in `.gitignore`.
+- **`demo/` holds finished files only**, plus `demo/fonts/`: Shantell Sans,
+  the face every caption and page is set in, copied with its licence from the
+  style guide's kit. The raw screen recordings (`demo/raw-*.mov`; the demo is
+  cut from `raw-4.mov` alone) and the intermediates in `demo/.work/` are in
+  `.gitignore`.
   Every cut, caption and still is timed in `demo/make_demo.py`. To change the
   demo, change that script and rerun it (`./.venv/bin/python demo/make_demo.py`);
   never edit a finished file by hand.

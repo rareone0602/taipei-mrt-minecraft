@@ -11,17 +11,13 @@ mv "Taipei MRT" ~/Library/Application\ Support/minecraft/saves/     # macOS
 # Windows: %APPDATA%\.minecraft\saves\    Linux: ~/.minecraft/saves/
 ```
 
-![The Taipei Metro with the ground cut away: two tunnels follow the real alignment past the boxes of underground stations](demo/hero.gif)
+![Flying along the Circular Line's viaduct as it curves away across the terrain](demo/hero.gif)
 
 ## Demo
 
-[![Taipei 101 and the attractions: a 72-second demo](demo/sights-thumb.jpg)](https://github.com/rareone0602/taipei-mrt-minecraft/blob/main/demo/sights.mp4)
+[![Taipei 101 from its viewpoint, above a note giving the demo's length and contents](demo/tour-thumb.jpg)](https://github.com/rareone0602/taipei-mrt-minecraft/blob/main/demo/tour.mp4)
 
-The first teleports from the route map's attractions menu to Taipei 101, flies up the side of the tower to the spire at 508 m and looks down; then it takes the route map to Gongguan, climbs the stairs from the platform and out of exit 2, and ends with a teleport to Ximen (`demo/sights.mp4`, 72 seconds, 1280×720, 30 fps, silent).
-
-[![Taipei Metro in Minecraft: a 56-second demo](demo/tour-thumb.jpg)](https://github.com/rareone0602/taipei-mrt-minecraft/blob/main/demo/tour.mp4)
-
-The second, recorded before the ride system and the attractions existed, walks from a tunnel, an island platform and a station-name sign to the concourse and an interchange passage (`demo/tour.mp4`, 56 seconds). Click either picture to play it on GitHub.
+The route map lands you on the Tamsui-Xinyi Line platform at Taipei Main Station, and five clicks on the ride sign carry you five stations down the line. Then the video rises above Taipei Main Station and its exits, climbs Taipei 101 to the spire and visits five more attractions, walks out of Longshan Temple station to the temple, and follows the Circular Line's viaduct from Zhonghe (`demo/tour.mp4`, 83 seconds, 1280×816, 30 fps, silent). Click the picture to play it on GitHub.
 
 ## Once inside
 

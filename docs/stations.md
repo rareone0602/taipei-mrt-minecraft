@@ -104,9 +104,9 @@ The Chinese sign says what the English one does: towards Taipei Nangang Exhibiti
 
 **Exit signs** get a glowing first line in the line colour, but not one character of their text changes. `verify_exits` recognises an exit kiosk by a first line of `出口` and a second line holding the station name, and no other sign's first line starts with `出口`.
 
-![An exit sign at street level reading 出口 2, 公館, Gongguan, Exit 2, beside the top of the stair](../demo/exit.jpg)
+![An exit sign at street level reading 出口 1, 西門, Ximen, Exit 1, beside the door of its kiosk](../demo/exit.jpg)
 
-Gongguan exit 2, at the top of the stair from the platform. The number is the real one.
+Ximen exit 1, beside the door of its kiosk. The number is the real one.
 
 ### What the read-back caught
 
@@ -132,10 +132,6 @@ Each exit is three things. `mrt/domain/exits.py` decides where they go and `appl
 1. A switchback stair shaft (the same `ShaftStair` as the link stairs at Taipei Main Station, with `g0` set to the real ground) from the street down to concourse level.
 2. A connecting passage from the door at the bottom of the shaft, along the outside of the box, to its side wall.
 3. An opening in the side wall into the unpaid area in front of the fare gates.
-
-![A switchback exit shaft and its passage to an underground station box, seen from inside the ground](../demo/cutaway.jpg)
-
-An exit shaft, its passage and the station box, photographed from inside the rock in spectator mode: with the camera inside a solid block, Minecraft stops drawing the surface.
 
 Three things in the data decided the approach.
 
@@ -241,9 +237,9 @@ The version before had 58 exits at Taipei Main Station and Beimen in one compone
 
 Nobody walks 253 km, so the platforms have ride signs. **Right-click one and you ride to the next station**, arriving on its platform in the same direction of travel, facing the sign that carries on from there, with the crosshair on it; keep clicking and you ride on, stop after stop. In the concourse, the ticket-machine sign opens the route map: click a line, then a station, and you are teleported there. The rules are in `mrt/domain/network.py`, `mrt/application/ride_plan.py` generates the commands and dialogues, and `cli.build_world` finishes by writing the datapack to `<save>/datapacks/taipei_mrt/`, already enabled in `level.dat`.
 
-![Arriving at Ximen: the station name as a title in the Bannan Line's blue, the station number and line beneath, the next station on the action bar](../demo/arrival.jpg)
+![Arriving at Zhonghe: the station name as a title in the Circular Line's yellow, the station number and line beneath, the next station on the action bar](../demo/arrival.jpg)
 
-Arriving at Ximen on the Bannan Line.
+Arriving at Zhonghe on the Circular Line.
 
 | Function | Count | What it does |
 |---|---:|---|

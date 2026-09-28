@@ -195,6 +195,7 @@ Code and data are licensed separately, because the data's licence is inherited f
 | Code (`mrt/`, `cli/`, `tools/`, `tests/`, `demo/make_demo.py`) | GPL-3.0 | `LICENSE` |
 | Data (`data/`) | ODbL 1.0 | `LICENSE-DATA` |
 | Screenshots and videos (`demo/`) | Produced Work under ODbL 1.0 | `LICENSE-DATA` |
+| The typeface, Shantell Sans (`demo/fonts/`) | SIL Open Font License 1.1 | `demo/fonts/OFL-ShantellSans.txt` |
 | The generated world, including the station names and route map in `datapacks/taipei_mrt/` | Produced Work under ODbL 1.0 | `LICENSE-DATA` |
 
 ```
