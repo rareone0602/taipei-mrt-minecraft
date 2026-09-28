@@ -1,12 +1,12 @@
 # Attractions
 
-Fourteen landmarks built 1:1 where they stand, with their outlines taken from OpenStreetMap and their looks from published architectural facts.
+Fifteen landmarks built 1:1 where they stand, with their outlines taken from OpenStreetMap and their looks from published architectural facts.
 
 ![Taipei 101 from its viewpoint, with the shopping mall at its foot](../demo/taipei101.jpg)
 
 Taipei 101 from the viewpoint its teleport lands on.
 
-Walk out of Taipei Main Station and the Shin Kong Life Tower is in view. To the south lie the North Gate, the National Taiwan Museum and the Presidential Office Building, and beyond them the Chiang Kai-shek Memorial Hall. Ride out to Taipei City Hall and Taipei 101 rises 508 m from the ground to the tip of its spire. All 14 stand where they really are.
+Walk out of Taipei Main Station and the Shin Kong Life Tower is in view. To the south lie the North Gate, the National Taiwan Museum and the Presidential Office Building, and beyond them the Chiang Kai-shek Memorial Hall. Ride out to Taipei City Hall and Taipei 101 rises 508 m from the ground to the tip of its spire. Get off at Gongguan and National Taiwan University's Royal Palm Boulevard runs 500 m from the main gate to the Main Library. All 15 stand where they really are.
 
 | Attraction | Nearest station | Height | What is built |
 |---|---|---:|---|
@@ -22,10 +22,11 @@ Walk out of Taipei Main Station and the Shin Kong Life Tower is in view. To the 
 | Longshan Temple | Longshan Temple, 223 m | 18 m | Three halls in sequence: the front hall, the main hall with a double-eave hip-and-gable roof, and the rear hall; swallowtail ridges, cast-bronze dragon columns, bell and drum towers, and the courtyard pool with its waterfall wall |
 | The Grand Hotel | Jiantan, 632 m | 87 m | Fourteen storeys halfway up Jiantan Mountain: red columns and golden tiles, a double-eave hip-and-gable roof, a portico and two flights of steps down to the fountain plaza, and the rear block climbing the slope |
 | Miramar Ferris Wheel | Jiannan Road, 308 m | 100 m | A 70 m wheel with 48 cabins on the roof of a 30 m shopping centre |
+| National Taiwan University | Gongguan, 444 m | 38 m | The main gate, turned 45° to the campus: a low tiled guardhouse between two gates with stone lamp piers. Royal Palm Boulevard: 16 m of asphalt between 255 royal palms (172 of them mapped one by one in OSM), azaleas and lamps. Fu Bell on its maroon iron frame and round platform, and the Administration Building's pool. The 32 buildings along the boulevard in the campus's brown tile, among them the Old Main Library, the College of Liberal Arts and the Administration Building with their published fronts. At the end, the Main Library: the stepped massing of its 54 `building:part`s, the entrance arcade, the four-storey arched window under a stone pediment and the great gable above, and the bell tower rising from the sunken northern courtyard |
 
 ## How they are built
 
-**Position, orientation and outline come from OSM** (`mrt/adapters/osm/fetch_attractions.py` writes `data/attractions.json`, under the ODbL). For each attraction the fetcher takes every `building`, `building:part` and `historic` within a radius. Taipei 101's `building:part`s put the 89th floor at 386 m and the spire at 448–508 m; the Presidential Office's central tower is tagged at 60 m, with its colour.
+**Position, orientation and outline come from OSM** (`mrt/adapters/osm/fetch_attractions.py` writes `data/attractions.json`, under the ODbL). For each attraction the fetcher takes every `building`, `building:part` and `historic` within a radius; for the university, within 110 m of Royal Palm Boulevard, together with the boulevard itself and its trees, which OSM maps one by one with their species. Taipei 101's `building:part`s put the 89th floor at 386 m and the spire at 448–508 m; the Presidential Office's central tower is tagged at 60 m, with its colour.
 
 **The looks are parametric code written from published architectural facts**: heights, storeys, bays, roof types and colours. The sources are in each module's comments: Wikipedia, the websites of the Presidential Office and the National Taiwan Museum, the Bureau of Cultural Heritage, the National Cultural Memory Bank and others. **No text, image or 3D model is copied.** Each attraction has its own module in `mrt/application/attractions/`, and the shared parts are in `kit.py`:
 
@@ -48,11 +49,11 @@ The datapack's `mrt:sight/<id>` teleports you to a viewpoint in front of each at
 
 ![The attractions menu: fourteen buttons, with a tooltip giving the National Taiwan Museum's opening year and nearest station](../demo/sights-menu.jpg)
 
-The attractions menu, the last button on the route map. Each tooltip gives the year the building opened and its nearest station.
+The attractions menu, the last button on the route map, as recorded before the university was added. Each tooltip gives the year the building opened and its nearest station.
 
 ## Verification
 
-`tools/verify_attractions.py` reads each attraction back from disk and compares its height with **public figures the tool carries itself**, not with what the generator says. It also checks the outline coverage, whether anything is built outside the outline, whether each teleport point can be stood on, whether each viewpoint faces its building, and the plaques. The Grand Hotel stands on a hillside, so its ground is measured from its own site; the ring around it is the riverside flat below. Read back from the whole-network save, all 14 pass (public figures on the right):
+`tools/verify_attractions.py` reads each attraction back from disk and compares its height with **public figures the tool carries itself**, not with what the generator says. It also checks the outline coverage, whether anything is built outside the outline, whether each teleport point can be stood on, whether each viewpoint faces its building, and the plaques. The Grand Hotel stands on a hillside, so its ground is measured from its own site; the ring around it is the riverside flat below. Read back from the whole-network save, all 15 pass (public figures on the right; the university has none to compare):
 
 | Attraction | Top | Ground | Height | Public figure |
 |---|---:|---:|---:|---:|
@@ -65,7 +66,7 @@ The attractions menu, the last button on the route map. Each tooltip gives the y
 | Sun Yat-sen Memorial Hall | y101 | y70 | 31 m | 30.4 m |
 | National Taiwan Museum | y97 | y67 | 30 m | about 30 m |
 
-The other checks on the same save are unchanged. All 472 exits reach both a platform and the street, so the attractions blocked none of them; the 1,158 ride signs have no faults; all 606 teleport functions in the game (23 of them for attractions) and all 207 buttons land where they should; and the top-down render has no magenta. A full build takes about 12 minutes and comes to 1.27 GB. How each tool works is in [verification](verification.md).
+The other checks on the same save are unchanged. All 472 exits reach both a platform and the street, so the attractions blocked none of them; the 1,158 ride signs have no faults; all 608 teleport functions in the game (25 of them for attractions) and all 208 buttons land where they should; and the top-down render has no magenta. A full build takes about 12 minutes and comes to 1.29 GB. How each tool works is in [verification](verification.md).
 
 `tools/render_view.py` draws elevations, plans and isometric views of any area, with colours computed from the installed game's textures (`tools/blockcolors.py`). Every round of work on the attractions used it to compare proportion and outline with the real buildings.
 

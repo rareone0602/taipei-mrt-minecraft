@@ -734,7 +734,9 @@ _SIGHT_SHORT = {"Chiang Kai-shek Memorial Hall": ["CKS Memorial Hall"],
                 "National Taiwan Museum": ["Natl. Taiwan Museum", "Taiwan Museum"],
                 "Presidential Office Building": ["Presidential Office", "Presidential Ofc.",
                                                  "President's Office"],
-                "Shin Kong Life Tower": ["Shin Kong Tower"]}
+                "Shin Kong Life Tower": ["Shin Kong Tower"],
+                "National Taiwan University": ["Natl. Taiwan University", "Natl. Taiwan Univ.",
+                                               "NTU"]}
 
 
 def sight_en_forms(name):

@@ -67,6 +67,11 @@ FACTS = {
     "dongmen":                dict(height=None, cover=0.5, spill=25),
     "nanmen":                 dict(height=None, cover=0.5, spill=25),
     "xiaonanmen":             dict(height=None, cover=0.5, spill=25),
+    # The campus has two named buildings, the Main Library and the gate's guardhouse 700 m
+    # away; the checks are made on the library. Further out than the ring checked here
+    # (10–30 m) stand the plaza's palms and the rest of the campus, built on purpose.
+    "national_taiwan_university": dict(height=None, cover=0.5, spill=10,
+                                       outline=["relation/14045849"]),
 }
 DEFAULT = dict(height=None, cover=0.4, spill=25)
 

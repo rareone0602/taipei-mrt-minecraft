@@ -174,7 +174,7 @@ chk("With no stations the station dialogs are unaffected (only the main menu and
 print("\nRegistry")
 reg = AT.registry()
 items = AT.load_items()
-chk("data/attractions.json has 14 attractions", len(items) == 14)
+chk("data/attractions.json has 15 attractions", len(items) == 15)
 chk("Every id uses only characters valid in a datapack path", all(all(c.isalnum() and c.islower() or c.isdigit() or c == "_" for c in it["id"]) for it in items))
 objs = AT.for_world([], items=items)
 chk("Every attraction has a class to build it (%d with their own, the rest fall back to OsmMassing)" % sum(1 for o in objs if type(o) is not AT.OsmMassing),

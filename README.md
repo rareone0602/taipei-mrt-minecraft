@@ -21,11 +21,11 @@ The route map lands you on the Tamsui-Xinyi Line platform at Taipei Main Station
 
 ## Once inside
 
-You start on the Tamsui-Xinyi Line platform at Taipei Main Station, facing a ride sign. Right-click it and you ride to the next station, landing in front of the sign for the one after, so clicking again carries on down the line. The ticket-machine sign in every concourse, or the Quick Actions key (G by default), opens the route map: pick a line, then a station. Its last button, ★ 觀光景點 Attractions, takes you to a viewpoint in front of any of the 14 attractions. The long version is in [docs/gallery.md](docs/gallery.md#getting-about).
+You start on the Tamsui-Xinyi Line platform at Taipei Main Station, facing a ride sign. Right-click it and you ride to the next station, landing in front of the sign for the one after, so clicking again carries on down the line. The ticket-machine sign in every concourse, or the Quick Actions key (G by default), opens the route map: pick a line, then a station. Its last button, ★ 觀光景點 Attractions, takes you to a viewpoint in front of any of the 15 attractions. The long version is in [docs/gallery.md](docs/gallery.md#getting-about).
 
 ## What is in it
 
-All ten operating lines and their branches, plus the Sanying Line, run over real terrain in tunnel, on viaduct and at grade. There are 193 stations, 472 exits at their real positions and with their real numbers, 16 interchange passages and 8.9 km of underground mall around Taipei Main Station; from the door of any exit you can walk to any platform without stepping on a block of soil. Fourteen attractions stand 1:1 where they do in the city. Taipei 101's spire is 508 m above the ground, so the world's ceiling was raised to y639 to fit it. The whole thing covers 482 km², which is why a program built it and not a person.
+All ten operating lines and their branches, plus the Sanying Line, run over real terrain in tunnel, on viaduct and at grade. There are 193 stations, 472 exits at their real positions and with their real numbers, 16 interchange passages and 8.9 km of underground mall around Taipei Main Station; from the door of any exit you can walk to any platform without stepping on a block of soil. Fifteen attractions stand 1:1 where they do in the city. Taipei 101's spire is 508 m above the ground, so the world's ceiling was raised to y639 to fit it. The whole thing covers 482 km², which is why a program built it and not a person.
 
 ## Build it yourself
 
@@ -44,7 +44,7 @@ Refreshing the OSM data, and every other stage of the pipeline, is in [docs/buil
 
 - [docs/building.md](docs/building.md): the pipeline, code layout, core decisions, tunnel layering, rails, data sources and licences.
 - [docs/stations.md](docs/stations.md): stations, stacked stations, pocket tracks, signs, exits, interchange passages, Taipei Main Station and the ride system.
-- [docs/attractions.md](docs/attractions.md): the 14 attractions, how they are built, and why the world is 704 blocks tall.
+- [docs/attractions.md](docs/attractions.md): the 15 attractions, how they are built, and why the world is 704 blocks tall.
 - [docs/verification.md](docs/verification.md): the tools that read the save back from disk, and what they have caught.
 - [docs/limitations.md](docs/limitations.md): what is missing or approximate.
 - [docs/gallery.md](docs/gallery.md): pictures from inside the world, and the long version of getting about in it.

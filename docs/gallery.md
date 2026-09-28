@@ -15,7 +15,7 @@ Screenshots from the world, and the long version of getting about in it.
 | <img src="../demo/taipei101.jpg" width="420" alt="Taipei 101 from its viewpoint"> | <img src="../demo/taipei101-top.jpg" width="420" alt="The top of Taipei 101 and its spire"> |
 | **Taipei 101.** The viewpoint you teleport to. OSM's `building:part` entries stack up the tapered base, the eight flared segments and the spire. | **The top.** The last sections and the spire, 508 m up, which is why the world was raised to y639. |
 | <img src="../demo/sights-menu.jpg" width="420" alt="The attractions menu"> | <img src="../demo/presidential.jpg" width="420" alt="The Presidential Office Building from above"> |
-| **★ Attractions.** The last button on the route map: 14 attractions, with tooltips giving the year each was completed and the nearest station. | **Presidential Office Building.** Completed in 1919. One of its two courtyards, from above. |
+| **★ Attractions.** The last button on the route map, with tooltips giving the year each attraction was completed and the nearest station. There were 14 when this was recorded; National Taiwan University makes 15. | **Presidential Office Building.** Completed in 1919. One of its two courtyards, from above. |
 | <img src="../demo/longshan.jpg" width="420" alt="Longshan Temple from above"> | <img src="../demo/viaduct.jpg" width="420" alt="The Circular Line's viaduct"> |
 | **Longshan Temple.** Founded in 1738, and 223 m from Longshan Temple station, as in the city. | **Circular Line.** The viaduct near Zhonghe, on its alignment from OSM. |
 
@@ -31,7 +31,7 @@ All twelve come from one recording, made on 28 September 2026. The views from ab
 
 **On foot**, every exit leads to the platforms, with signs either side of the fare gates and at the head of each stair. The station's name lights up in the action bar as you walk in.
 
-**The attractions** are listed under ★ 觀光景點 Attractions, the last button on the route map; each of the 14 teleports you to a viewpoint in front of the building. Stations within 900 m of one have a ★ sign by the ticket machine in the concourse that takes you straight there. In Taipei 101's ground-floor lobby, a sign marked 89 樓觀景台 ▲ (89F Observatory) takes you up to the observatory at 382 m.
+**The attractions** are listed under ★ 觀光景點 Attractions, the last button on the route map; each of the 15 teleports you to a viewpoint in front of it. Stations within 900 m of one have a ★ sign by the ticket machine in the concourse that takes you straight there. In Taipei 101's ground-floor lobby, a sign marked 89 樓觀景台 ▲ (89F Observatory) takes you up to the observatory at 382 m.
 
 **On its first load** the world turns off hostile mobs, stops the clock at noon, clears the weather and lets you keep your inventory when you die. 253 km of tunnel would otherwise fill with monsters the moment the lights went out. The chat lists each change and how to undo it; click a line and the command fills itself in.
 
