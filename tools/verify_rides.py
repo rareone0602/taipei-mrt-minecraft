@@ -211,6 +211,18 @@ def sign_next(front):
     return None, None
 
 
+def names_next_in_english(front, name):
+    """Whether a line below the first two gives the next station in English,
+    with or without "Next: " in front."""
+    for ln in front[2:]:
+        t = ln.strip()
+        if t.startswith("Next:"):
+            t = t[len("Next:"):].strip()
+        if t and en_match(t, name):
+            return True
+    return False
+
+
 def zh_match(text, name):
     t = text.strip()
     if t.endswith("…"):
@@ -419,6 +431,10 @@ def main():
                 s.update(kind=m.group(2), ident=f"{m.group(2)}/{m.group(3)}", frm=parts[0])
                 sign_at.setdefault((s["x"], s["y"], s["z"]), s)
 
+    # Ride destinations that have an English sign of their own at each station.
+    en_twins = {(s["frm"], s["to"]) for s in rides
+                if s["kind"] == "ride" and sign_next(s["front"])[0] == "en"}
+
     # ---- Check each sign ----
     problems = collections.defaultdict(list)       # Station code -> [messages].
     count = collections.Counter()
@@ -470,7 +486,14 @@ def main():
                 problems[code].append(f"{tag}: the sign says Next '{nxt}', but the command rides "
                                       f"to {to['en']} ({s['ident']})")
             elif lang == "zh" and me is not None and not any(me["zh"] in t for t in s["front"]):
-                problems[code].append(f"{tag}: the Chinese sign does not name this station, {me['zh']}")
+                # At a branch station three signs cannot pair two destinations,
+                # so one destination has a Chinese sign only. That sign may give
+                # the next station in English instead of this station's name,
+                # which the other signs show; only where no English twin exists.
+                if (code, s["to"]) in en_twins or not names_next_in_english(s["front"], to["en"]):
+                    problems[code].append(f"{tag}: the Chinese sign does not name this station, "
+                                          f"{me['zh']}, nor the next in English where no English "
+                                          f"sign does")
         else:
             if not ("本站終點" in s["front"][0] or "Terminus" in s["front"][0]):
                 problems[code].append(f"{tag}: the terminus platform-change sign does not say "
